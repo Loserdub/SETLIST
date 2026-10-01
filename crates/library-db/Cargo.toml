@@ -1,0 +1,9 @@
+[package]
+name = "library-db"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-types = { path = "../core-types" }
+rusqlite = { version = "0.40", features = ["bundled"] }
+thiserror = "2"

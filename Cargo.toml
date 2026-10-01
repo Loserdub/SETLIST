@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core-types",
+    "crates/audio-io",
+    "crates/audio-analysis",
+    "crates/library-db",
+    "crates/sequencer",
+    "crates/exporters",
+    "src-tauri",
+]

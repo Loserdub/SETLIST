@@ -1,0 +1,71 @@
+# 001-workspace-skeleton Workspace Skeleton Setup
+Status: done
+Changed:
+- Cargo.toml
+- rustfmt.toml
+- .gitignore
+- package.json
+- pnpm-workspace.yaml
+- README.md
+- docs/handoffs/.gitkeep
+- fixtures/.gitkeep
+- crates/core-types/Cargo.toml
+- crates/core-types/src/lib.rs
+- crates/audio-io/Cargo.toml
+- crates/audio-io/src/lib.rs
+- crates/audio-analysis/Cargo.toml
+- crates/audio-analysis/src/lib.rs
+- crates/audio-analysis/src/rhythm/mod.rs
+- crates/audio-analysis/src/tonal/mod.rs
+- crates/audio-analysis/src/dynamics/mod.rs
+- crates/audio-analysis/src/structure/mod.rs
+- crates/audio-analysis/src/waveform/mod.rs
+- crates/library-db/Cargo.toml
+- crates/library-db/src/lib.rs
+- crates/sequencer/Cargo.toml
+- crates/sequencer/src/lib.rs
+- crates/exporters/Cargo.toml
+- crates/exporters/src/lib.rs
+- src-tauri/Cargo.toml
+- src-tauri/tauri.conf.json
+- src-tauri/build.rs
+- src-tauri/capabilities/default.json
+- src-tauri/src/lib.rs
+- src-tauri/src/main.rs
+- ui/package.json
+- ui/vite.config.ts
+- ui/tsconfig.json
+- ui/tsconfig.app.json
+- ui/src/index.css
+- ui/src/App.css
+- ui/src/App.tsx
+- ui/src/App.test.tsx
+- ui/src/api/index.ts
+- ui/src/store/useAppStore.ts
+
+Added deps:
+- @tauri-apps/cli (root and ui devDep): Tauri 2 CLI runner for `pnpm tauri dev`
+- @tauri-apps/api (ui dep): Tauri 2 frontend IPC bindings (`invoke`)
+- react & react-dom (ui dep): UI rendering framework
+- zustand (ui dep): UI state management store
+- tailwindcss & @tailwindcss/vite (ui devDep): Tailwind CSS v4 styling
+- vitest & @testing-library/react & @testing-library/jest-dom & jsdom (ui devDep): Frontend unit and component testing
+- tauri v2 & tauri-build v2 (src-tauri dep): Tauri 2 desktop shell
+
+Public API:
+- `app_lib::run()`: Runs the Tauri 2 desktop application
+- `ping` (Tauri IPC command): Returns `"pong"`
+- `Backend` interface (`ui/src/api`): `ping(): Promise<string>`
+- `tauriBackend` (`ui/src/api`): Backend implementation invoking Tauri `ping`
+- `useAppStore` (`ui/src/store/useAppStore`): Zustand store exposing `pingResult`, `isLoading`, `error`, `fetchPing`
+
+Tests:
+- Rust unit test `test_ping` in `src-tauri` asserting `ping() == "pong"`
+- Frontend unit test in `ui/src/App.test.tsx` verifying `useAppStore.fetchPing` updates store with ping response
+- Frontend component test in `ui/src/App.test.tsx` verifying `<App />` renders "pong"
+
+Known gaps:
+- None for the empty skeleton scope; domain logic and analysis modules are stubs ready for respective workgroups
+
+Needs from others:
+- None
