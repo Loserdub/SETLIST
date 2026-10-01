@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 core-types = { path = "../core-types" }
+rustfft = "6.4"
 thiserror = "2"

@@ -89,6 +89,10 @@ pub struct RhythmConfig {
     pub min_bpm: f64,
     /// Maximum expected BPM threshold.
     pub max_bpm: f64,
+    /// Center of the log-normal tempo prior in BPM (default 125.0).
+    pub bpm_prior_center: f64,
+    /// Width (standard deviation) of the log-normal tempo prior.
+    pub bpm_prior_width: f64,
 }
 
 impl Default for RhythmConfig {
@@ -96,6 +100,8 @@ impl Default for RhythmConfig {
         Self {
             min_bpm: 60.0,
             max_bpm: 200.0,
+            bpm_prior_center: 125.0,
+            bpm_prior_width: 0.6,
         }
     }
 }

@@ -11,4 +11,12 @@ min_bpm: number,
 /**
  * Maximum expected BPM threshold.
  */
-max_bpm: number, };
+max_bpm: number, 
+/**
+ * Center of the log-normal tempo prior in BPM (default 125.0).
+ */
+bpm_prior_center: number, 
+/**
+ * Width (standard deviation) of the log-normal tempo prior.
+ */
+bpm_prior_width: number, };
