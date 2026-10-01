@@ -1,17 +1,23 @@
 //! Cost model, solvers, and transition advisor for setlist sequencing.
 
+pub mod matrix;
 pub mod profiles;
 pub mod scoring;
+pub mod solve;
 
 use core_types::{
     CostWeights, EnergyProfile, SetlistEntry, Track, TrackAnalysis, TransitionAdvice,
 };
 use thiserror::Error;
 
+pub use matrix::{build_cost_matrix, build_cost_matrix_with_slope, CostMatrix};
 pub use profiles::{dE_target, de_target, target_energy};
 pub use scoring::{
     phi_energy, phi_key, phi_key_from_distance, phi_key_from_keys, phi_tempo, phi_timbre,
     transition_cost, transition_cost_values, TransitionCost,
+};
+pub use solve::{
+    evaluate_path_cost, order_tracks, solve_open_hamiltonian_path, OrderedSetlist, TrackPins,
 };
 
 /// Error returned when sequencing or transition advising operations fail.
