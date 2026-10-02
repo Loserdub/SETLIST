@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 core-types = { path = "../core-types" }
+quick-xml = "0.37"
 thiserror = "2"
