@@ -1,15 +1,23 @@
 //! Cost model, solvers, and transition advisor for setlist sequencing.
 
+pub mod advisor;
+pub mod bridge;
 pub mod matrix;
 pub mod profiles;
 pub mod scoring;
 pub mod solve;
 
 use core_types::{
-    CostWeights, EnergyProfile, SetlistEntry, Track, TrackAnalysis, TransitionAdvice,
+    CostWeights, EnergyProfile, SetlistEntry, Track, TrackAnalysis,
+    TransitionAdvice as CoreTransitionAdvice,
 };
 use thiserror::Error;
 
+pub use advisor::{advise, TransitionAdvice, TransitionTechnique};
+pub use bridge::{
+    suggest_bridge, suggest_bridge_candidates, suggest_bridge_with_weights, AsTrackAnalysis,
+    BridgeCandidate,
+};
 pub use matrix::{build_cost_matrix, build_cost_matrix_with_slope, CostMatrix};
 pub use profiles::{dE_target, de_target, target_energy};
 pub use scoring::{
@@ -52,12 +60,12 @@ pub fn evaluate_transition_cost(
 /// Provides transition advice, harmonic categorization, and threshold checks between two tracks.
 ///
 /// # Errors
-/// Returns `SequencerError::NotImplemented`.
+/// Always returns `Ok(advice)` evaluated according to advisor priority rules.
 pub fn advise_transition(
-    _track_a: &TrackAnalysis,
-    _track_b: &TrackAnalysis,
-) -> Result<TransitionAdvice, SequencerError> {
-    Err(SequencerError::NotImplemented)
+    track_a: &TrackAnalysis,
+    track_b: &TrackAnalysis,
+) -> Result<CoreTransitionAdvice, SequencerError> {
+    Ok(advisor::advise(track_a, track_b).to_core_advice())
 }
 
 /// Orders a set of candidate tracks to match the requested energy profile and minimize transition cost.
@@ -82,13 +90,11 @@ mod tests {
             sequence_tracks(&[], EnergyProfile::LinearRamp, &CostWeights::default()),
             Err(SequencerError::NotImplemented)
         ));
-        assert!(matches!(
-            advise_transition(
-                &test_track_analysis(120.0, 8, core_types::CamelotLetter::A, 5),
-                &test_track_analysis(120.0, 8, core_types::CamelotLetter::A, 5)
-            ),
-            Err(SequencerError::NotImplemented)
-        ));
+        assert!(advise_transition(
+            &test_track_analysis(120.0, 8, core_types::CamelotLetter::A, 5),
+            &test_track_analysis(120.0, 8, core_types::CamelotLetter::A, 5)
+        )
+        .is_ok());
     }
 
     #[test]
