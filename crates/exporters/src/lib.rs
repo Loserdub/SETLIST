@@ -1,13 +1,22 @@
 //! Setlist and metadata exporters for Rekordbox XML, M3U8, and set sheets.
 
+pub mod m3u8;
 pub mod rekordbox;
+pub mod set_sheet;
 
+pub use m3u8::{export_m3u8, export_m3u8_with_options, generate_m3u8, resolve_absolute_path};
 pub use rekordbox::{
-    encode_location, format_tonality, generate_rekordbox_xml, parse_hex_color, KeyNotation,
-    ProductInfo, RekordboxExportOptions,
+    encode_location, export_rekordbox_xml, export_rekordbox_xml_with_options, format_tonality,
+    generate_rekordbox_xml, parse_hex_color, KeyNotation, ProductInfo, RekordboxExportOptions,
+};
+pub use set_sheet::{
+    export_set_sheet_csv, export_set_sheet_csv_with_options, export_set_sheet_markdown,
+    export_set_sheet_markdown_with_options, generate_set_sheet_csv, generate_set_sheet_markdown,
+    resolve_cues,
 };
 
 use core_types::SetlistEntry;
+use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -26,62 +35,102 @@ pub enum ExportError {
     /// Formatting or serialization failure.
     #[error("export failed: {0}")]
     Failed(String),
+    /// JSON parsing or serialization error.
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
-/// Exports setlist to Pioneer Rekordbox XML format including track metadata and cue points.
-///
-/// # Errors
-/// Returns [`ExportError`] on write or serialization failure, or if file exists and overwrite is false.
-pub fn export_rekordbox_xml<P: AsRef<Path>>(
-    entries: &[SetlistEntry],
-    output_path: P,
-) -> Result<(), ExportError> {
-    rekordbox::export_rekordbox_xml(entries, output_path)
+/// Structure holding destination paths for all generated export files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportReport {
+    /// Pioneer Rekordbox XML playlist file path.
+    pub xml_path: PathBuf,
+    /// Extended M3U8 playlist file path.
+    pub m3u8_path: PathBuf,
+    /// Tabular CSV set sheet file path.
+    pub csv_path: PathBuf,
+    /// Formatted Markdown set sheet file path.
+    pub markdown_path: PathBuf,
 }
 
-/// Exports setlist to Pioneer Rekordbox XML format with custom options.
-///
-/// # Errors
-/// Returns [`ExportError`] on write or serialization failure.
-pub fn export_rekordbox_xml_with_options<P: AsRef<Path>>(
-    entries: &[SetlistEntry],
-    output_path: P,
-    options: &RekordboxExportOptions,
-) -> Result<(), ExportError> {
-    rekordbox::export_rekordbox_xml_with_options(entries, output_path, options)
+/// Represents setlist data input parsed from JSON for export.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum SetlistExportData {
+    /// Wrapper object containing optional setlist name and track entries.
+    Named {
+        /// Name of the setlist or playlist.
+        #[serde(default)]
+        name: Option<String>,
+        /// Ordered track entries.
+        entries: Vec<SetlistEntry>,
+    },
+    /// Plain list of setlist entries.
+    List(Vec<SetlistEntry>),
 }
 
-/// Exports setlist to UTF-8 M3U8 playlist format.
-///
-/// # Errors
-/// Returns `ExportError::NotImplemented`.
-pub fn export_m3u8<P: AsRef<Path>>(
-    _entries: &[SetlistEntry],
-    _output_path: P,
-) -> Result<(), ExportError> {
-    Err(ExportError::NotImplemented)
+impl SetlistExportData {
+    /// Returns the slice of setlist entries.
+    #[must_use]
+    pub fn entries(&self) -> &[SetlistEntry] {
+        match self {
+            Self::Named { entries, .. } => entries,
+            Self::List(entries) => entries,
+        }
+    }
+
+    /// Returns the setlist name if specified.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Self::Named { name, .. } => name.as_deref(),
+            Self::List(_) => None,
+        }
+    }
 }
 
-/// Exports setlist sheet in tabular CSV format.
+/// Exports all three formats: Rekordbox XML, M3U8, and Set Sheet (CSV and Markdown).
 ///
 /// # Errors
-/// Returns `ExportError::NotImplemented`.
-pub fn export_set_sheet_csv<P: AsRef<Path>>(
-    _entries: &[SetlistEntry],
-    _output_path: P,
-) -> Result<(), ExportError> {
-    Err(ExportError::NotImplemented)
-}
+/// Returns [`ExportError`] if reading or parsing the JSON fails, or if writing any output file fails.
+pub fn export_all_formats<P: AsRef<Path>, Q: AsRef<Path>>(
+    input_json_path: P,
+    output_dir: Q,
+    custom_name: Option<&str>,
+    overwrite: bool,
+) -> Result<ExportReport, ExportError> {
+    let json_bytes = fs::read(input_json_path.as_ref())?;
+    let data: SetlistExportData = serde_json::from_slice(&json_bytes)?;
 
-/// Exports setlist sheet in formatted Markdown document format.
-///
-/// # Errors
-/// Returns `ExportError::NotImplemented`.
-pub fn export_set_sheet_markdown<P: AsRef<Path>>(
-    _entries: &[SetlistEntry],
-    _output_path: P,
-) -> Result<(), ExportError> {
-    Err(ExportError::NotImplemented)
+    let entries = data.entries();
+    let set_name = custom_name.or_else(|| data.name()).unwrap_or("setlist");
+
+    let out_dir = output_dir.as_ref();
+    if !out_dir.exists() {
+        fs::create_dir_all(out_dir)?;
+    }
+
+    let xml_path = out_dir.join(format!("{set_name}.xml"));
+    let m3u8_path = out_dir.join(format!("{set_name}.m3u8"));
+    let csv_path = out_dir.join(format!("{set_name}.csv"));
+    let md_path = out_dir.join(format!("{set_name}.md"));
+
+    let r_opts = RekordboxExportOptions {
+        playlist_name: set_name.to_string(),
+        overwrite,
+        ..Default::default()
+    };
+    export_rekordbox_xml_with_options(entries, &xml_path, &r_opts)?;
+    export_m3u8_with_options(entries, &m3u8_path, overwrite)?;
+    export_set_sheet_csv_with_options(entries, &csv_path, overwrite)?;
+    export_set_sheet_markdown_with_options(entries, &md_path, overwrite)?;
+
+    Ok(ExportReport {
+        xml_path,
+        m3u8_path,
+        csv_path,
+        markdown_path: md_path,
+    })
 }
 
 #[cfg(test)]
@@ -89,18 +138,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_export_stubs() {
-        assert!(matches!(
-            export_m3u8(&[], "set.m3u8"),
-            Err(ExportError::NotImplemented)
-        ));
-        assert!(matches!(
-            export_set_sheet_csv(&[], "set.csv"),
-            Err(ExportError::NotImplemented)
-        ));
-        assert!(matches!(
-            export_set_sheet_markdown(&[], "set.md"),
-            Err(ExportError::NotImplemented)
-        ));
+    fn test_setlist_export_data_deserialization() {
+        let json_arr = r#"[
+            {
+                "position": 1,
+                "track_id": "trk1",
+                "track": null,
+                "transition": null,
+                "target_energy": null
+            }
+        ]"#;
+        let data: SetlistExportData = serde_json::from_str(json_arr).unwrap();
+        assert_eq!(data.entries().len(), 1);
+        assert_eq!(data.name(), None);
+
+        let json_obj = r#"{
+            "name": "Summer Festival",
+            "entries": [
+                {
+                    "position": 1,
+                    "track_id": "trk1",
+                    "track": null,
+                    "transition": null,
+                    "target_energy": null
+                }
+            ]
+        }"#;
+        let data2: SetlistExportData = serde_json::from_str(json_obj).unwrap();
+        assert_eq!(data2.entries().len(), 1);
+        assert_eq!(data2.name(), Some("Summer Festival"));
     }
 }

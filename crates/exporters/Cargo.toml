@@ -6,4 +6,10 @@ edition = "2021"
 [dependencies]
 core-types = { path = "../core-types" }
 quick-xml = "0.37"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 thiserror = "2"
+
+[[bin]]
+name = "export-cli"
+path = "src/bin/export_cli.rs"

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.0.0" Company="Pioneer DJ"/>
+  <COLLECTION Entries="2">
+    <TRACK TrackID="1" Name="Alpha Intro" Artist="DJ Alpha" Album="Night Sessions Vol 1" TotalTime="180" AverageBpm="124.00" Tonality="Am" Location="file://localhost/C:/Music/Club/Alpha.mp3">
+      <TEMPO Inizio="0.250" Bpm="124.00" Metro="4/4" Battito="1"/>
+      <POSITION_MARK Name="A: First Downbeat" Start="0.250" Type="0" Num="0" Red="0" Green="255" Blue="0"/>
+      <POSITION_MARK Name="G: Outro Mix" Start="128.000" Type="0" Num="6" Red="255" Green="0" Blue="0"/>
+    </TRACK>
+    <TRACK TrackID="2" Name="Beta Peak" Artist="DJ Beta" Album="Night Sessions Vol 1" TotalTime="240" AverageBpm="126.00" Tonality="Em" Location="file://localhost/C:/Music/Club/Beta.mp3">
+      <TEMPO Inizio="0.476" Bpm="126.00" Metro="4/4" Battito="1"/>
+      <POSITION_MARK Name="A: First Downbeat" Start="0.476" Type="0" Num="0" Red="0" Green="255" Blue="0"/>
+      <POSITION_MARK Name="H: Outro Loop" Start="180.000" Type="4" Num="7" End="195.238" Red="255" Green="0" Blue="127"/>
+    </TRACK>
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT">
+      <NODE Name="Club Night Set" Type="1" KeyType="0" Entries="2">
+        <TRACK Key="1"/>
+        <TRACK Key="2"/>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

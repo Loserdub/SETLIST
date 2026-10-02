@@ -232,17 +232,36 @@ pub fn generate_rekordbox_xml(
         .write_event(Event::Empty(product))
         .map_err(|e| ExportError::Failed(format!("failed to write PRODUCT: {e}")))?;
 
+    // Map each unique track in the setlist to a distinct sequential TrackID (1, 2, ...)
+    let mut unique_entries: Vec<&SetlistEntry> = Vec::new();
+    let mut track_key_map: std::collections::HashMap<&str, String> =
+        std::collections::HashMap::new();
+
+    for entry in entries {
+        let key = entry
+            .track
+            .as_ref()
+            .map(|t| t.id.as_str())
+            .unwrap_or(entry.track_id.as_str());
+
+        if !track_key_map.contains_key(key) {
+            let next_id = (unique_entries.len() + 1).to_string();
+            track_key_map.insert(key, next_id);
+            unique_entries.push(entry);
+        }
+    }
+
     // <COLLECTION Entries="...">
-    let num_entries = entries.len();
-    let entries_str = num_entries.to_string();
+    let num_unique = unique_entries.len();
+    let unique_str = num_unique.to_string();
     let mut collection = BytesStart::new("COLLECTION");
-    collection.push_attribute(("Entries", entries_str.as_str()));
+    collection.push_attribute(("Entries", unique_str.as_str()));
     writer
         .write_event(Event::Start(collection))
         .map_err(|e| ExportError::Failed(format!("failed to start COLLECTION: {e}")))?;
 
-    // Write each <TRACK> in COLLECTION
-    for (idx, entry) in entries.iter().enumerate() {
+    // Write each unique <TRACK> in COLLECTION
+    for (idx, entry) in unique_entries.iter().enumerate() {
         let track_id = (idx + 1).to_string();
         write_track(&mut writer, entry, &track_id, options)?;
     }
@@ -266,6 +285,8 @@ pub fn generate_rekordbox_xml(
         .map_err(|e| ExportError::Failed(format!("failed to start ROOT NODE: {e}")))?;
 
     // <NODE Name="SETLIST" Type="1" KeyType="0" Entries="...">
+    let num_entries = entries.len();
+    let entries_str = num_entries.to_string();
     let mut playlist_node = BytesStart::new("NODE");
     playlist_node.push_attribute(("Name", options.playlist_name.as_str()));
     playlist_node.push_attribute(("Type", "1"));
@@ -275,9 +296,19 @@ pub fn generate_rekordbox_xml(
         .write_event(Event::Start(playlist_node))
         .map_err(|e| ExportError::Failed(format!("failed to start playlist NODE: {e}")))?;
 
-    // <TRACK Key="1"/>, <TRACK Key="2"/>, ...
-    for idx in 0..num_entries {
-        let track_key = (idx + 1).to_string();
+    // <TRACK Key="1"/>, <TRACK Key="2"/>, ... in exact setlist sequence
+    for entry in entries {
+        let key = entry
+            .track
+            .as_ref()
+            .map(|t| t.id.as_str())
+            .unwrap_or(entry.track_id.as_str());
+
+        let track_key = track_key_map
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| "1".to_string());
+
         let mut track_ref = BytesStart::new("TRACK");
         track_ref.push_attribute(("Key", track_key.as_str()));
         writer

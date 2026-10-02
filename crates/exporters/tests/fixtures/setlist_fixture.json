@@ -1,0 +1,233 @@
+{
+  "name": "Club Night Set",
+  "entries": [
+    {
+      "position": 1,
+      "track_id": "trk_001",
+      "track": {
+        "id": "trk_001",
+        "path": "C:/Music/Club/Alpha.mp3",
+        "hash": "hash_alpha_123",
+        "tags": {
+          "title": "Alpha Intro",
+          "artist": "DJ Alpha",
+          "album": "Night Sessions Vol 1"
+        },
+        "duration_ms": 180000.0,
+        "analysis": {
+          "loudness": {
+            "integrated_lufs": -14.0,
+            "loudness_range": 6.0,
+            "true_peak": -0.8
+          },
+          "rhythm": {
+            "grid": {
+              "first_downbeat_ms": 250.0,
+              "bpm": 124.0,
+              "beats_ms": [250.0, 733.87, 1217.74, 1701.61],
+              "downbeat_flags": [true, false, false, false],
+              "steady": true
+            },
+            "bpm_alternates": [62.0, 248.0]
+          },
+          "key": {
+            "pitch_class": 0,
+            "mode": "Minor",
+            "camelot": {
+              "number": 8,
+              "letter": "A"
+            },
+            "tuning_cents": 0.0
+          },
+          "dynamics": {
+            "frame_rate": 43.0,
+            "rms_curve": [0.3, 0.4],
+            "low_ratio_curve": [0.5, 0.6],
+            "centroid_curve": [1200.0, 1400.0]
+          },
+          "energy_score": 5,
+          "energy_curve": {
+            "per_bar": [4.0, 5.0, 5.0, 6.0]
+          },
+          "segments": [
+            {
+              "label": "intro",
+              "start_ms": 0.0,
+              "end_ms": 16000.0,
+              "energy": 4
+            },
+            {
+              "label": "drop",
+              "start_ms": 16000.0,
+              "end_ms": 128000.0,
+              "energy": 7
+            },
+            {
+              "label": "outro",
+              "start_ms": 128000.0,
+              "end_ms": 180000.0,
+              "energy": 4
+            }
+          ],
+          "cue_points": [
+            {
+              "index": 0,
+              "time_ms": 250.0,
+              "label": "A: First Downbeat",
+              "color_hex": "#00FF00",
+              "kind": "HotCue",
+              "loop_end_ms": null
+            },
+            {
+              "index": 6,
+              "time_ms": 128000.0,
+              "label": "G: Outro Mix",
+              "color_hex": "#FF0000",
+              "kind": "HotCue",
+              "loop_end_ms": null
+            }
+          ],
+          "waveform": {
+            "points_per_sec": 150,
+            "low": {
+              "peak": [10, 20],
+              "rms": [5, 10]
+            },
+            "mid": {
+              "peak": [15, 25],
+              "rms": [8, 12]
+            },
+            "high": {
+              "peak": [5, 10],
+              "rms": [2, 5]
+            }
+          }
+        },
+        "analyzed_at": "2026-10-01T20:00:00Z",
+        "analysis_version": "1.0.0"
+      },
+      "transition": null,
+      "target_energy": 5.0
+    },
+    {
+      "position": 2,
+      "track_id": "trk_002",
+      "track": {
+        "id": "trk_002",
+        "path": "C:/Music/Club/Beta.mp3",
+        "hash": "hash_beta_456",
+        "tags": {
+          "title": "Beta Peak",
+          "artist": "DJ Beta",
+          "album": "Night Sessions Vol 1"
+        },
+        "duration_ms": 240000.0,
+        "analysis": {
+          "loudness": {
+            "integrated_lufs": -12.0,
+            "loudness_range": 4.5,
+            "true_peak": -0.5
+          },
+          "rhythm": {
+            "grid": {
+              "first_downbeat_ms": 476.19,
+              "bpm": 126.0,
+              "beats_ms": [476.19, 952.38, 1428.57, 1904.76],
+              "downbeat_flags": [true, false, false, false],
+              "steady": true
+            },
+            "bpm_alternates": [63.0, 252.0]
+          },
+          "key": {
+            "pitch_class": 7,
+            "mode": "Minor",
+            "camelot": {
+              "number": 9,
+              "letter": "A"
+            },
+            "tuning_cents": 0.0
+          },
+          "dynamics": {
+            "frame_rate": 43.0,
+            "rms_curve": [0.6, 0.8],
+            "low_ratio_curve": [0.7, 0.8],
+            "centroid_curve": [1500.0, 1800.0]
+          },
+          "energy_score": 8,
+          "energy_curve": {
+            "per_bar": [7.0, 8.0, 8.0, 9.0]
+          },
+          "segments": [
+            {
+              "label": "intro",
+              "start_ms": 0.0,
+              "end_ms": 15238.0,
+              "energy": 6
+            },
+            {
+              "label": "drop",
+              "start_ms": 15238.0,
+              "end_ms": 180000.0,
+              "energy": 9
+            },
+            {
+              "label": "outro",
+              "start_ms": 180000.0,
+              "end_ms": 240000.0,
+              "energy": 6
+            }
+          ],
+          "cue_points": [
+            {
+              "index": 0,
+              "time_ms": 476.19,
+              "label": "A: First Downbeat",
+              "color_hex": "#00FF00",
+              "kind": "HotCue",
+              "loop_end_ms": null
+            },
+            {
+              "index": 7,
+              "time_ms": 180000.0,
+              "label": "H: Outro Loop",
+              "color_hex": "#FF007F",
+              "kind": "Loop",
+              "loop_end_ms": 195238.0
+            }
+          ],
+          "waveform": {
+            "points_per_sec": 150,
+            "low": {
+              "peak": [30, 40],
+              "rms": [20, 25]
+            },
+            "mid": {
+              "peak": [25, 35],
+              "rms": [15, 20]
+            },
+            "high": {
+              "peak": [15, 20],
+              "rms": [8, 12]
+            }
+          }
+        },
+        "analyzed_at": "2026-10-01T20:05:00Z",
+        "analysis_version": "1.0.0"
+      },
+      "transition": {
+        "transition_type": "Fifth",
+        "bpm_delta": 2.0,
+        "key_distance": 1,
+        "mode_flip": false,
+        "intervention_required": false,
+        "loop_extension_recommended": false,
+        "phrase_bars": 16,
+        "notes": [
+          "Harmonic fifth transition (+1 Camelot)",
+          "In cue: A, Out cue: G"
+        ]
+      },
+      "target_energy": 8.0
+    }
+  ]
+}
