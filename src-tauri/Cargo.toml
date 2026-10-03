@@ -1,8 +1,8 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "SETLIST - Local-first desktop application for intelligent DJ set preparation"
+authors = ["SETLIST Team"]
 license = ""
 repository = ""
 edition = "2021"
@@ -23,12 +23,14 @@ core-types = { path = "../crates/core-types" }
 exporters = { path = "../crates/exporters" }
 library-db = { path = "../crates/library-db" }
 log = "0.4"
+playback = { path = "../crates/playback" }
 rfd = "0.15"
 rusqlite = { version = "0.40", features = ["bundled"] }
 sequencer = { path = "../crates/sequencer" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tauri = { version = "2.12.1", features = [] }
+tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 tauri-plugin-single-instance = "2"
 thiserror = "2"
