@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
+import { save } from '@tauri-apps/plugin-dialog';
 import {
   DndContext,
   closestCenter,
@@ -29,6 +30,32 @@ import { SortableTrackItem } from './SortableTrackItem';
 import { TransitionCostBadge } from './TransitionCostBadge';
 import { EnergyChart } from './EnergyChart';
 import { TransitionAdviceModal } from './TransitionAdviceModal';
+
+export const getDefaultExportFileName = (target: ExportTarget): string => {
+  switch (target) {
+    case 'RekordboxXml':
+      return 'setlist_rekordbox.xml';
+    case 'M3u8':
+      return 'setlist_playlist.m3u8';
+    case 'SetSheetMarkdown':
+      return 'setlist_sheet.md';
+    case 'SetSheetCsv':
+      return 'setlist_sheet.csv';
+  }
+};
+
+export const getExportDialogFilters = (target: ExportTarget) => {
+  switch (target) {
+    case 'RekordboxXml':
+      return [{ name: 'Rekordbox XML', extensions: ['xml'] }];
+    case 'M3u8':
+      return [{ name: 'M3U8 Playlist', extensions: ['m3u8'] }];
+    case 'SetSheetMarkdown':
+      return [{ name: 'Markdown Set Sheet', extensions: ['md'] }];
+    case 'SetSheetCsv':
+      return [{ name: 'CSV Set Sheet', extensions: ['csv'] }];
+  }
+};
 
 interface SetlistViewProps {
   customBackend?: Backend;
@@ -123,8 +150,11 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
 
     try {
       const originalIds = setlist.map((e) => e.track_id);
-      // Call backend solver
-      const solverResult = await backend.suggestOrder(originalIds, energyProfile, costWeights);
+      const firstId = pins.lockFirst && originalIds.length > 0 ? originalIds[0] : undefined;
+      const lastId = pins.lockLast && originalIds.length > 1 ? originalIds[originalIds.length - 1] : undefined;
+
+      // Call backend solver with pinned anchors
+      const solverResult = await backend.suggestOrder(originalIds, energyProfile, costWeights, firstId, lastId);
 
       // Stale-request protection: Discard if setlist was mutated while solver was running
       if (useAppStore.getState().setlistVersion !== capturedVersion) {
@@ -283,7 +313,30 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     setErrorMessage(null);
     try {
       const target = overrideTarget ?? exportTarget;
-      const path = overridePath !== undefined ? overridePath : (outputPath.trim() || undefined);
+      let path = overridePath !== undefined ? overridePath : (outputPath.trim() || undefined);
+
+      // If destination path is not explicitly set, use native save dialog with format-based default filename
+      if (path === undefined) {
+        try {
+          const defaultPath = getDefaultExportFileName(target);
+          const selected = await save({
+            defaultPath,
+            filters: getExportDialogFilters(target),
+            title: 'Export Setlist',
+          });
+          if (selected) {
+            path = selected;
+            setOutputPath(selected);
+          } else if (selected === null) {
+            // User explicitly cancelled save dialog
+            setIsExporting(false);
+            return;
+          }
+        } catch {
+          // Native dialog unavailable in non-Tauri / test environments
+        }
+      }
+
       const overwrite = overrideOverwrite !== undefined ? overrideOverwrite : allowOverwrite;
       const result: ExportResult = await backend.exportSet(setlist, target, path, overwrite);
       const msg = `Exported ${result.track_count} tracks to ${result.format} (${result.path})`;
@@ -667,14 +720,37 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                 <label htmlFor="export-destination-input" className="block text-[11px] font-mono text-[#888888] uppercase mb-1">
                   Custom Destination Path (optional)
                 </label>
-                <input
-                  id="export-destination-input"
-                  type="text"
-                  value={outputPath}
-                  onChange={(e) => setOutputPath(e.target.value)}
-                  placeholder="Auto-generated in app directory or enter full path..."
-                  className="w-full bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus:border-[#444444] placeholder-[#555555]"
-                />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    id="export-destination-input"
+                    type="text"
+                    value={outputPath}
+                    onChange={(e) => setOutputPath(e.target.value)}
+                    placeholder="Auto-generated or choose location..."
+                    className="flex-1 bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus:border-[#444444] placeholder-[#555555]"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const defaultPath = getDefaultExportFileName(exportTarget);
+                        const selected = await save({
+                          defaultPath,
+                          filters: getExportDialogFilters(exportTarget),
+                          title: 'Save Export As',
+                        });
+                        if (selected) {
+                          setOutputPath(selected);
+                        }
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#333333] bg-[#161616] hover:bg-[#222222] text-[#d4d4d4] transition-colors cursor-pointer shrink-0"
+                  >
+                    Browse...
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-1">

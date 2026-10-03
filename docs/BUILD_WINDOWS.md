@@ -143,6 +143,26 @@ To view live logs in PowerShell:
 Get-Content "$env:APPDATA\com.setlist.desktop\setlist.log" -Wait -Tail 30
 ```
 
+### 7.1 Testing Startup Error Diagnostics (`SETLIST_TEST_STARTUP_ERROR`)
+
+To manually verify startup failure handling, the fatal panic dialog, and log recording without modifying code:
+1. In PowerShell, set the environment variable:
+   ```powershell
+   $env:SETLIST_TEST_STARTUP_ERROR = "1"
+   ```
+2. Launch the application:
+   ```powershell
+   .\target\release\SETLIST.exe
+   ```
+3. Observe:
+   - A native message box titled `"SETLIST - Fatal Startup Error"` appears with details describing the simulated startup failure.
+   - The process logs `[FATAL STARTUP TEST ERROR]` to `%APPDATA%\com.setlist.desktop\setlist.log`.
+   - The process exits cleanly with non-zero exit code (1) without crashing silently.
+4. Clean up the variable in PowerShell:
+   ```powershell
+   $env:SETLIST_TEST_STARTUP_ERROR = $null
+   ```
+
 ---
 
 ## 8. App Icon Generation

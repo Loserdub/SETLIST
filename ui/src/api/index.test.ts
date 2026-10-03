@@ -182,6 +182,27 @@ describe('tauriBackend', () => {
         energy: 0.35,
         timbre: 0.0,
       },
+      firstId: null,
+      lastId: null,
+    });
+  });
+
+  it('invokes suggest_order command with explicit firstId and lastId', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([]);
+    const result = await tauriBackend.suggestOrder(
+      ['id-1', 'id-2', 'id-3'],
+      'LinearRamp',
+      undefined,
+      'id-2',
+      'id-1'
+    );
+    expect(result).toEqual([]);
+    expect(invoke).toHaveBeenCalledWith('suggest_order', {
+      trackIds: ['id-1', 'id-2', 'id-3'],
+      profile: 'LinearRamp',
+      weights: null,
+      firstId: 'id-2',
+      lastId: 'id-1',
     });
   });
 
@@ -372,6 +393,27 @@ describe('suggestOrder regression tests for track preservation', () => {
     // LinearRamp targets from 4.0 to 9.0
     expect(result[0].target_energy).toBe(4.0);
     expect(result[3].target_energy).toBe(9.0);
+  });
+
+  it('respects firstId and lastId pin parameters in mockBackend', async () => {
+    const inputIds = ['track-001', 'track-002', 'track-003', 'track-004'];
+    const result = await mockBackend.suggestOrder(
+      inputIds,
+      'LinearRamp',
+      undefined,
+      'track-003',
+      'track-001'
+    );
+
+    expect(result.length).toBe(4);
+    expect(result[0].track_id).toBe('track-003');
+    expect(result[result.length - 1].track_id).toBe('track-001');
+    const resultIds = result.map((e) => e.track_id);
+    expect(resultIds).toContain('track-002');
+    expect(resultIds).toContain('track-004');
+    result.forEach((e, idx) => {
+      expect(e.position).toBe(idx + 1);
+    });
   });
 });
 

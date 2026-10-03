@@ -624,8 +624,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isSuggestingOrder: true, setlistError: null });
 
     const trackIds = setlist.map((e) => e.track_id);
+    const firstId = pins.lockFirst && trackIds.length > 0 ? trackIds[0] : undefined;
+    const lastId = pins.lockLast && trackIds.length > 1 ? trackIds[trackIds.length - 1] : undefined;
     try {
-      const solverResult = await backend.suggestOrder(trackIds, energyProfile, costWeights);
+      const solverResult = await backend.suggestOrder(trackIds, energyProfile, costWeights, firstId, lastId);
 
       // Discard stale result if setlist mutated during solver execution
       if (get().setlistVersion !== capturedVersion) {

@@ -51,7 +51,9 @@ export interface Backend {
   suggestOrder(
     trackIds: string[],
     profile?: EnergyProfile,
-    weights?: CostWeights
+    weights?: CostWeights,
+    firstId?: string,
+    lastId?: string
   ): Promise<SetlistEntry[]>;
   getAdvice(
     trackAId: string,
@@ -775,7 +777,9 @@ export const mockBackend: Backend = {
   suggestOrder: async (
     trackIds: string[],
     profile: EnergyProfile = 'PeakPlateau',
-    weights?: CostWeights
+    weights?: CostWeights,
+    firstId?: string,
+    lastId?: string
   ): Promise<SetlistEntry[]> => {
     emitMockProgress({ stage: 'sequencing', current: 0, total: trackIds.length, message: `Sequencing ${trackIds.length} tracks with ${profile} profile...` });
 
@@ -829,15 +833,28 @@ export const mockBackend: Backend = {
     // Unanalyzed tracks are deterministically appended at the end in their original relative order
     const merged = [...sorted, ...unanalyzed];
 
-    emitMockProgress({ stage: 'sequencing', current: merged.length, total: merged.length, message: 'Setlist optimization complete!' });
+    // If firstId or lastId are provided, anchor them to the start/end
+    let finalMerged = merged;
+    if (firstId || lastId) {
+      const first = firstId ? merged.find((t) => t.id === firstId) : undefined;
+      const last = lastId ? merged.find((t) => t.id === lastId) : undefined;
+      const middle = merged.filter((t) => t.id !== firstId && t.id !== lastId);
+      finalMerged = [
+        ...(first ? [first] : []),
+        ...middle,
+        ...(last && last.id !== first?.id ? [last] : []),
+      ];
+    }
+
+    emitMockProgress({ stage: 'sequencing', current: finalMerged.length, total: finalMerged.length, message: 'Setlist optimization complete!' });
 
     const entries: SetlistEntry[] = [];
-    for (let i = 0; i < merged.length; i++) {
-      const track = merged[i];
-      const prevTrack = i > 0 ? merged[i - 1] : null;
+    for (let i = 0; i < finalMerged.length; i++) {
+      const track = finalMerged[i];
+      const prevTrack = i > 0 ? finalMerged[i - 1] : null;
       let transition: TransitionAdvice | null = null;
       if (prevTrack && prevTrack.analysis && track.analysis) {
-        const de = getTargetEnergy(profile, i, merged.length) - getTargetEnergy(profile, i - 1, merged.length);
+        const de = getTargetEnergy(profile, i, finalMerged.length) - getTargetEnergy(profile, i - 1, finalMerged.length);
         transition = computeTransitionAdvice(prevTrack, track, profile, weights, de);
       }
 
@@ -846,7 +863,7 @@ export const mockBackend: Backend = {
         track_id: track.id,
         track,
         transition,
-        target_energy: getTargetEnergy(profile, i, merged.length),
+        target_energy: getTargetEnergy(profile, i, finalMerged.length),
       });
     }
 
@@ -1573,12 +1590,16 @@ export const tauriBackend: Backend = {
   suggestOrder: async (
     trackIds: string[],
     profile?: EnergyProfile,
-    weights?: CostWeights
+    weights?: CostWeights,
+    firstId?: string,
+    lastId?: string
   ): Promise<SetlistEntry[]> => {
     return invoke<SetlistEntry[]>('suggest_order', {
       trackIds,
       profile: profile ?? null,
       weights: weights ?? null,
+      firstId: firstId ?? null,
+      lastId: lastId ?? null,
     });
   },
 

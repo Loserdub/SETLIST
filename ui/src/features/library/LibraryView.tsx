@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   useReactTable,
   getCoreRowModel,
@@ -48,7 +49,7 @@ export function LibraryView() {
 
   // Filters state
   const [filters, setFilters] = useState<LibraryFilters>(DEFAULT_FILTERS);
-  const [folderPathInput, setFolderPathInput] = useState('/Music/DJ_Collection');
+  const [folderPathInput, setFolderPathInput] = useState('');
   const [isAddingBatch, setIsAddingBatch] = useState(false);
 
   // Sorting state (single column sort for high-performance virtualizer)
@@ -369,6 +370,22 @@ export function LibraryView() {
     setFilters(DEFAULT_FILTERS);
   };
 
+  // Native folder picker
+  const handleChooseFolder = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Choose Music Folder',
+      });
+      if (selected && typeof selected === 'string') {
+        setFolderPathInput(selected);
+      }
+    } catch (err) {
+      console.warn('Native folder picker not available:', err);
+    }
+  };
+
   // Row click handler to open Track route
   const handleRowClick = (trackId: string) => {
     selectTrack(trackId);
@@ -415,19 +432,28 @@ export function LibraryView() {
               {isBenchmarkMode ? 'Exit 5K Benchmark' : 'Load 5K Mock Tracks'}
             </button>
 
+            {/* Choose Folder Button */}
+            <button
+              type="button"
+              onClick={() => void handleChooseFolder()}
+              className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#2b2b2b] bg-[#121212] hover:bg-[#1a1a1a] text-[#b8b8b8] transition-colors cursor-pointer rounded-none"
+            >
+              Choose Folder
+            </button>
+
             {/* Scan Folder Input & Button */}
             <div className="flex items-center border border-[#262626] bg-[#0e0e0e]">
               <input
                 type="text"
                 value={folderPathInput}
                 onChange={(e) => setFolderPathInput(e.target.value)}
-                placeholder="/path/to/music"
-                className="bg-transparent px-2.5 py-1 text-xs font-mono text-[#d0d0d0] focus:outline-none w-44"
+                placeholder="Choose folder or paste path..."
+                className="bg-transparent px-2.5 py-1 text-xs font-mono text-[#d0d0d0] focus:outline-none w-52 placeholder-[#555555]"
               />
               <button
                 type="button"
                 onClick={() => void scanFolder(folderPathInput)}
-                disabled={isLoadingTracks}
+                disabled={isLoadingTracks || !folderPathInput.trim()}
                 className="px-3 py-1 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 border-l border-[#262626] text-[#e0e0e0] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer shrink-0"
               >
                 {isLoadingTracks ? 'Scanning...' : 'Scan'}
