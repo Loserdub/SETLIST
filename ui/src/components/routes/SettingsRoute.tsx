@@ -452,6 +452,28 @@ export function SettingsRoute() {
           <li>Deterministic DSP: All Camelot key detection, beat tracking, and sequencing is pure Rust CPU-driven.</li>
         </ul>
       </div>
+
+      {/* Intellectual Property & Licensing */}
+      <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] text-xs font-mono space-y-2 rounded-none">
+        <div className="flex items-center justify-between border-b border-[#181818] pb-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 bg-[#555555]" />
+            <h4 className="font-bold text-[#e0e0e0] uppercase tracking-widest text-[11px]">
+              TRUSTNODELOGIC
+            </h4>
+          </div>
+          <span className="text-[10px] text-[#666666] tracking-wider uppercase border border-[#222222] px-1.5 py-0.5 bg-[#111111]">
+            Proprietary IP
+          </span>
+        </div>
+        <p className="text-[#888888] text-[11px] leading-relaxed">
+          All system architecture, harmonic compatibility models, transition heuristics, audio analysis pipelines, and user interface implementations are the proprietary intellectual property of <strong className="text-[#cccccc]">TRUSTNODELOGIC</strong>.
+        </p>
+        <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between text-[10px] text-[#555555] tracking-wide gap-1">
+          <span>© 2026 TRUSTNODELOGIC. All Rights Reserved.</span>
+          <span>Unauthorized copying, reverse engineering, or distribution strictly prohibited.</span>
+        </div>
+      </div>
     </div>
   );
 }

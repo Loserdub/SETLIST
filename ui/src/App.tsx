@@ -24,6 +24,23 @@ export function App() {
         {currentRoute === 'stage' && <StageRoute />}
       </main>
       {!isStageMode && <ToastContainer />}
+
+      {/* Corner Professional Software Stamp & IP Notice (Out of sight, but present) */}
+      <footer
+        className="fixed bottom-1.5 right-3 z-10 pointer-events-none select-none"
+        aria-label="Software Intellectual Property"
+      >
+        <div
+          className="pointer-events-auto flex items-center gap-1.5 text-[9px] font-mono tracking-widest text-[#404040] hover:text-[#888888] transition-colors cursor-help opacity-40 hover:opacity-100"
+          title="TRUSTNODELOGIC • Proprietary Intellectual Property • All Rights Reserved. System architecture, transition scoring models, and DSP pipelines are protected."
+        >
+          <span className="w-1 h-1 bg-[#333333] rounded-full inline-block" />
+          <span className="font-semibold uppercase">TRUSTNODELOGIC</span>
+          <span className="text-[7.5px] text-[#2c2c2c] uppercase tracking-normal">
+            © 2026 IP
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

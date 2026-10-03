@@ -35,6 +35,7 @@ describe('App layout and routing', () => {
   beforeEach(() => {
     useAppStore.setState({
       currentRoute: 'library',
+      isStageMode: false,
       tracks: [],
       selectedTrackId: null,
       selectedTrack: null,
@@ -127,6 +128,18 @@ describe('App layout and routing', () => {
     render(<App />);
     expect(screen.getByTestId('stage-empty')).toBeDefined();
     expect(screen.queryByTestId('nav-library')).toBeNull();
+  });
+
+  it('renders TRUSTNODELOGIC software label and intellectual property notices', () => {
+    render(<App />);
+
+    // Brand label present
+    const brandLabels = screen.getAllByText('TRUSTNODELOGIC');
+    expect(brandLabels.length).toBeGreaterThanOrEqual(1);
+
+    // Intellectual property / copyright notice present
+    expect(screen.getByText(/© 2026 TRUSTNODELOGIC/)).toBeDefined();
+    expect(screen.getByLabelText('Software Intellectual Property')).toBeDefined();
   });
 });
 

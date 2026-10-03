@@ -156,6 +156,27 @@ export function Sidebar() {
             [Switch]
           </button>
         </div>
+
+        {/* Professional Software Label & Intellectual Property Notice */}
+        <div className="pt-2.5 border-t border-[#161616] px-1 space-y-1 select-none">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-[#3a3a3a]" />
+              <span className="font-mono text-[10px] font-bold tracking-widest text-[#737373] uppercase hover:text-[#999999] transition-colors">
+                TRUSTNODELOGIC
+              </span>
+            </div>
+            <span className="text-[8px] font-mono px-1 py-0.5 border border-[#222222] bg-[#111111] text-[#555555] uppercase tracking-wider">
+              CORE IP
+            </span>
+          </div>
+          <p
+            className="text-[8px] font-mono text-[#383838] hover:text-[#555555] leading-tight tracking-tight uppercase transition-colors cursor-help select-text"
+            title="Intellectual Property of TRUSTNODELOGIC. All rights reserved. Proprietary software architecture, audio DSP algorithms, and transition scoring models. Unauthorized reproduction, reverse engineering, or redistribution strictly prohibited."
+          >
+            © 2026 TRUSTNODELOGIC. Proprietary IP. All rights reserved.
+          </p>
+        </div>
       </div>
     </aside>
   );
