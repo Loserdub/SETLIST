@@ -5,12 +5,17 @@ edition = "2021"
 
 [dependencies]
 core-types = { path = "../core-types" }
+audio-io = { path = "../audio-io" }
+library-db = { path = "../library-db" }
+rayon = "1.10"
 rustfft = "6.4"
 thiserror = "2"
 
 [dev-dependencies]
 criterion = "0.5"
+hound = "3.5"
 sequencer = { path = "../sequencer" }
+tempfile = "3"
 
 [[bench]]
 name = "analysis_bench"

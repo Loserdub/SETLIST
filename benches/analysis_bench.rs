@@ -67,7 +67,7 @@ fn generate_six_minute_synthetic_buffer() -> AudioBuffer {
     let mut beat_idx = 0usize;
     while (click_pos as usize) < num_samples {
         let start = click_pos as usize;
-        let is_downbeat = beat_idx % 4 == 0;
+        let is_downbeat = beat_idx.is_multiple_of(4);
         let click_freq = if is_downbeat { 150.0f32 } else { 800.0f32 };
         let amp = if is_downbeat { 1.5f32 } else { 0.8f32 };
 

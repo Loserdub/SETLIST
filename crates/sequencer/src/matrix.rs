@@ -4,7 +4,7 @@
 //! in AGENTS.md Section 6.3.
 
 use crate::profiles::target_energy;
-use crate::scoring::{transition_cost, TransitionCost};
+use crate::scoring::{transition_cost_with_config, CostModelConfig, TransitionCost};
 use core_types::{CostWeights, EnergyProfile, TrackAnalysis};
 
 /// An `n x n` directed cost matrix storing transition costs between all pairs of tracks.
@@ -39,25 +39,49 @@ impl CostMatrix {
     }
 
     /// Builds an `n x n` directed cost matrix for `tracks` using the given `weights`
-    /// and target energy profile.
+    /// and target energy profile with default scoring configs.
     #[must_use]
     pub fn build(tracks: &[TrackAnalysis], weights: &CostWeights, profile: EnergyProfile) -> Self {
+        Self::build_with_config(tracks, weights, profile, None)
+    }
+
+    /// Builds an `n x n` directed cost matrix for `tracks` using `weights`, `profile`,
+    /// and an optional [`CostModelConfig`].
+    #[must_use]
+    pub fn build_with_config(
+        tracks: &[TrackAnalysis],
+        weights: &CostWeights,
+        profile: EnergyProfile,
+        config: Option<&CostModelConfig>,
+    ) -> Self {
         let n = tracks.len();
         let slope = if n > 1 {
             (target_energy(profile, n - 1, n) - target_energy(profile, 0, n)) / ((n - 1) as f32)
         } else {
             0.0
         };
-        Self::build_with_slope(tracks, weights, slope)
+        Self::build_with_slope_and_config(tracks, weights, slope, config)
     }
 
     /// Builds an `n x n` directed cost matrix for `tracks` using the given `weights`
-    /// and explicit target energy slope.
+    /// and explicit target energy slope with default scoring configs.
     #[must_use]
     pub fn build_with_slope(
         tracks: &[TrackAnalysis],
         weights: &CostWeights,
         profile_slope: f32,
+    ) -> Self {
+        Self::build_with_slope_and_config(tracks, weights, profile_slope, None)
+    }
+
+    /// Builds an `n x n` directed cost matrix for `tracks` using `weights`, `profile_slope`,
+    /// and an optional [`CostModelConfig`].
+    #[must_use]
+    pub fn build_with_slope_and_config(
+        tracks: &[TrackAnalysis],
+        weights: &CostWeights,
+        profile_slope: f32,
+        config: Option<&CostModelConfig>,
     ) -> Self {
         let n = tracks.len();
         let mut matrix = Self::new(n);
@@ -75,7 +99,13 @@ impl CostMatrix {
                         timbre: 0.0,
                     };
                 } else {
-                    let cost = transition_cost(&tracks[i], &tracks[j], weights, profile_slope);
+                    let cost = transition_cost_with_config(
+                        &tracks[i],
+                        &tracks[j],
+                        weights,
+                        profile_slope,
+                        config,
+                    );
                     matrix.costs[idx] = cost.total;
                     matrix.breakdowns[idx] = cost;
                 }
@@ -116,7 +146,18 @@ pub fn build_cost_matrix(
     weights: &CostWeights,
     profile: EnergyProfile,
 ) -> CostMatrix {
-    CostMatrix::build(tracks, weights, profile)
+    CostMatrix::build_with_config(tracks, weights, profile, None)
+}
+
+/// Convenience function to build a cost matrix for tracks under an energy profile with custom config.
+#[must_use]
+pub fn build_cost_matrix_with_config(
+    tracks: &[TrackAnalysis],
+    weights: &CostWeights,
+    profile: EnergyProfile,
+    config: Option<&CostModelConfig>,
+) -> CostMatrix {
+    CostMatrix::build_with_config(tracks, weights, profile, config)
 }
 
 /// Convenience function to build a cost matrix with an explicit slope.
@@ -126,7 +167,18 @@ pub fn build_cost_matrix_with_slope(
     weights: &CostWeights,
     profile_slope: f32,
 ) -> CostMatrix {
-    CostMatrix::build_with_slope(tracks, weights, profile_slope)
+    CostMatrix::build_with_slope_and_config(tracks, weights, profile_slope, None)
+}
+
+/// Convenience function to build a cost matrix with an explicit slope and custom config.
+#[must_use]
+pub fn build_cost_matrix_with_slope_and_config(
+    tracks: &[TrackAnalysis],
+    weights: &CostWeights,
+    profile_slope: f32,
+    config: Option<&CostModelConfig>,
+) -> CostMatrix {
+    CostMatrix::build_with_slope_and_config(tracks, weights, profile_slope, config)
 }
 
 #[cfg(test)]

@@ -4,6 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+blake3 = "1"
 core-types = { path = "../core-types" }
 rusqlite = { version = "0.40", features = ["bundled"] }
+serde_json = "1.0"
 thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"

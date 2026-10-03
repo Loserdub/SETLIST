@@ -27,12 +27,14 @@ export function LibraryView() {
     loadTracks,
     scanFolder,
     isLoadingTracks,
+    hasLoadedTracks,
     tracksError,
     selectTrack,
     setRoute,
     addToSetlist,
     setlist,
     progress,
+    setUseMockBackend,
   } = useAppStore();
 
   // Local state for benchmark 5,000 tracks mode
@@ -53,12 +55,12 @@ export function LibraryView() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
-  // Auto-load store tracks if empty
+  // Auto-load store tracks once on mount if not yet attempted
   useEffect(() => {
-    if (!isBenchmarkMode && storeTracks.length === 0 && !isLoadingTracks && !tracksError) {
+    if (!isBenchmarkMode && !hasLoadedTracks && !isLoadingTracks && !tracksError) {
       void loadTracks();
     }
-  }, [isBenchmarkMode, storeTracks.length, isLoadingTracks, tracksError, loadTracks]);
+  }, [isBenchmarkMode, hasLoadedTracks, isLoadingTracks, tracksError, loadTracks]);
 
   // 1. Filter tracks with pure filterTracks function
   const filteredData = useMemo(() => {
@@ -104,7 +106,7 @@ export function LibraryView() {
                 }
               }}
               onChange={table.getToggleAllRowsSelectedHandler()}
-              className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+              className="w-3.5 h-3.5 rounded-none border-[#333333] bg-[#111111] accent-[#888888] cursor-pointer"
             />
           </div>
         ),
@@ -119,11 +121,11 @@ export function LibraryView() {
               checked={row.getIsSelected()}
               disabled={!row.getCanSelect()}
               onChange={row.getToggleSelectedHandler()}
-              className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
+              className="w-3.5 h-3.5 rounded-none border-[#333333] bg-[#111111] accent-[#888888] cursor-pointer"
             />
           </div>
         ),
-        size: 40,
+        size: 36,
       }),
 
       // Title & Path
@@ -133,11 +135,11 @@ export function LibraryView() {
         cell: (info) => {
           const track = info.row.original;
           return (
-            <div className="flex flex-col min-w-0 pr-3">
-              <span className="font-semibold text-slate-100 truncate text-sm leading-snug">
+            <div className="flex flex-col min-w-0 pr-2">
+              <span className="font-medium text-[#ececec] truncate text-xs leading-tight">
                 {track.tags.title ?? 'Untitled'}
               </span>
-              <span className="text-[11px] text-slate-500 truncate font-mono">
+              <span className="text-[10px] text-[#666666] truncate font-mono">
                 {track.tags.album ?? track.path.split(/[/\\]/).pop()}
               </span>
             </div>
@@ -151,7 +153,7 @@ export function LibraryView() {
         id: 'artist',
         header: 'Artist',
         cell: (info) => (
-          <span className="text-slate-300 truncate text-sm font-medium pr-3">
+          <span className="text-[#a0a0a0] truncate text-xs font-normal pr-2">
             {info.getValue()}
           </span>
         ),
@@ -165,12 +167,12 @@ export function LibraryView() {
         cell: (info) => {
           const bpm = info.getValue();
           return (
-            <span className="font-mono text-sm font-semibold text-slate-200">
+            <span className="font-mono text-xs tabular-nums text-[#d0d0d0]">
               {bpm > 0 ? bpm.toFixed(1) : '—'}
             </span>
           );
         },
-        size: 80,
+        size: 75,
       }),
 
       // Camelot Key
@@ -180,20 +182,20 @@ export function LibraryView() {
         cell: (info) => {
           const keyStr = info.getValue();
           if (!keyStr) {
-            return <span className="text-slate-500 text-xs">—</span>;
+            return <span className="text-[#555555] font-mono text-[11px]">—</span>;
           }
           const bg = camelotColor(keyStr);
           const fg = camelotTextColor(keyStr);
           return (
             <span
-              className="inline-flex items-center justify-center font-mono font-bold text-xs px-2.5 py-0.5 rounded-full shadow-xs tracking-tight"
+              className="inline-flex items-center justify-center font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-[2px] tracking-tight"
               style={{ backgroundColor: bg, color: fg }}
             >
               {keyStr}
             </span>
           );
         },
-        size: 80,
+        size: 70,
       }),
 
       // Energy
@@ -204,23 +206,23 @@ export function LibraryView() {
           const energy = info.getValue();
           return (
             <div className="flex items-center gap-1.5">
-              <span className="font-mono text-xs font-semibold text-slate-300 w-4">
+              <span className="font-mono text-[11px] text-[#888888] w-3 tabular-nums">
                 {energy > 0 ? energy : '—'}
               </span>
-              <div className="w-12 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div className="w-10 bg-[#1c1c1c] h-1 overflow-hidden">
                 <div
-                  className="h-full rounded-full transition-all"
+                  className="h-full"
                   style={{
                     width: `${energy * 10}%`,
                     backgroundColor:
-                      energy >= 8 ? '#f43f5e' : energy >= 5 ? '#f59e0b' : '#10b981',
+                      energy >= 8 ? '#e11d48' : energy >= 5 ? '#d97706' : '#059669',
                   }}
                 />
               </div>
             </div>
           );
         },
-        size: 100,
+        size: 80,
       }),
 
       // LUFS
@@ -230,12 +232,12 @@ export function LibraryView() {
         cell: (info) => {
           const val = info.getValue();
           return (
-            <span className="font-mono text-xs text-slate-400">
+            <span className="font-mono text-[11px] text-[#777777] tabular-nums">
               {val > -90 ? `${val.toFixed(1)} dB` : '—'}
             </span>
           );
         },
-        size: 90,
+        size: 85,
       }),
 
       // Duration
@@ -243,11 +245,11 @@ export function LibraryView() {
         id: 'duration',
         header: 'Duration',
         cell: (info) => (
-          <span className="font-mono text-xs text-slate-400">
+          <span className="font-mono text-[11px] text-[#777777] tabular-nums">
             {formatDuration(info.getValue())}
           </span>
         ),
-        size: 80,
+        size: 75,
       }),
 
       // Actions
@@ -260,26 +262,26 @@ export function LibraryView() {
 
           return (
             <div
-              className="flex items-center justify-end gap-2 pr-2"
+              className="flex items-center justify-end gap-1.5 pr-2"
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
                 onClick={() => void addToSetlist(track.id)}
                 disabled={isInSetlist}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                className={`px-2 py-0.5 text-[10px] font-mono tracking-wider uppercase border transition-colors cursor-pointer rounded-none ${
                   isInSetlist
-                    ? 'bg-slate-800/80 text-emerald-400 border border-emerald-500/30 cursor-default'
-                    : 'bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-xs'
+                    ? 'border-[#222222] bg-[#111111] text-[#555555] cursor-default'
+                    : 'border-[#333333] bg-[#161616] hover:bg-[#222222] text-[#d4d4d4]'
                 }`}
                 title={isInSetlist ? 'Already in active setlist' : 'Add track to setlist'}
               >
-                {isInSetlist ? '✓ Queued' : '+ Setlist'}
+                {isInSetlist ? 'Queued' : '+ Setlist'}
               </button>
             </div>
           );
         },
-        size: 100,
+        size: 85,
       }),
     ],
     [setlistTrackIds, addToSetlist]
@@ -304,17 +306,23 @@ export function LibraryView() {
   // Scroll Container ref for Virtualizer
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
-  // Virtualizer instance with initialRect for SSR and headless testing
+  // Virtualizer instance
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => tableContainerRef.current,
-    estimateSize: () => 52, // 52px per row
+    estimateSize: () => 52,
     overscan: 12,
     initialRect: { width: 1000, height: 800 },
   });
 
   const virtualRows = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
+
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - (virtualRows[virtualRows.length - 1]?.end || 0)
+      : 0;
 
   // In headless testing or unmeasured containers, fallback to top slice
   const itemsToRender = useMemo(() => {
@@ -324,13 +332,7 @@ export function LibraryView() {
     return rows.slice(0, 40).map((row, idx) => ({ row, index: idx }));
   }, [virtualRows, rows]);
 
-  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0;
-  const paddingBottom =
-    virtualRows.length > 0
-      ? totalSize - (virtualRows[virtualRows.length - 1]?.end || 0)
-      : 0;
-
-  // Selected tracks count
+  // Selected tracks count for batch operations
   const selectedTrackIds = useMemo(() => {
     return Object.keys(rowSelection)
       .filter((idx) => rowSelection[idx])
@@ -338,11 +340,14 @@ export function LibraryView() {
       .filter(Boolean);
   }, [rowSelection, rows]);
 
-  // Batch add selected tracks to setlist
+  // Batch add selected tracks
   const handleAddSelectedToSetlist = async () => {
+    if (selectedTrackIds.length === 0 || isAddingBatch) return;
     setIsAddingBatch(true);
     for (const trackId of selectedTrackIds) {
-      await addToSetlist(trackId);
+      if (!setlistTrackIds.has(trackId)) {
+        await addToSetlist(trackId);
+      }
     }
     setRowSelection({});
     setIsAddingBatch(false);
@@ -371,99 +376,96 @@ export function LibraryView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#080808] text-[#e2e2e2]">
       {/* ── Top Header & Folder Scanner ── */}
-      <header className="p-5 border-b border-slate-800/80 bg-slate-900/60 flex flex-col gap-4">
+      <header className="px-5 py-3 border-b border-[#1a1a1a] bg-[#0a0a0a] flex flex-col gap-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="text-xl font-bold tracking-tight text-white">Music Library</h2>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-[#f0f0f0]">
+                Music Library
+              </h2>
+              <span className="text-[10px] font-mono px-2 py-0.5 border border-[#222222] bg-[#111111] text-[#777777]">
                 {rows.length.toLocaleString()} {rows.length === 1 ? 'track' : 'tracks'}
                 {rows.length !== activeDataset.length && (
-                  <span className="text-slate-500 ml-1">
+                  <span className="text-[#555555] ml-1">
                     (of {activeDataset.length.toLocaleString()})
                   </span>
                 )}
               </span>
               {isBenchmarkMode && (
-                <span className="text-[11px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold animate-pulse">
-                  ⚡ 5,000 Tracks Benchmark
+                <span className="text-[10px] font-mono px-2 py-0.5 border border-[#404040] bg-[#181818] text-[#cccccc] uppercase tracking-wide">
+                  5,000 Tracks Benchmark
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Virtualized high-performance library table with multi-criteria filtering and harmonic Camelot mixing.
+            <p className="text-[11px] text-[#666666] font-mono mt-0.5">
+              Deterministic DSP audio analysis repository • 24-key harmonic Camelot indexing
             </p>
           </div>
 
           {/* Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Benchmark Toggle Button */}
             <button
               type="button"
               onClick={toggleBenchmarkMode}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
-                isBenchmarkMode
-                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/30'
-                  : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
+              className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#2b2b2b] bg-[#121212] hover:bg-[#1a1a1a] text-[#b8b8b8] transition-colors cursor-pointer rounded-none"
             >
               {isBenchmarkMode ? 'Exit 5K Benchmark' : 'Load 5K Mock Tracks'}
             </button>
 
             {/* Scan Folder Input & Button */}
-            <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700/80 rounded-lg p-1">
+            <div className="flex items-center border border-[#262626] bg-[#0e0e0e]">
               <input
                 type="text"
                 value={folderPathInput}
                 onChange={(e) => setFolderPathInput(e.target.value)}
                 placeholder="/path/to/music"
-                className="bg-transparent px-2 text-xs font-mono text-slate-200 focus:outline-none w-36 sm:w-44"
+                className="bg-transparent px-2.5 py-1 text-xs font-mono text-[#d0d0d0] focus:outline-none w-44"
               />
               <button
                 type="button"
                 onClick={() => void scanFolder(folderPathInput)}
                 disabled={isLoadingTracks}
-                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold rounded-md shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-1 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 border-l border-[#262626] text-[#e0e0e0] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer shrink-0"
               >
-                <span>📂</span>
-                <span>{isLoadingTracks ? 'Scanning...' : 'Scan'}</span>
+                {isLoadingTracks ? 'Scanning...' : 'Scan'}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Live Progress Bar (During Scanning / Decoding) */}
+        {/* Live Progress Bar */}
         {progress && (
-          <div className="p-3 bg-slate-900/90 border border-emerald-500/30 rounded-xl space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-emerald-400 capitalize">
+          <div className="p-2 bg-[#0e0e0e] border border-[#242424] space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="text-[#cccccc] uppercase tracking-wide">
                 {progress.stage}...
               </span>
-              <span className="text-slate-400 font-mono">
+              <span className="text-[#666666]">
                 {progress.current} / {progress.total} (
                 {Math.round((progress.current / (progress.total || 1)) * 100)}%)
               </span>
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-[#181818] h-1 overflow-hidden">
               <div
-                className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                className="bg-[#d0d0d0] h-1 transition-all duration-200"
                 style={{
                   width: `${Math.round((progress.current / (progress.total || 1)) * 100)}%`,
                 }}
               />
             </div>
             {progress.message && (
-              <p className="text-[11px] text-slate-400 truncate">{progress.message}</p>
+              <p className="text-[10px] font-mono text-[#666666] truncate">{progress.message}</p>
             )}
           </div>
         )}
 
         {/* ── Multi-Criteria Filter Bar ── */}
-        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs font-mono">
           {/* Text Search */}
-          <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+          <div className="min-w-[200px] flex-1 sm:max-w-xs">
             <input
               type="search"
               value={filters.searchQuery}
@@ -471,14 +473,13 @@ export function LibraryView() {
                 setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
               }
               placeholder="Search title, artist, album, key..."
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              className="w-full px-2.5 py-1 bg-[#0e0e0e] border border-[#222222] text-[#d0d0d0] placeholder-[#555555] text-xs font-mono focus:outline-none focus:border-[#404040]"
             />
-            <span className="absolute left-2.5 top-2 text-slate-500 pointer-events-none">🔍</span>
           </div>
 
           {/* BPM Filter */}
-          <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1">
-            <span className="text-slate-400 font-medium">BPM:</span>
+          <div className="flex items-center gap-1 bg-[#0e0e0e] border border-[#222222] px-2 py-1">
+            <span className="text-[#666666] uppercase text-[10px]">BPM:</span>
             <input
               type="number"
               placeholder="Min"
@@ -489,9 +490,9 @@ export function LibraryView() {
                   minBpm: e.target.value ? parseFloat(e.target.value) : null,
                 }))
               }
-              className="w-14 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-center font-mono text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+              className="w-12 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none"
             />
-            <span className="text-slate-600">-</span>
+            <span className="text-[#444444]">-</span>
             <input
               type="number"
               placeholder="Max"
@@ -502,13 +503,13 @@ export function LibraryView() {
                   maxBpm: e.target.value ? parseFloat(e.target.value) : null,
                 }))
               }
-              className="w-14 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-center font-mono text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+              className="w-12 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none"
             />
           </div>
 
           {/* Camelot Key Filter */}
-          <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1">
-            <span className="text-slate-400 font-medium">Key:</span>
+          <div className="flex items-center gap-1.5 bg-[#0e0e0e] border border-[#222222] px-2 py-1">
+            <span className="text-[#666666] uppercase text-[10px]">Key:</span>
             <select
               value={filters.selectedKey ?? ''}
               onChange={(e) =>
@@ -518,7 +519,7 @@ export function LibraryView() {
                 }))
               }
               aria-label="Filter by Camelot Key"
-              className="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono cursor-pointer"
+              className="bg-[#090909] border border-[#1a1a1a] text-xs text-[#d0d0d0] focus:outline-none font-mono cursor-pointer"
             >
               <option value="">All Keys</option>
               {ALL_CAMELOT_KEYS.map((k) => (
@@ -529,7 +530,7 @@ export function LibraryView() {
             </select>
 
             {filters.selectedKey && (
-              <label className="flex items-center gap-1 cursor-pointer select-none text-slate-300 ml-1">
+              <label className="flex items-center gap-1 cursor-pointer select-none text-[#888888] ml-1">
                 <input
                   type="checkbox"
                   checked={filters.includeCompatibleKeys}
@@ -539,18 +540,18 @@ export function LibraryView() {
                       includeCompatibleKeys: e.target.checked,
                     }))
                   }
-                  className="rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-emerald-500 cursor-pointer accent-emerald-500 w-3.5 h-3.5"
+                  className="rounded-none border-[#333333] bg-[#111111] accent-[#888888] cursor-pointer w-3 h-3"
                 />
-                <span className="text-[11px] text-slate-400 font-medium">
-                  Harmonic (+/-1, relative)
+                <span className="text-[10px] text-[#666666]">
+                  Harmonic (±1)
                 </span>
               </label>
             )}
           </div>
 
           {/* Energy Filter */}
-          <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-700/80 rounded-lg px-2.5 py-1">
-            <span className="text-slate-400 font-medium">Energy:</span>
+          <div className="flex items-center gap-1 bg-[#0e0e0e] border border-[#222222] px-2 py-1">
+            <span className="text-[#666666] uppercase text-[10px]">Energy:</span>
             <input
               type="number"
               min="1"
@@ -563,9 +564,9 @@ export function LibraryView() {
                   minEnergy: e.target.value ? parseInt(e.target.value, 10) : null,
                 }))
               }
-              className="w-10 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-center font-mono text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+              className="w-8 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none"
             />
-            <span className="text-slate-600">-</span>
+            <span className="text-[#444444]">-</span>
             <input
               type="number"
               min="1"
@@ -578,7 +579,7 @@ export function LibraryView() {
                   maxEnergy: e.target.value ? parseInt(e.target.value, 10) : null,
                 }))
               }
-              className="w-10 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-center font-mono text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+              className="w-8 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none"
             />
           </div>
 
@@ -592,7 +593,7 @@ export function LibraryView() {
             <button
               type="button"
               onClick={resetFilters}
-              className="text-xs text-slate-400 hover:text-slate-200 underline transition-colors cursor-pointer px-1"
+              className="text-xs font-mono text-[#777777] hover:text-[#cccccc] underline transition-colors cursor-pointer px-1"
             >
               Reset Filters
             </button>
@@ -601,17 +602,16 @@ export function LibraryView() {
           {/* Multi-Select Batch Add Action */}
           {selectedTrackIds.length > 0 && (
             <div className="ml-auto flex items-center gap-2">
-              <span className="text-xs text-emerald-400 font-medium font-mono">
+              <span className="text-xs text-[#d0d0d0] font-mono">
                 {selectedTrackIds.length} selected
               </span>
               <button
                 type="button"
                 onClick={() => void handleAddSelectedToSetlist()}
                 disabled={isAddingBatch}
-                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 py-1 bg-[#181818] hover:bg-[#222222] disabled:opacity-50 text-[#f0f0f0] font-mono text-xs uppercase border border-[#333333] transition-colors cursor-pointer"
               >
-                <span>+</span>
-                <span>Add to Setlist</span>
+                Add to Setlist
               </button>
             </div>
           )}
@@ -622,43 +622,120 @@ export function LibraryView() {
       <div
         ref={tableContainerRef}
         data-testid="virtual-table-container"
-        className="flex-1 overflow-y-auto relative scroll-smooth focus:outline-none"
+        className="flex-1 overflow-y-auto relative focus:outline-none"
       >
-        {rows.length === 0 ? (
-          <div className="h-72 flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-800 rounded-xl bg-slate-900/20 m-6">
-            <span className="text-4xl mb-3">📂</span>
-            <h3 className="text-base font-semibold text-slate-300">
-              {activeDataset.length === 0 ? 'Your library is empty' : 'No matching tracks'}
+        {isLoadingTracks && activeDataset.length === 0 ? (
+          <div
+            data-testid="library-loading"
+            className="h-96 flex flex-col items-center justify-center text-center p-8 m-6"
+          >
+            <div className="w-6 h-6 border border-[#555555] border-t-[#ffffff] rounded-none animate-spin mb-4" />
+            <h3 className="text-xs font-mono uppercase tracking-wider text-[#cccccc]">
+              {progress
+                ? `${progress.stage.toUpperCase()}: ${progress.message ?? 'Analyzing tracks...'}`
+                : 'Loading Library...'}
             </h3>
-            <p className="text-xs text-slate-500 max-w-sm mt-1 mb-4">
-              {activeDataset.length === 0
-                ? 'Scan a music folder above to analyze and populate tracks.'
-                : 'Try adjusting your search query, BPM range, or Camelot key filter.'}
+            <p className="text-[11px] font-mono text-[#666666] mt-1 max-w-sm">
+              Connecting to local SQLite database and reading audio analysis metadata.
             </p>
-            {activeDataset.length === 0 ? (
+          </div>
+        ) : activeDataset.length === 0 ? (
+          <div className="max-w-xl mx-auto my-12 p-8 border border-[#1e1e1e] bg-[#0a0a0a] text-center flex flex-col items-center">
+            <h3 className="text-sm font-mono font-bold tracking-widest text-[#f0f0f0] uppercase">
+              Your library is empty
+            </h3>
+            <p className="text-xs font-mono text-[#777777] max-w-md mt-2 leading-relaxed">
+              DJ Set Assistant is a local-first desktop co-pilot. Your audio files are strictly read-only and never modified. Scan a music folder to extract tempo, Camelot keys, energy ratings, and cue points using pure CPU Rust DSP.
+            </p>
+
+            {/* Folder Input & Scan Action */}
+            <div className="w-full max-w-md mt-6 flex flex-col sm:flex-row items-center gap-1.5">
+              <input
+                type="text"
+                value={folderPathInput}
+                onChange={(e) => setFolderPathInput(e.target.value)}
+                placeholder="C:/Music or /path/to/tracks"
+                aria-label="Music folder path"
+                className="flex-1 w-full px-3 py-1.5 bg-[#0e0e0e] border border-[#262626] text-xs font-mono text-[#d0d0d0] focus:outline-none focus:border-[#444444] placeholder-[#555555]"
+              />
               <button
                 type="button"
                 onClick={() => void scanFolder(folderPathInput)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors cursor-pointer"
+                disabled={isLoadingTracks}
+                aria-label="Scan Folder"
+                className="w-full sm:w-auto px-4 py-1.5 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 border border-[#333333] text-[#e0e0e0] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer shrink-0"
               >
-                Scan Folder
+                {isLoadingTracks ? 'Scanning...' : 'Scan Folder'}
               </button>
-            ) : (
+            </div>
+
+            {/* Quick Demo Mode */}
+            <div className="mt-4 flex items-center gap-2 text-xs font-mono text-[#666666]">
+              <span>Or explore features immediately:</span>
               <button
                 type="button"
-                onClick={resetFilters}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                onClick={() => {
+                  setUseMockBackend(true);
+                  void loadTracks();
+                }}
+                className="text-[#aaaaaa] hover:text-white underline cursor-pointer"
               >
-                Clear Filters
+                Load Demo Library (40 Tracks)
               </button>
-            )}
+            </div>
+
+            {/* Feature Highlights Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full mt-8 text-left border-t border-[#1a1a1a] pt-5 font-mono">
+              <div className="p-3 bg-[#0d0d0d] border border-[#1c1c1c]">
+                <div className="text-[#d0d0d0] font-semibold text-xs">
+                  Local & Read-Only
+                </div>
+                <p className="text-[10px] text-[#666666] mt-1 leading-snug">
+                  Zero cloud telemetry. Audio files are strictly read-only.
+                </p>
+              </div>
+
+              <div className="p-3 bg-[#0d0d0d] border border-[#1c1c1c]">
+                <div className="text-[#d0d0d0] font-semibold text-xs">
+                  Pure Rust DSP
+                </div>
+                <p className="text-[10px] text-[#666666] mt-1 leading-snug">
+                  Deterministic analysis: beat tracking, Camelot keys, energy.
+                </p>
+              </div>
+
+              <div className="p-3 bg-[#0d0d0d] border border-[#1c1c1c]">
+                <div className="text-[#d0d0d0] font-semibold text-xs">
+                  Hardware Ready
+                </div>
+                <p className="text-[10px] text-[#666666] mt-1 leading-snug">
+                  Exports to Rekordbox XML, M3U8, and markdown/CSV set sheets.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="h-64 flex flex-col items-center justify-center text-center p-8 border border-[#1a1a1a] bg-[#0c0c0c] m-6">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-[#cccccc]">
+              No matching tracks
+            </h3>
+            <p className="text-[11px] font-mono text-[#666666] max-w-sm mt-1 mb-4">
+              Adjust search query, BPM range, or Camelot key filter.
+            </p>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="px-3 py-1 bg-[#161616] hover:bg-[#202020] border border-[#2e2e2e] text-[#cccccc] text-xs font-mono uppercase transition-colors cursor-pointer rounded-none"
+            >
+              Clear Filters
+            </button>
           </div>
         ) : (
           <table className="w-full border-collapse text-left select-none text-xs">
             {/* Sticky Table Header */}
-            <thead className="sticky top-0 z-10 bg-slate-900 border-b border-slate-800 shadow-md">
+            <thead className="sticky top-0 z-10 bg-[#0a0a0a] border-b border-[#202020]">
               {table.getHeaderGroups().map((headerGroup: HeaderGroup<Track>) => (
-                <tr key={headerGroup.id} className="h-10">
+                <tr key={headerGroup.id} className="h-9">
                   {headerGroup.headers.map((header: Header<Track, unknown>) => {
                     const canSort = header.column.getCanSort();
                     const sortDirection = header.column.getIsSorted();
@@ -668,8 +745,8 @@ export function LibraryView() {
                         key={header.id}
                         style={{ width: header.getSize() }}
                         onClick={header.column.getToggleSortingHandler()}
-                        className={`px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400 ${
-                          canSort ? 'cursor-pointer hover:text-slate-100 select-none' : ''
+                        className={`px-3 py-1.5 text-[10px] font-mono font-medium uppercase tracking-wider text-[#666666] ${
+                          canSort ? 'cursor-pointer hover:text-[#d0d0d0] select-none' : ''
                         }`}
                       >
                         <div className="flex items-center gap-1.5">
@@ -678,7 +755,7 @@ export function LibraryView() {
                             header.getContext()
                           )}
                           {canSort && (
-                            <span className="text-[10px] text-slate-500 font-mono">
+                            <span className="text-[9px] text-[#555555] font-mono">
                               {sortDirection === 'asc'
                                 ? '▲'
                                 : sortDirection === 'desc'
@@ -710,17 +787,17 @@ export function LibraryView() {
                     key={row.id}
                     data-index={index}
                     onClick={() => handleRowClick(row.original.id)}
-                    className={`h-[52px] border-b border-slate-900/80 transition-colors cursor-pointer ${
+                    className={`h-[52px] border-b border-[#141414] transition-colors cursor-pointer ${
                       isSelected
-                        ? 'bg-emerald-500/10 hover:bg-emerald-500/15'
-                        : 'hover:bg-slate-900/60'
+                        ? 'bg-[#161616] border-l-2 border-l-[#d0d0d0]'
+                        : 'hover:bg-[#111111]'
                     }`}
                   >
                     {row.getVisibleCells().map((cell: Cell<Track, unknown>) => (
                       <td
                         key={cell.id}
                         style={{ width: cell.column.getSize() }}
-                        className="px-3 py-2 text-xs text-slate-300 align-middle"
+                        className="px-3 py-1.5 text-xs text-[#b8b8b8] align-middle"
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
@@ -740,15 +817,14 @@ export function LibraryView() {
       </div>
 
       {/* Footer Status Bar */}
-      <footer className="px-5 py-2.5 border-t border-slate-800/80 bg-slate-950/80 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+      <footer className="px-5 py-2 border-t border-[#1a1a1a] bg-[#0a0a0a] flex items-center justify-between text-[10px] text-[#555555] font-mono">
         <div>
-          Showing {rows.length.toLocaleString()} tracks | Virtualizer window:{' '}
-          {virtualRows.length} rendered rows
+          TRACKS: {rows.length.toLocaleString()} | WINDOW: {virtualRows.length} RENDERED
         </div>
         <div className="flex items-center gap-3">
-          <span>Click row to inspect</span>
+          <span>CLICK ROW TO INSPECT</span>
           <span>•</span>
-          <span>Checkboxes to batch queue</span>
+          <span>CHECKBOXES TO BATCH QUEUE</span>
         </div>
       </footer>
     </div>

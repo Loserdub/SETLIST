@@ -3,7 +3,106 @@
 //! Implements AGENTS.md Section 6.3:
 //! `C_ij = w_tempo * Phi_tempo + w_key * Phi_key + w_energy * Phi_energy + w_timbre * Phi_timbre`
 
-use core_types::{Camelot, CostWeights, Key, TrackAnalysis};
+use core_types::{AppSettings, Camelot, CostWeights, Key, KeyPenaltyRow, TrackAnalysis};
+
+/// Configuration parameters for the transition cost model.
+///
+/// Allows overriding key distance penalties and the energy normalization divisor
+/// from default AGENTS.md Section 6.3 values.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CostModelConfig {
+    /// Custom penalty table for Camelot distance d=0..=6.
+    pub key_penalties: Vec<KeyPenaltyRow>,
+    /// Quadratic normalization divisor for energy distance (default 16.0).
+    pub energy_divisor: f32,
+}
+
+impl Default for CostModelConfig {
+    fn default() -> Self {
+        Self {
+            key_penalties: vec![
+                KeyPenaltyRow {
+                    distance: 0,
+                    same_mode: 0.00,
+                    mode_flip: 0.10,
+                },
+                KeyPenaltyRow {
+                    distance: 1,
+                    same_mode: 0.10,
+                    mode_flip: 0.40,
+                },
+                KeyPenaltyRow {
+                    distance: 2,
+                    same_mode: 0.35,
+                    mode_flip: 0.60,
+                },
+                KeyPenaltyRow {
+                    distance: 3,
+                    same_mode: 0.70,
+                    mode_flip: 0.80,
+                },
+                KeyPenaltyRow {
+                    distance: 4,
+                    same_mode: 0.85,
+                    mode_flip: 0.90,
+                },
+                KeyPenaltyRow {
+                    distance: 5,
+                    same_mode: 0.95,
+                    mode_flip: 0.95,
+                },
+                KeyPenaltyRow {
+                    distance: 6,
+                    same_mode: 1.00,
+                    mode_flip: 1.00,
+                },
+            ],
+            energy_divisor: 16.0,
+        }
+    }
+}
+
+impl CostModelConfig {
+    /// Creates a new `CostModelConfig` with custom key penalties and energy divisor.
+    #[must_use]
+    pub fn new(key_penalties: Vec<KeyPenaltyRow>, energy_divisor: f32) -> Self {
+        Self {
+            key_penalties,
+            energy_divisor: if energy_divisor > 0.0 {
+                energy_divisor
+            } else {
+                16.0
+            },
+        }
+    }
+
+    /// Creates a `CostModelConfig` from core [`AppSettings`].
+    #[must_use]
+    pub fn from_app_settings(settings: &AppSettings) -> Self {
+        Self {
+            key_penalties: settings.key_penalties.clone(),
+            energy_divisor: if settings.energy_model.divisor > 0.0 {
+                settings.energy_model.divisor
+            } else {
+                16.0
+            },
+        }
+    }
+
+    /// Resolves key penalty for distance `d` and mode flip from config or fallback defaults.
+    #[must_use]
+    pub fn lookup_key_penalty(&self, d: u8, mode_flip: bool) -> f32 {
+        if let Some(row) = self.key_penalties.iter().find(|r| r.distance == d) {
+            if mode_flip {
+                row.mode_flip
+            } else {
+                row.same_mode
+            }
+        } else {
+            phi_key_from_distance(d, mode_flip)
+        }
+    }
+}
 
 /// Breakdown of transition cost components along with total cost.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -80,7 +179,7 @@ pub fn phi_tempo(bpm_i: f64, bpm_j: f64) -> f32 {
 }
 
 /// Evaluates `Phi_key` given the circular Camelot number distance `d` (0..=6)
-/// and whether the mode flips between minor and major.
+/// and whether the mode flips between minor and major using hard-coded defaults.
 ///
 /// Implements the lookup table from AGENTS.md Section 6.3:
 ///
@@ -114,26 +213,78 @@ pub fn phi_key_from_distance(d: u8, mode_flip: bool) -> f32 {
     }
 }
 
-/// Evaluates `Phi_key` between two Camelot keys using circular distance and mode flip.
+/// Evaluates `Phi_key` given distance `d`, mode flip, and an optional [`CostModelConfig`].
+#[must_use]
+pub fn phi_key_from_distance_with_config(
+    d: u8,
+    mode_flip: bool,
+    config: Option<&CostModelConfig>,
+) -> f32 {
+    if let Some(cfg) = config {
+        cfg.lookup_key_penalty(d, mode_flip)
+    } else {
+        phi_key_from_distance(d, mode_flip)
+    }
+}
+
+/// Evaluates `Phi_key` between two Camelot keys using default key penalties.
 #[must_use]
 pub fn phi_key(key_a: &Camelot, key_b: &Camelot) -> f32 {
-    let (d, mode_flip) = key_a.distance(key_b);
-    phi_key_from_distance(d, mode_flip)
+    phi_key_with_config(key_a, key_b, None)
 }
 
-/// Evaluates `Phi_key` between two estimated [`Key`] values.
+/// Evaluates `Phi_key` between two Camelot keys using an optional [`CostModelConfig`].
+#[must_use]
+pub fn phi_key_with_config(
+    key_a: &Camelot,
+    key_b: &Camelot,
+    config: Option<&CostModelConfig>,
+) -> f32 {
+    let (d, mode_flip) = key_a.distance(key_b);
+    phi_key_from_distance_with_config(d, mode_flip, config)
+}
+
+/// Evaluates `Phi_key` between two estimated [`Key`] values using default penalties.
 #[must_use]
 pub fn phi_key_from_keys(key_a: &Key, key_b: &Key) -> f32 {
-    phi_key(&key_a.camelot, &key_b.camelot)
+    phi_key_from_keys_with_config(key_a, key_b, None)
 }
 
-/// Evaluates `Phi_energy = min(((E_j - E_i) - dE_target)^2 / 16, 1)`.
+/// Evaluates `Phi_key` between two estimated [`Key`] values with an optional [`CostModelConfig`].
+#[must_use]
+pub fn phi_key_from_keys_with_config(
+    key_a: &Key,
+    key_b: &Key,
+    config: Option<&CostModelConfig>,
+) -> f32 {
+    phi_key_with_config(&key_a.camelot, &key_b.camelot, config)
+}
+
+/// Evaluates `Phi_energy = min(((E_j - E_i) - dE_target)^2 / 16, 1)` with default divisor (16.0).
 ///
 /// Normalizes and clamps the quadratic energy deviation to [0.0, 1.0].
 #[must_use]
 pub fn phi_energy(energy_a: f32, energy_b: f32, de_target: f32) -> f32 {
+    phi_energy_with_config(energy_a, energy_b, de_target, None)
+}
+
+/// Evaluates `Phi_energy` with an optional [`CostModelConfig`] specifying the quadratic divisor.
+#[must_use]
+pub fn phi_energy_with_config(
+    energy_a: f32,
+    energy_b: f32,
+    de_target: f32,
+    config: Option<&CostModelConfig>,
+) -> f32 {
+    let divisor = config.map_or(16.0, |c| {
+        if c.energy_divisor > 0.0 {
+            c.energy_divisor
+        } else {
+            16.0
+        }
+    });
     let diff = (energy_b - energy_a) - de_target;
-    ((diff * diff) / 16.0).clamp(0.0, 1.0)
+    ((diff * diff) / divisor).clamp(0.0, 1.0)
 }
 
 /// Evaluates `Phi_timbre`.
@@ -144,7 +295,7 @@ pub fn phi_timbre() -> f32 {
     0.0
 }
 
-/// Evaluates full transition cost from raw track properties.
+/// Evaluates full transition cost from raw track properties using default scoring configs.
 #[must_use]
 #[allow(clippy::too_many_arguments)]
 pub fn transition_cost_values(
@@ -157,9 +308,36 @@ pub fn transition_cost_values(
     weights: &CostWeights,
     profile_slope: f32,
 ) -> TransitionCost {
+    transition_cost_values_with_config(
+        bpm_a,
+        bpm_b,
+        key_a,
+        key_b,
+        energy_a,
+        energy_b,
+        weights,
+        profile_slope,
+        None,
+    )
+}
+
+/// Evaluates full transition cost from raw track properties with an optional [`CostModelConfig`].
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn transition_cost_values_with_config(
+    bpm_a: f64,
+    bpm_b: f64,
+    key_a: &Camelot,
+    key_b: &Camelot,
+    energy_a: f32,
+    energy_b: f32,
+    weights: &CostWeights,
+    profile_slope: f32,
+    config: Option<&CostModelConfig>,
+) -> TransitionCost {
     let tempo = phi_tempo(bpm_a, bpm_b);
-    let key = phi_key(key_a, key_b);
-    let energy = phi_energy(energy_a, energy_b, profile_slope);
+    let key = phi_key_with_config(key_a, key_b, config);
+    let energy = phi_energy_with_config(energy_a, energy_b, profile_slope, config);
     let timbre = phi_timbre();
 
     let total = (weights.tempo * tempo
@@ -187,7 +365,19 @@ pub fn transition_cost(
     weights: &CostWeights,
     profile_slope: f32,
 ) -> TransitionCost {
-    transition_cost_values(
+    transition_cost_with_config(track_a, track_b, weights, profile_slope, None)
+}
+
+/// Evaluates transition cost between two analyzed tracks with an optional [`CostModelConfig`].
+#[must_use]
+pub fn transition_cost_with_config(
+    track_a: &TrackAnalysis,
+    track_b: &TrackAnalysis,
+    weights: &CostWeights,
+    profile_slope: f32,
+    config: Option<&CostModelConfig>,
+) -> TransitionCost {
+    transition_cost_values_with_config(
         track_a.rhythm.grid.bpm,
         track_b.rhythm.grid.bpm,
         &track_a.key.camelot,
@@ -196,6 +386,7 @@ pub fn transition_cost(
         track_b.energy_score as f32,
         weights,
         profile_slope,
+        config,
     )
 }
 
@@ -459,5 +650,115 @@ mod tests {
     #[test]
     fn test_phi_timbre() {
         assert_eq!(phi_timbre(), 0.0);
+    }
+
+    #[test]
+    fn test_cost_model_config_defaults_match_standard_table() {
+        let config = CostModelConfig::default();
+        assert_eq!(config.energy_divisor, 16.0);
+        assert_eq!(config.key_penalties.len(), 7);
+
+        for d in 0..=6 {
+            assert_eq!(
+                config.lookup_key_penalty(d, false),
+                phi_key_from_distance(d, false)
+            );
+            assert_eq!(
+                config.lookup_key_penalty(d, true),
+                phi_key_from_distance(d, true)
+            );
+        }
+    }
+
+    #[test]
+    fn test_custom_key_penalties_change_cost() {
+        let key_a = Camelot::new(8, CamelotLetter::A).unwrap();
+        let key_b = Camelot::new(2, CamelotLetter::A).unwrap(); // d = 6, default penalty = 1.0
+
+        // Default cost
+        let default_phi = phi_key(&key_a, &key_b);
+        assert_eq!(default_phi, 1.0);
+
+        // Custom config that lowers tritone penalty (d = 6) to 0.05
+        let mut custom_config = CostModelConfig::default();
+        if let Some(row) = custom_config
+            .key_penalties
+            .iter_mut()
+            .find(|r| r.distance == 6)
+        {
+            row.same_mode = 0.05;
+        }
+
+        let custom_phi = phi_key_with_config(&key_a, &key_b, Some(&custom_config));
+        assert_eq!(custom_phi, 0.05);
+
+        let weights = CostWeights {
+            tempo: 0.0,
+            key: 1.0,
+            energy: 0.0,
+            timbre: 0.0,
+        };
+
+        let default_cost =
+            transition_cost_values(120.0, 120.0, &key_a, &key_b, 5.0, 5.0, &weights, 0.0);
+        let custom_cost = transition_cost_values_with_config(
+            120.0,
+            120.0,
+            &key_a,
+            &key_b,
+            5.0,
+            5.0,
+            &weights,
+            0.0,
+            Some(&custom_config),
+        );
+
+        assert_eq!(default_cost.total, 1.0);
+        assert_eq!(custom_cost.total, 0.05);
+        assert_ne!(default_cost.total, custom_cost.total);
+    }
+
+    #[test]
+    fn test_custom_energy_divisor_changes_cost() {
+        // Delta = 4.0. With default divisor 16.0: (4^2)/16 = 1.0.
+        let default_phi = phi_energy(1.0, 5.0, 0.0);
+        assert_eq!(default_phi, 1.0);
+
+        // With custom divisor 64.0: (4^2)/64 = 0.25.
+        let custom_config = CostModelConfig::new(vec![], 64.0);
+        let custom_phi = phi_energy_with_config(1.0, 5.0, 0.0, Some(&custom_config));
+        assert_eq!(custom_phi, 0.25);
+
+        let weights = CostWeights {
+            tempo: 0.0,
+            key: 0.0,
+            energy: 1.0,
+            timbre: 0.0,
+        };
+        let key = Camelot::new(8, CamelotLetter::A).unwrap();
+        let default_cost =
+            transition_cost_values(120.0, 120.0, &key, &key, 1.0, 5.0, &weights, 0.0);
+        let custom_cost = transition_cost_values_with_config(
+            120.0,
+            120.0,
+            &key,
+            &key,
+            1.0,
+            5.0,
+            &weights,
+            0.0,
+            Some(&custom_config),
+        );
+
+        assert_eq!(default_cost.total, 1.0);
+        assert_eq!(custom_cost.total, 0.25);
+    }
+
+    #[test]
+    fn test_cost_model_config_from_app_settings() {
+        let app_settings = AppSettings::default();
+        let config = CostModelConfig::from_app_settings(&app_settings);
+        assert_eq!(config.energy_divisor, 16.0);
+        assert_eq!(config.key_penalties.len(), 7);
     }
 }

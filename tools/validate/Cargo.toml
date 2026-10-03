@@ -1,0 +1,18 @@
+[package]
+name = "validate"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+audio-analysis = { path = "../../crates/audio-analysis" }
+audio-io = { path = "../../crates/audio-io" }
+core-types = { path = "../../crates/core-types" }
+thiserror = "2"
+
+[dev-dependencies]
+hound = "3.5"
+tempfile = "3"
+
+[[bin]]
+name = "validate"
+path = "src/main.rs"

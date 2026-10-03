@@ -8,4 +8,16 @@ members = [
     "crates/sequencer",
     "crates/exporters",
     "src-tauri",
+    "tools/validate",
 ]
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.test]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+

@@ -351,7 +351,9 @@ pub fn energy_curve(
             boundaries.push((downbeat_ms[i], downbeat_ms[i + 1]));
         }
         // Last bar extends to end of track
-        boundaries.push((*downbeat_ms.last().unwrap(), track_duration_ms));
+        if let Some(&last_downbeat) = downbeat_ms.last() {
+            boundaries.push((last_downbeat, track_duration_ms));
+        }
         boundaries
     };
 

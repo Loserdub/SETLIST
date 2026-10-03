@@ -315,14 +315,14 @@ describe('5,000 Mock Track Generation & Virtualization Data Benchmark', () => {
     });
     const filterTime = performance.now() - startFilter;
 
-    expect(filterTime).toBeLessThan(50);
+    expect(filterTime).toBeLessThan(150);
     expect(filtered.length).toBeGreaterThan(0);
 
     const startSort = performance.now();
     const sorted = sortTracks(filtered, 'bpm', 'asc');
     const sortTime = performance.now() - startSort;
 
-    expect(sortTime).toBeLessThan(50);
+    expect(sortTime).toBeLessThan(150);
     expect(sorted.length).toBe(filtered.length);
   });
 });

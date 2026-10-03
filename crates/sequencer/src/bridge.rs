@@ -290,7 +290,7 @@ mod tests {
         let an_a = track_a.analysis.as_ref().unwrap();
         let an_b = track_b.analysis.as_ref().unwrap();
         let c1 = make_test_track("c1", 124.0, 9, CamelotLetter::A, 6);
-        let bridges = suggest_bridge(an_a, an_b, &[c1.clone()]);
+        let bridges = suggest_bridge(an_a, an_b, std::slice::from_ref(&c1));
         assert_eq!(bridges.len(), 1);
         assert_eq!(bridges[0].id, "c1");
     }

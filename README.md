@@ -1,4 +1,4 @@
-# DJ Set Assistant
+# SETLIST
 
 A local-first desktop app that prepares DJ sets. It analyzes a user's music library and acts as a co-pilot, suggesting track order, transition techniques, and cue points while keeping the user in full creative control.
 

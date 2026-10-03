@@ -1,5 +1,5 @@
 {
-  "name": "dj-set-assistant-workspace",
+  "name": "setlist",
   "private": true,
   "scripts": {
     "tauri": "tauri"

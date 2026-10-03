@@ -291,6 +291,7 @@ mod tests {
         WaveformBand,
     };
 
+    #[allow(clippy::too_many_arguments)]
     fn make_entry(
         pos: u32,
         title: &str,
@@ -396,6 +397,7 @@ mod tests {
             loop_extension_recommended: false,
             phrase_bars: 16,
             notes: vec!["Smooth blend".to_string()],
+            ..Default::default()
         };
         let e2 = make_entry(
             2,
@@ -417,6 +419,7 @@ mod tests {
             loop_extension_recommended: true,
             phrase_bars: 32,
             notes: vec!["Out cue: H, In cue: B".to_string()],
+            ..Default::default()
         };
         let e3 = make_entry(
             3,
@@ -467,6 +470,7 @@ mod tests {
             loop_extension_recommended: false,
             phrase_bars: 16,
             notes: vec![],
+            ..Default::default()
         };
         let e2 = make_entry(
             2,
@@ -510,16 +514,16 @@ mod tests {
         );
 
         // Initial write with overwrite = true
-        export_set_sheet_csv_with_options(&[e1.clone()], &csv_path, true).unwrap();
-        export_set_sheet_markdown_with_options(&[e1.clone()], &md_path, true).unwrap();
+        export_set_sheet_csv_with_options(std::slice::from_ref(&e1), &csv_path, true).unwrap();
+        export_set_sheet_markdown_with_options(std::slice::from_ref(&e1), &md_path, true).unwrap();
         assert!(csv_path.exists());
         assert!(md_path.exists());
 
         // Second write with overwrite = false should fail
-        let err_csv = export_set_sheet_csv(&[e1.clone()], &csv_path).unwrap_err();
+        let err_csv = export_set_sheet_csv(std::slice::from_ref(&e1), &csv_path).unwrap_err();
         assert!(matches!(err_csv, ExportError::FileExists(_)));
 
-        let err_md = export_set_sheet_markdown(&[e1], &md_path).unwrap_err();
+        let err_md = export_set_sheet_markdown(std::slice::from_ref(&e1), &md_path).unwrap_err();
         assert!(matches!(err_md, ExportError::FileExists(_)));
 
         let _ = fs::remove_file(csv_path);

@@ -514,6 +514,7 @@ mod tests {
     /// - Breakdown: no kick, 16 bars
     /// - Drop 2: kick and bass, 32 bars
     /// - Outro: kick fades, 16 bars
+    ///
     /// Total: 120 bars = 480 beats = 225.0 seconds.
     fn generate_test_fixture() -> (RhythmAnalysis, DynamicsAnalysis) {
         let bpm = 128.0;
@@ -811,8 +812,8 @@ mod tests {
         // In this fixture, all 8 cues (A through H) must exist
         assert_eq!(cues.len(), 8, "Expected all 8 cues A through H");
 
-        for i in 0..8 {
-            assert_eq!(cues[i].index, i as u8);
+        for (i, cue) in cues.iter().enumerate().take(8) {
+            assert_eq!(cue.index, i as u8);
         }
 
         // Cue E: Second breakdown -> Bar 104 to 120 (starts at 104 * 1875.0 = 195,000.0 ms)

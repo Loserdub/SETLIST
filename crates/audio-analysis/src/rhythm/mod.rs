@@ -145,12 +145,12 @@ mod tests {
         while (click_pos as usize) < num_samples {
             let start = click_pos as usize;
             // Accent beats 0 of every bar of 4 with a lower pitched tone.
-            let freq = if accent_downbeats && beat_idx % 4 == 0 {
+            let freq = if accent_downbeats && beat_idx.is_multiple_of(4) {
                 200.0f32
             } else {
                 1000.0f32
             };
-            let amplitude = if accent_downbeats && beat_idx % 4 == 0 {
+            let amplitude = if accent_downbeats && beat_idx.is_multiple_of(4) {
                 2.0f32
             } else {
                 1.0f32

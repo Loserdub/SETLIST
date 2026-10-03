@@ -1,4 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import {
   mockBackend,
   tauriBackend,
@@ -7,6 +9,14 @@ import {
   USE_MOCK_BACKEND,
   type ProgressEvent,
 } from './index';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(),
+}));
 
 describe('mockBackend', () => {
   it('lists exactly 40 generated tracks', async () => {
@@ -110,23 +120,182 @@ describe('mockBackend', () => {
     const entries = await mockBackend.suggestOrder(tracks.slice(0, 3).map((t) => t.id));
 
     const xmlRes = await mockBackend.exportSet(entries, 'RekordboxXml');
-    expect(xmlRes).toContain('RekordboxXml');
+    expect(xmlRes.format).toBe('RekordboxXml');
+    expect(xmlRes.track_count).toBe(3);
+    expect(xmlRes.path).toContain('.xml');
 
     const m3uRes = await mockBackend.exportSet(entries, 'M3u8');
-    expect(m3uRes).toContain('M3u8');
+    expect(m3uRes.format).toBe('M3u8');
+    expect(m3uRes.track_count).toBe(3);
+    expect(m3uRes.path).toContain('.m3u8');
   });
 });
 
 describe('tauriBackend', () => {
-  it('throws "not wired" for unimplemented methods', async () => {
-    await expect(tauriBackend.scanFolder('/path')).rejects.toThrow('not wired');
-    await expect(tauriBackend.listTracks()).rejects.toThrow('not wired');
-    await expect(tauriBackend.getTrack('id')).rejects.toThrow('not wired');
-    await expect(tauriBackend.suggestOrder(['id1', 'id2'])).rejects.toThrow('not wired');
-    await expect(tauriBackend.getAdvice('id1', 'id2')).rejects.toThrow('not wired');
-    await expect(tauriBackend.exportSet([], 'M3u8')).rejects.toThrow('not wired');
-    expect(() => tauriBackend.subscribeProgress(vi.fn())).toThrow('not wired');
-    expect(() => tauriBackend.onProgress(vi.fn())).toThrow('not wired');
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('invokes ping command', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce('pong');
+    const result = await tauriBackend.ping();
+    expect(result).toBe('pong');
+    expect(invoke).toHaveBeenCalledWith('ping');
+  });
+
+  it('invokes scan_folder command with path parameter', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([]);
+    const result = await tauriBackend.scanFolder('C:/Music');
+    expect(result).toEqual([]);
+    expect(invoke).toHaveBeenCalledWith('scan_folder', { path: 'C:/Music' });
+  });
+
+  it('invokes list_tracks command', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([]);
+    const result = await tauriBackend.listTracks();
+    expect(result).toEqual([]);
+    expect(invoke).toHaveBeenCalledWith('list_tracks');
+  });
+
+  it('invokes get_track command with id parameter', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(null);
+    const result = await tauriBackend.getTrack('track-123');
+    expect(result).toBeNull();
+    expect(invoke).toHaveBeenCalledWith('get_track', { id: 'track-123' });
+  });
+
+  it('invokes suggest_order command with trackIds, profile, and weights', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([]);
+    const result = await tauriBackend.suggestOrder(['id-1', 'id-2'], 'LinearRamp', {
+      tempo: 0.3,
+      key: 0.35,
+      energy: 0.35,
+      timbre: 0.0,
+    });
+    expect(result).toEqual([]);
+    expect(invoke).toHaveBeenCalledWith('suggest_order', {
+      trackIds: ['id-1', 'id-2'],
+      profile: 'LinearRamp',
+      weights: {
+        tempo: 0.3,
+        key: 0.35,
+        energy: 0.35,
+        timbre: 0.0,
+      },
+    });
+  });
+
+  it('invokes get_advice command with trackAId and trackBId', async () => {
+    const mockAdvice = {
+      transition_type: 'ExactMatch' as const,
+      bpm_delta: 0,
+      key_distance: 0,
+      mode_flip: false,
+      intervention_required: false,
+      loop_extension_recommended: false,
+      phrase_bars: 16,
+      notes: ['Harmonic match'],
+    };
+    vi.mocked(invoke).mockResolvedValueOnce(mockAdvice);
+    const result = await tauriBackend.getAdvice('track-1', 'track-2');
+    expect(result).toEqual(mockAdvice);
+    expect(invoke).toHaveBeenCalledWith('get_advice', {
+      trackAId: 'track-1',
+      trackBId: 'track-2',
+      profile: null,
+      weights: null,
+      deTarget: null,
+    });
+  });
+
+  it('invokes export_set command with entries, target, outputPath, and overwrite', async () => {
+    const fakeExportResult = {
+      path: '/out.xml',
+      format: 'RekordboxXml' as const,
+      track_count: 0,
+    };
+    vi.mocked(invoke).mockResolvedValueOnce(fakeExportResult);
+    const result = await tauriBackend.exportSet([], 'RekordboxXml', '/out.xml', false);
+    expect(result).toEqual(fakeExportResult);
+    expect(invoke).toHaveBeenCalledWith('export_set', {
+      entries: [],
+      target: 'RekordboxXml',
+      outputPath: '/out.xml',
+      overwrite: false,
+    });
+  });
+
+  it('subscribes to progress events and unsubscribes cleanly', async () => {
+    const unlistenMock = vi.fn();
+    let handler: ((event: { payload: ProgressEvent }) => void) | null = null;
+    vi.mocked(listen).mockImplementationOnce((_event, cb) => {
+      handler = cb as (event: { payload: ProgressEvent }) => void;
+      return Promise.resolve(unlistenMock);
+    });
+
+    const received: ProgressEvent[] = [];
+    const unsubscribe = tauriBackend.subscribeProgress((evt) => {
+      received.push(evt);
+    });
+
+    expect(listen).toHaveBeenCalledWith('progress', expect.any(Function));
+
+    // Wait for promise resolution
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    if (handler) {
+      (handler as (event: { payload: ProgressEvent }) => void)({
+        payload: {
+          stage: 'analyzing',
+          current: 1,
+          total: 5,
+          message: 'Analyzing...',
+        },
+      });
+    }
+
+    expect(received).toHaveLength(1);
+    expect(received[0].stage).toBe('analyzing');
+
+    unsubscribe();
+    expect(unlistenMock).toHaveBeenCalled();
+  });
+
+  it('invokes get_settings and save_settings on Tauri backend', async () => {
+    const sampleSettings = {
+      cost_weights: { tempo: 0.25, key: 0.35, energy: 0.4, timbre: 0.0 },
+      key_penalties: [],
+      energy_model: { divisor: 16.0, target_step: 1.5 },
+      worker_count: 6,
+    };
+
+    vi.mocked(invoke).mockResolvedValueOnce(sampleSettings);
+    const retrieved = await tauriBackend.getSettings();
+    expect(invoke).toHaveBeenCalledWith('get_settings');
+    expect(retrieved.worker_count).toBe(6);
+
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    await tauriBackend.saveSettings(sampleSettings);
+    expect(invoke).toHaveBeenCalledWith('save_settings', { settings: sampleSettings });
+  });
+});
+
+describe('mockBackend settings', () => {
+  it('loads default settings and persists updates', async () => {
+    const initial = await mockBackend.getSettings();
+    expect(initial.worker_count).toBe(4);
+    expect(initial.cost_weights.tempo).toBe(0.3);
+
+    const updated = {
+      ...initial,
+      worker_count: 8,
+      cost_weights: { ...initial.cost_weights, tempo: 0.5 },
+    };
+
+    await mockBackend.saveSettings(updated);
+    const reloaded = await mockBackend.getSettings();
+    expect(reloaded.worker_count).toBe(8);
+    expect(reloaded.cost_weights.tempo).toBe(0.5);
   });
 });
 
@@ -136,11 +305,73 @@ describe('getBackend', () => {
     expect(getBackend(false)).toBe(tauriBackend);
   });
 
-  it('uses USE_MOCK_BACKEND default and allows toggling', () => {
-    expect(USE_MOCK_BACKEND).toBe(true);
-    setUseMockBackend(false);
+  it('uses USE_MOCK_BACKEND default (false) and allows toggling', () => {
+    expect(USE_MOCK_BACKEND).toBe(false);
     expect(getBackend()).toBe(tauriBackend);
     setUseMockBackend(true);
     expect(getBackend()).toBe(mockBackend);
+    setUseMockBackend(false);
+    expect(getBackend()).toBe(tauriBackend);
   });
 });
+
+describe('suggestOrder regression tests for track preservation', () => {
+  it('preserves all 4 tracks with 3 analyzed and 1 unanalyzed', async () => {
+    const inputIds = ['track-001', 'track-002', 'track-unanalyzed', 'track-003'];
+    const result = await mockBackend.suggestOrder(inputIds, 'LinearRamp');
+
+    expect(result.length).toBe(4);
+    const resultIds = result.map((e) => e.track_id);
+    expect(resultIds).toContain('track-001');
+    expect(resultIds).toContain('track-002');
+    expect(resultIds).toContain('track-003');
+    expect(resultIds).toContain('track-unanalyzed');
+
+    // Unanalyzed track merged at end
+    expect(result[3].track_id).toBe('track-unanalyzed');
+    expect(result[3].transition).toBeNull();
+
+    // Contiguous positions 1..N
+    result.forEach((e, idx) => {
+      expect(e.position).toBe(idx + 1);
+    });
+  });
+
+  it('preserves all 4 tracks with 1 analyzed and 3 unanalyzed', async () => {
+    const inputIds = ['u1', 'track-001', 'u2', 'u3'];
+    const result = await mockBackend.suggestOrder(inputIds, 'Wave');
+
+    expect(result.length).toBe(4);
+    const resultIds = result.map((e) => e.track_id);
+    expect(resultIds).toEqual(['track-001', 'u1', 'u2', 'u3']);
+
+    // Transitions all null because no two adjacent analyzed tracks
+    result.forEach((e, idx) => {
+      expect(e.position).toBe(idx + 1);
+      expect(e.transition).toBeNull();
+    });
+  });
+
+  it('preserves all tracks when all tracks are unanalyzed', async () => {
+    const inputIds = ['u1', 'u2', 'u3', 'u4'];
+    const result = await mockBackend.suggestOrder(inputIds, 'PeakPlateau');
+
+    expect(result.length).toBe(4);
+    expect(result.map((e) => e.track_id)).toEqual(['u1', 'u2', 'u3', 'u4']);
+    result.forEach((e, idx) => {
+      expect(e.position).toBe(idx + 1);
+      expect(e.transition).toBeNull();
+    });
+  });
+
+  it('calculates target energy based on final position', async () => {
+    const inputIds = ['track-001', 'track-002', 'track-003', 'u1'];
+    const result = await mockBackend.suggestOrder(inputIds, 'LinearRamp');
+
+    expect(result.length).toBe(4);
+    // LinearRamp targets from 4.0 to 9.0
+    expect(result[0].target_energy).toBe(4.0);
+    expect(result[3].target_energy).toBe(9.0);
+  });
+});
+

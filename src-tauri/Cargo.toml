@@ -17,8 +17,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
+audio-analysis = { path = "../crates/audio-analysis" }
+audio-io = { path = "../crates/audio-io" }
+core-types = { path = "../crates/core-types" }
+exporters = { path = "../crates/exporters" }
+library-db = { path = "../crates/library-db" }
 log = "0.4"
+rusqlite = { version = "0.40", features = ["bundled"] }
+sequencer = { path = "../crates/sequencer" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 tauri = { version = "2.12.1", features = [] }
 tauri-plugin-log = "2"
+thiserror = "2"
+
+[dev-dependencies]
+hound = "3.5"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -159,15 +159,15 @@ mod tests {
         let e1 = make_test_entry(1, "t1", "Song", "Artist", r"C:\Music\Song.mp3");
 
         // Write first time with overwrite = true
-        export_m3u8_with_options(&[e1.clone()], &temp_file, true).unwrap();
+        export_m3u8_with_options(std::slice::from_ref(&e1), &temp_file, true).unwrap();
         assert!(temp_file.exists());
 
         // Second time without overwrite should fail
-        let err = export_m3u8(&[e1.clone()], &temp_file).unwrap_err();
+        let err = export_m3u8(std::slice::from_ref(&e1), &temp_file).unwrap_err();
         assert!(matches!(err, ExportError::FileExists(_)));
 
         // Third time with overwrite should succeed
-        export_m3u8_with_options(&[e1], &temp_file, true).unwrap();
+        export_m3u8_with_options(std::slice::from_ref(&e1), &temp_file, true).unwrap();
 
         let _ = fs::remove_file(temp_file);
         let _ = fs::remove_dir(temp_dir);

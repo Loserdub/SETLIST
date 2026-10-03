@@ -798,7 +798,7 @@ mod tests {
 
         // Standard notation -> "Am"
         let xml_std = generate_rekordbox_xml(
-            &[entry.clone()],
+            std::slice::from_ref(&entry),
             &RekordboxExportOptions {
                 key_notation: KeyNotation::Standard,
                 ..Default::default()
@@ -809,7 +809,7 @@ mod tests {
 
         // Camelot notation -> "8A"
         let xml_cam = generate_rekordbox_xml(
-            &[entry],
+            std::slice::from_ref(&entry),
             &RekordboxExportOptions {
                 key_notation: KeyNotation::Camelot,
                 ..Default::default()
@@ -838,7 +838,8 @@ mod tests {
             overwrite: true,
             ..Default::default()
         };
-        export_rekordbox_xml_with_options(&[entry.clone()], &temp_file, &opts_default).unwrap();
+        export_rekordbox_xml_with_options(std::slice::from_ref(&entry), &temp_file, &opts_default)
+            .unwrap();
         assert!(temp_file.exists());
 
         // Second export without overwrite (must fail with FileExists)
@@ -846,13 +847,17 @@ mod tests {
             overwrite: false,
             ..Default::default()
         };
-        let err =
-            export_rekordbox_xml_with_options(&[entry.clone()], &temp_file, &opts_no_overwrite)
-                .unwrap_err();
+        let err = export_rekordbox_xml_with_options(
+            std::slice::from_ref(&entry),
+            &temp_file,
+            &opts_no_overwrite,
+        )
+        .unwrap_err();
         assert!(matches!(err, ExportError::FileExists(_)));
 
         // Third export with overwrite (must succeed)
-        export_rekordbox_xml_with_options(&[entry], &temp_file, &opts_default).unwrap();
+        export_rekordbox_xml_with_options(std::slice::from_ref(&entry), &temp_file, &opts_default)
+            .unwrap();
 
         // Cleanup
         let _ = fs::remove_file(temp_file);

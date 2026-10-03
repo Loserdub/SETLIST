@@ -5,9 +5,9 @@
 //! - Simulated Annealing with 2-opt and Or-opt moves for n > 12.
 //! - First anchor, last anchor, and must-exclude constraints.
 
-use crate::matrix::{build_cost_matrix, CostMatrix};
+use crate::matrix::{build_cost_matrix_with_config, CostMatrix};
 use crate::profiles::dE_target;
-use crate::scoring::{transition_cost, TransitionCost};
+use crate::scoring::{transition_cost_with_config, CostModelConfig, TransitionCost};
 use crate::SequencerError;
 use core_types::{CostWeights, EnergyProfile, TrackAnalysis};
 
@@ -132,6 +132,13 @@ pub fn evaluate_path_cost(path: &[usize], matrix: &CostMatrix) -> f32 {
 ///
 /// # Errors
 /// Returns [`SequencerError::InvalidParameter`] if any pinned or excluded index is out of bounds,
+/// Orders candidate tracks to minimize transition cost while satisfying anchor constraints.
+///
+/// Uses exact Held-Karp for active tracks <= 12, and Simulated Annealing with 2-opt and Or-opt
+/// moves for active tracks > 12.
+///
+/// # Errors
+/// Returns [`SequencerError::InvalidParameter`] if any pinned or excluded index is out of bounds,
 /// or if conflicting constraints are provided.
 pub fn order_tracks(
     tracks: &[TrackAnalysis],
@@ -139,6 +146,22 @@ pub fn order_tracks(
     profile: EnergyProfile,
     pins: &TrackPins,
     seed: u64,
+) -> Result<OrderedSetlist, SequencerError> {
+    order_tracks_with_config(tracks, weights, profile, pins, seed, None)
+}
+
+/// Orders candidate tracks with an optional [`CostModelConfig`] for custom key and energy scoring.
+///
+/// # Errors
+/// Returns [`SequencerError::InvalidParameter`] if any pinned or excluded index is out of bounds,
+/// or if conflicting constraints are provided.
+pub fn order_tracks_with_config(
+    tracks: &[TrackAnalysis],
+    weights: &CostWeights,
+    profile: EnergyProfile,
+    pins: &TrackPins,
+    seed: u64,
+    config: Option<&CostModelConfig>,
 ) -> Result<OrderedSetlist, SequencerError> {
     let n = tracks.len();
     validate_pins(n, pins)?;
@@ -163,7 +186,7 @@ pub fn order_tracks(
         });
     }
 
-    let matrix = build_cost_matrix(tracks, weights, profile);
+    let matrix = build_cost_matrix_with_config(tracks, weights, profile, config);
     let order = solve_open_hamiltonian_path(&matrix, &active, pins, seed)?;
 
     // Compute exact per-edge costs along the sequenced path with dynamic profile slopes
@@ -174,7 +197,7 @@ pub fn order_tracks(
         let u = order[k];
         let v = order[k + 1];
         let slope = dE_target(profile, k, m);
-        let edge_cost = transition_cost(&tracks[u], &tracks[v], weights, slope);
+        let edge_cost = transition_cost_with_config(&tracks[u], &tracks[v], weights, slope, config);
         total_cost += edge_cost.total;
         edge_costs.push(edge_cost);
     }
@@ -482,6 +505,7 @@ fn validate_pins(n: usize, pins: &TrackPins) -> Result<(), SequencerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::matrix::build_cost_matrix;
     use core_types::CamelotLetter;
     use std::time::Instant;
 
@@ -771,5 +795,72 @@ mod tests {
             42
         )
         .is_err());
+    }
+
+    #[test]
+    fn test_order_tracks_keeps_both_anchors_for_n_5_13_40() {
+        let weights = CostWeights::default();
+        let test_sizes = [(5, 1, 4), (13, 0, 12), (40, 7, 33)];
+
+        for (n, first_idx, last_idx) in test_sizes {
+            let tracks: Vec<TrackAnalysis> = (0..n)
+                .map(|i| {
+                    make_dummy_analysis(
+                        110.0 + ((i * 5) % 30) as f64,
+                        ((i % 12) + 1) as u8,
+                        ((i % 10) + 1) as u8,
+                    )
+                })
+                .collect();
+
+            let pins = TrackPins::new().with_first(first_idx).with_last(last_idx);
+            let result = order_tracks(
+                &tracks,
+                &weights,
+                EnergyProfile::LinearRamp,
+                &pins,
+                42 + n as u64,
+            )
+            .unwrap();
+
+            assert_eq!(
+                result.order.len(),
+                n,
+                "Order length must equal input size n={n}"
+            );
+            assert_eq!(
+                result.order.first(),
+                Some(&first_idx),
+                "Failed to preserve first anchor for n={n}"
+            );
+            assert_eq!(
+                result.order.last(),
+                Some(&last_idx),
+                "Failed to preserve last anchor for n={n}"
+            );
+
+            // Also verify with custom CostModelConfig
+            let custom_cfg = CostModelConfig::default();
+            let result_cfg = order_tracks_with_config(
+                &tracks,
+                &weights,
+                EnergyProfile::Wave,
+                &pins,
+                100 + n as u64,
+                Some(&custom_cfg),
+            )
+            .unwrap();
+
+            assert_eq!(
+                result_cfg.order.first(),
+                Some(&first_idx),
+                "Failed to preserve first anchor with config for n={n}"
+            );
+            assert_eq!(
+                result_cfg.order.last(),
+                Some(&last_idx),
+                "Failed to preserve last anchor with config for n={n}"
+            );
+        }
     }
 }

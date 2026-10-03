@@ -13,11 +13,18 @@ describe('useAppStore', () => {
       suggestOrder: vi.fn(),
       getAdvice: vi.fn(),
       exportSet: vi.fn(),
+      getSettings: vi.fn().mockResolvedValue({
+        cost_weights: { tempo: 0.3, key: 0.35, energy: 0.35, timbre: 0.0 },
+        key_penalties: [],
+        energy_model: { divisor: 16.0, target_step: 1.5 },
+        worker_count: 4,
+      }),
+      saveSettings: vi.fn().mockResolvedValue(undefined),
       subscribeProgress: vi.fn(() => () => {}),
       onProgress: vi.fn(() => () => {}),
     };
 
-    await useAppStore.getState().fetchPing(mockBackend);
+    await useAppStore.getState().fetchPing(mockBackend as unknown as import('./api').Backend);
     expect(useAppStore.getState().pingResult).toBe('pong');
     expect(useAppStore.getState().isLoading).toBe(false);
     expect(useAppStore.getState().error).toBeNull();
@@ -41,15 +48,23 @@ describe('App layout and routing', () => {
   it('renders sidebar and navigates through all four routes', async () => {
     render(<App />);
 
-    // Sidebar should be visible with app brand and all 4 routes
-    expect(screen.getByText('SETLIST')).toBeDefined();
+    // Sidebar should be visible with app brand and all routes
+    expect(screen.getByText(/SETLIST/)).toBeDefined();
     expect(screen.getByTestId('nav-library')).toBeDefined();
+    expect(screen.getByTestId('nav-discovery')).toBeDefined();
     expect(screen.getByTestId('nav-track')).toBeDefined();
     expect(screen.getByTestId('nav-setlist')).toBeDefined();
     expect(screen.getByTestId('nav-settings')).toBeDefined();
 
     // Default route is Library
     expect(screen.getByText('Music Library')).toBeDefined();
+
+    // Navigate to Discovery route
+    act(() => {
+      fireEvent.click(screen.getByTestId('nav-discovery'));
+    });
+    expect(useAppStore.getState().currentRoute).toBe('discovery');
+    expect(screen.getByTestId('catalog-explorer-view')).toBeDefined();
 
     // Navigate to Track route
     act(() => {
@@ -100,6 +115,18 @@ describe('App layout and routing', () => {
     render(<App />);
     expect(screen.getByText('Your library is empty')).toBeDefined();
     expect(screen.getByRole('button', { name: /scan folder/i })).toBeDefined();
+  });
+
+  it('renders StageRoute and hides Sidebar when currentRoute is stage', () => {
+    useAppStore.setState({
+      currentRoute: 'stage',
+      isStageMode: true,
+      setlist: [],
+    });
+
+    render(<App />);
+    expect(screen.getByTestId('stage-empty')).toBeDefined();
+    expect(screen.queryByTestId('nav-library')).toBeNull();
   });
 });
 

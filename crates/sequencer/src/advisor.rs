@@ -1,8 +1,9 @@
 //! Transition advisor recommending mixing techniques, phrase lengths, cue points, and guidance.
 
+use crate::scoring::CostModelConfig;
 use core_types::{
-    Camelot, CuePoint, SegmentLabel, TrackAnalysis, TransitionAdvice as CoreTransitionAdvice,
-    TransitionType,
+    Camelot, CostWeights, CuePoint, EnergyProfile, SegmentLabel, TrackAnalysis,
+    TransitionAdvice as CoreTransitionAdvice, TransitionType,
 };
 
 /// Categorized mixing transition techniques recommended by the advisor.
@@ -73,6 +74,22 @@ pub struct TransitionAdvice {
     pub intervention_required: bool,
     /// True if outro is shorter than 16 bars.
     pub loop_extension_recommended: bool,
+    /// Total weighted transition cost in [0.0, 1.0].
+    pub total_cost: Option<f32>,
+    /// Unweighted tempo discrepancy term Phi_tempo in [0.0, 1.0].
+    pub tempo_cost: Option<f32>,
+    /// Unweighted musical key distance term Phi_key in [0.0, 1.0].
+    pub key_cost: Option<f32>,
+    /// Unweighted energy trajectory penalty term Phi_energy in [0.0, 1.0].
+    pub energy_cost: Option<f32>,
+    /// Unweighted timbre difference term Phi_timbre in [0.0, 1.0].
+    pub timbre_cost: Option<f32>,
+    /// Expected energy change target dE_target used for evaluation.
+    pub de_target: Option<f32>,
+    /// Cost weights applied during evaluation.
+    pub weights: Option<CostWeights>,
+    /// Energy profile used for transition evaluation if applicable.
+    pub profile: Option<EnergyProfile>,
 }
 
 impl TransitionAdvice {
@@ -106,6 +123,14 @@ impl From<TransitionAdvice> for CoreTransitionAdvice {
             loop_extension_recommended: adv.loop_extension_recommended,
             phrase_bars: adv.recommended_bars,
             notes: adv.notes,
+            total_cost: adv.total_cost,
+            tempo_cost: adv.tempo_cost,
+            key_cost: adv.key_cost,
+            energy_cost: adv.energy_cost,
+            timbre_cost: adv.timbre_cost,
+            de_target: adv.de_target,
+            weights: adv.weights,
+            profile: adv.profile,
         }
     }
 }
@@ -357,6 +382,34 @@ fn resolve_cues(
 ///    EQ and filter blend over 16 or 32 bars. Bass swap on phrase start.
 #[must_use]
 pub fn advise(a: &TrackAnalysis, b: &TrackAnalysis) -> TransitionAdvice {
+    advise_with_cost(a, b, None, None, None)
+}
+
+/// Recommends how to mix track A into track B according to the priority rules,
+/// evaluating authoritative transition cost terms using provided weights, profile, and dE_target.
+#[must_use]
+pub fn advise_with_cost(
+    a: &TrackAnalysis,
+    b: &TrackAnalysis,
+    weights: Option<CostWeights>,
+    profile: Option<EnergyProfile>,
+    de_target: Option<f32>,
+) -> TransitionAdvice {
+    advise_with_cost_and_config(a, b, weights, profile, de_target, None)
+}
+
+/// Recommends how to mix track A into track B according to the priority rules,
+/// evaluating authoritative transition cost terms using provided weights, profile, dE_target,
+/// and an optional [`CostModelConfig`].
+#[must_use]
+pub fn advise_with_cost_and_config(
+    a: &TrackAnalysis,
+    b: &TrackAnalysis,
+    weights: Option<CostWeights>,
+    profile: Option<EnergyProfile>,
+    de_target: Option<f32>,
+    config: Option<&CostModelConfig>,
+) -> TransitionAdvice {
     let bpm_a = a.rhythm.grid.bpm;
     let bpm_b = b.rhythm.grid.bpm;
     let effective_delta = compute_effective_bpm_delta(bpm_a, bpm_b);
@@ -463,6 +516,11 @@ pub fn advise(a: &TrackAnalysis, b: &TrackAnalysis) -> TransitionAdvice {
     // Resolve cue points
     let (out_cue, in_cue) = resolve_cues(a, b, technique, &mut notes);
 
+    let active_weights = weights.unwrap_or_default();
+    let active_de = de_target.unwrap_or(0.0);
+    let cost =
+        crate::scoring::transition_cost_with_config(a, b, &active_weights, active_de, config);
+
     TransitionAdvice {
         r#type: technique,
         transition_type: technique,
@@ -476,6 +534,14 @@ pub fn advise(a: &TrackAnalysis, b: &TrackAnalysis) -> TransitionAdvice {
         mode_flip,
         intervention_required: raw_intervention,
         loop_extension_recommended: technique == TransitionTechnique::LoopExtension,
+        total_cost: Some(cost.total),
+        tempo_cost: Some(cost.tempo),
+        key_cost: Some(cost.key),
+        energy_cost: Some(cost.energy),
+        timbre_cost: Some(cost.timbre),
+        de_target: Some(active_de),
+        weights: Some(active_weights),
+        profile,
     }
 }
 
@@ -1011,5 +1077,46 @@ mod tests {
             .notes
             .iter()
             .any(|n| n.contains("No incoming cue points available")));
+    }
+
+    #[test]
+    fn test_advise_with_cost_affects_total_and_weights() {
+        let a = make_test_analysis(120.0, 8, CamelotLetter::A, 4, vec![], vec![]);
+        let b = make_test_analysis(126.0, 9, CamelotLetter::A, 6, vec![], vec![]);
+
+        // 1. Default evaluation
+        let adv_default = advise_with_cost(&a, &b, None, None, None);
+        assert!(adv_default.total_cost.is_some());
+        assert!(adv_default.tempo_cost.is_some());
+        assert!(adv_default.key_cost.is_some());
+        assert!(adv_default.energy_cost.is_some());
+        assert_eq!(adv_default.de_target, Some(0.0));
+
+        // 2. Custom CostWeights affect total cost
+        let custom_weights = CostWeights {
+            tempo: 1.0,
+            key: 0.0,
+            energy: 0.0,
+            timbre: 0.0,
+        };
+        let adv_tempo_only = advise_with_cost(&a, &b, Some(custom_weights), None, None);
+        assert_eq!(adv_tempo_only.total_cost, adv_tempo_only.tempo_cost);
+        assert_ne!(adv_tempo_only.total_cost, adv_default.total_cost);
+
+        // 3. EnergyProfile / dE_target affects energy cost and total cost
+        let adv_flat = advise_with_cost(&a, &b, None, Some(EnergyProfile::LinearRamp), Some(0.0));
+        let adv_ramped = advise_with_cost(&a, &b, None, Some(EnergyProfile::LinearRamp), Some(2.0));
+        // Energy change is 6 - 4 = 2. If dE_target is 2.0, (2 - 2)^2 / 16 = 0.0 energy penalty!
+        assert_eq!(adv_ramped.energy_cost, Some(0.0));
+        // If dE_target is 0.0, (2 - 0)^2 / 16 = 4 / 16 = 0.25
+        assert_eq!(adv_flat.energy_cost, Some(0.25));
+        assert!(adv_ramped.total_cost.unwrap() < adv_flat.total_cost.unwrap());
+
+        // 4. Conversion to core types preserves all fields
+        let core = adv_ramped.to_core_advice();
+        assert_eq!(core.total_cost, adv_ramped.total_cost);
+        assert_eq!(core.energy_cost, Some(0.0));
+        assert_eq!(core.profile, Some(EnergyProfile::LinearRamp));
+        assert_eq!(core.de_target, Some(2.0));
     }
 }
