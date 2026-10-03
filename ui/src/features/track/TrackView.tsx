@@ -4,7 +4,7 @@ import { camelotColor, camelotTextColor } from '../../utils/camelotColor';
 import { WaveformContainer, formatTimeMs } from '../../components/waveform';
 import { useTrackState } from './useTrackState';
 import { usePlayback } from './usePlayback';
-import { PlaybackBar } from './PlaybackBar';
+import { PlaybackBar, SPEED_OPTIONS } from './PlaybackBar';
 import { handleTrackKeyDown } from './playbackMath';
 
 const SEGMENT_COLORS: Record<string, string> = {
@@ -91,6 +91,16 @@ export const TrackView: React.FC = () => {
           void playback.togglePlayPause();
         } else if (action.type === 'seek') {
           handleSeek(action.targetMs);
+        } else if (action.type === 'step_speed') {
+          const currentIndex = SPEED_OPTIONS.findIndex((r) => Math.abs(r - playback.speed) < 0.05);
+          if (action.direction === 'up') {
+            const nextIndex =
+              currentIndex === -1 ? 2 : Math.min(SPEED_OPTIONS.length - 1, currentIndex + 1);
+            void playback.setSpeed(SPEED_OPTIONS[nextIndex]);
+          } else {
+            const prevIndex = currentIndex === -1 ? 2 : Math.max(0, currentIndex - 1);
+            void playback.setSpeed(SPEED_OPTIONS[prevIndex]);
+          }
         }
       }
     };
@@ -284,10 +294,12 @@ export const TrackView: React.FC = () => {
         positionMs={playheadPositionMs ?? playback.positionMs}
         durationMs={selectedTrack.duration_ms}
         clickEnabled={playback.clickEnabled}
+        speed={playback.speed}
         onPlay={playback.play}
         onPause={playback.pause}
         onSeek={handleSeek}
         onToggleClick={playback.toggleClick}
+        onSetSpeed={playback.setSpeed}
       />
 
       {/* ── Playhead Scrubbing Status Bar ──────────────────────────────────── */}

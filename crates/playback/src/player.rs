@@ -55,6 +55,13 @@ pub struct PlaybackStateResult {
     /// Current playback position in milliseconds.
     #[serde(rename = "position_ms", alias = "positionMs")]
     pub position_ms: f64,
+    /// Current playback speed multiplier.
+    #[serde(default = "default_speed")]
+    pub speed: f64,
+}
+
+fn default_speed() -> f64 {
+    1.0
 }
 
 /// IPC payload emitted over `\"playback-position\"` event channel.
@@ -68,6 +75,9 @@ pub struct PlaybackPositionPayload {
     pub duration_ms: f64,
     /// Current player state.
     pub state: PlayerState,
+    /// Current playback speed multiplier.
+    #[serde(default = "default_speed")]
+    pub speed: f64,
 }
 
 /// Real-time audio player instance managing a single active track.
@@ -79,6 +89,7 @@ pub struct AudioPlayer {
     current_path: Mutex<Option<String>>,
     beat_grid: Mutex<Option<BeatGrid>>,
     click_enabled: Arc<AtomicBool>,
+    speed: Mutex<f32>,
 }
 
 impl Default for AudioPlayer {
@@ -121,6 +132,7 @@ impl AudioPlayer {
             current_path: Mutex::new(None),
             beat_grid: Mutex::new(None),
             click_enabled: Arc::new(AtomicBool::new(false)),
+            speed: Mutex::new(1.0),
         }
     }
 
@@ -191,9 +203,12 @@ impl AudioPlayer {
             .lock()
             .map_err(|e| PlaybackError::SeekError(format!("sink mutex error: {e}")))?;
 
+        let current_speed = self.speed();
+
         // If sink exists, is paused, and still valid, unpause it
         if let Some(ref sink) = *sink_guard {
             if sink.is_paused() && !sink.empty() {
+                sink.set_speed(current_speed);
                 sink.play();
                 return Ok(());
             }
@@ -248,11 +263,38 @@ impl AudioPlayer {
                 let _ = new_sink.try_seek(seek_dur);
             }
 
+            new_sink.set_speed(current_speed);
             new_sink.play();
             *sink_guard = Some(new_sink);
         }
 
         Ok(())
+    }
+
+    /// Sets the playback speed multiplier, clamped to `[0.1, 4.0]`.
+    ///
+    /// # Errors
+    /// Returns error if updating state machine fails.
+    pub fn set_speed(&self, speed: f32) -> Result<(), PlaybackError> {
+        let clamped = speed.clamp(0.1, 4.0);
+        if let Ok(mut speed_guard) = self.speed.lock() {
+            *speed_guard = clamped;
+        }
+        if let Ok(mut sm) = self.state_machine.lock() {
+            sm.set_speed(f64::from(clamped));
+        }
+        if let Ok(sink_guard) = self.sink.lock() {
+            if let Some(ref sink) = *sink_guard {
+                sink.set_speed(clamped);
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns the current playback speed multiplier.
+    #[must_use]
+    pub fn speed(&self) -> f32 {
+        self.speed.lock().map(|s| *s).unwrap_or(1.0)
     }
 
     /// Pauses playback, retaining the current position.
@@ -339,11 +381,16 @@ impl AudioPlayer {
             {
                 auto_stopped = true;
             }
-            PlaybackStateResult { state, position_ms }
+            PlaybackStateResult {
+                state,
+                position_ms,
+                speed: f64::from(self.speed()),
+            }
         } else {
             PlaybackStateResult {
                 state: PlayerState::Stopped,
                 position_ms: 0.0,
+                speed: f64::from(self.speed()),
             }
         };
 
@@ -377,5 +424,32 @@ impl AudioPlayer {
             .lock()
             .map(|sm| sm.duration_ms())
             .unwrap_or(0.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_player_speed_setting_and_clamping() {
+        let player = AudioPlayer::new();
+        assert_eq!(player.speed(), 1.0);
+
+        player.set_speed(1.5).unwrap();
+        assert_eq!(player.speed(), 1.5);
+        assert_eq!(player.state().speed, 1.5);
+
+        // Clamping to maximum 4.0
+        player.set_speed(10.0).unwrap();
+        assert_eq!(player.speed(), 4.0);
+
+        // Clamping to minimum 0.1
+        player.set_speed(0.01).unwrap();
+        assert_eq!(player.speed(), 0.1);
+
+        // Reset to normal
+        player.set_speed(1.0).unwrap();
+        assert_eq!(player.speed(), 1.0);
     }
 }

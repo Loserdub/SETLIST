@@ -1,8 +1,10 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import type { Track } from '../../bindings/Track';
 import type { TransitionAdvice } from '../../bindings/TransitionAdvice';
 import { camelotColor, camelotTextColor } from '../../utils/camelotColor';
 import { computeTransitionCost } from './costModel';
+import { getPlaybackClient } from '../../api/playback';
+import { SPEED_OPTIONS } from '../track/PlaybackBar';
 
 interface TransitionAdviceModalProps {
   isOpen: boolean;
@@ -23,17 +25,65 @@ export function TransitionAdviceModal({
   isLoading = false,
   error = null,
 }: TransitionAdviceModalProps) {
+  const [auditionTrackId, setAuditionTrackId] = useState<string | null>(null);
+  const [auditionState, setAuditionState] = useState<'stopped' | 'playing' | 'paused'>('stopped');
+  const [auditionSpeed, setAuditionSpeed] = useState(1.0);
+
+  const handleClose = async () => {
+    if (auditionTrackId) {
+      try {
+        await getPlaybackClient().stop();
+      } catch (e) {
+        console.error(e);
+      }
+      setAuditionTrackId(null);
+    }
+    onClose();
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const client = getPlaybackClient();
+    const unsub = client.onPosition((payload) => {
+      setAuditionState(payload.state);
+      if (payload.speed && payload.speed > 0) {
+        setAuditionSpeed(payload.speed);
+      }
+    });
+    return () => {
+      unsub();
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        void handleClose();
       }
     };
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
+
+  const handleToggleAudition = async (trackId: string) => {
+    const client = getPlaybackClient();
+    if (auditionTrackId === trackId && auditionState === 'playing') {
+      await client.pause();
+    } else if (auditionTrackId === trackId && auditionState === 'paused') {
+      await client.play();
+    } else {
+      setAuditionTrackId(trackId);
+      await client.load(trackId);
+      await client.play();
+    }
+  };
+
+  const handleSetSpeed = async (newSpeed: number) => {
+    setAuditionSpeed(newSpeed);
+    await getPlaybackClient().setSpeed(newSpeed);
+  };
 
   if (!isOpen) return null;
 
@@ -82,7 +132,7 @@ export function TransitionAdviceModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => void handleClose()}
             className="w-6 h-6 border border-[#222222] bg-[#111111] text-[#666666] hover:text-[#ededed] hover:border-[#333333] transition-colors flex items-center justify-center text-xs font-mono cursor-pointer"
             aria-label="Close dialog"
           >
@@ -103,56 +153,119 @@ export function TransitionAdviceModal({
           ) : advice ? (
             <>
               {/* Tracks Comparison Pair */}
-              <div className="grid grid-cols-2 gap-4 p-3 bg-[#0a0a0a] border border-[#1c1c1c]">
-                {/* Outgoing Track A */}
-                <div className="space-y-1 border-r border-[#1c1c1c] pr-3">
-                  <div className="text-[9px] uppercase font-mono font-bold tracking-wider text-[#555555]">
-                    OUTGOING TRACK (A)
+              <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] space-y-2">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Outgoing Track A */}
+                  <div className="space-y-1 border-r border-[#1c1c1c] pr-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[9px] uppercase font-mono font-bold tracking-wider text-[#555555]">
+                        OUTGOING TRACK (A)
+                      </div>
+                      {trackA && (
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleAudition(trackA.id)}
+                          className={`px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border rounded-none flex items-center gap-1 transition-colors cursor-pointer ${
+                            auditionTrackId === trackA.id && auditionState === 'playing'
+                              ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
+                              : 'border-[#27272a] bg-[#141414] hover:bg-[#202020] text-[#a1a1aa]'
+                          }`}
+                        >
+                          <span>{auditionTrackId === trackA.id && auditionState === 'playing' ? '⏸' : '▶'}</span>
+                          <span>{auditionTrackId === trackA.id && auditionState === 'playing' ? 'PAUSE' : 'AUDITION'}</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="font-medium text-xs text-[#ededed] truncate">
+                      {trackA?.tags.title ?? 'Unknown Track'}
+                    </div>
+                    <div className="text-[11px] text-[#71717a] truncate">
+                      {trackA?.tags.artist ?? 'Unknown Artist'}
+                    </div>
+                    <div className="flex items-center gap-2 pt-1 font-mono text-[11px]">
+                      <span
+                        className="px-1.5 py-0.5 rounded-[2px] font-mono font-bold text-[10px] border border-black/30"
+                        style={{ backgroundColor: bgA, color: fgA }}
+                      >
+                        {keyAStr}
+                      </span>
+                      <span className="text-[#a1a1aa]">{bpmA} BPM</span>
+                      <span className="text-[#71717a]">
+                        E{trackA?.analysis?.energy_score ?? '—'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="font-medium text-xs text-[#ededed] truncate">
-                    {trackA?.tags.title ?? 'Unknown Track'}
-                  </div>
-                  <div className="text-[11px] text-[#71717a] truncate">
-                    {trackA?.tags.artist ?? 'Unknown Artist'}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1 font-mono text-[11px]">
-                    <span
-                      className="px-1.5 py-0.5 rounded-[2px] font-mono font-bold text-[10px] border border-black/30"
-                      style={{ backgroundColor: bgA, color: fgA }}
-                    >
-                      {keyAStr}
-                    </span>
-                    <span className="text-[#a1a1aa]">{bpmA} BPM</span>
-                    <span className="text-[#71717a]">
-                      E{trackA?.analysis?.energy_score ?? '—'}
-                    </span>
+
+                  {/* Incoming Track B */}
+                  <div className="space-y-1 pl-1">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[9px] uppercase font-mono font-bold tracking-wider text-[#555555]">
+                        INCOMING TRACK (B)
+                      </div>
+                      {trackB && (
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleAudition(trackB.id)}
+                          className={`px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border rounded-none flex items-center gap-1 transition-colors cursor-pointer ${
+                            auditionTrackId === trackB.id && auditionState === 'playing'
+                              ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
+                              : 'border-[#27272a] bg-[#141414] hover:bg-[#202020] text-[#a1a1aa]'
+                          }`}
+                        >
+                          <span>{auditionTrackId === trackB.id && auditionState === 'playing' ? '⏸' : '▶'}</span>
+                          <span>{auditionTrackId === trackB.id && auditionState === 'playing' ? 'PAUSE' : 'AUDITION'}</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="font-medium text-xs text-[#ededed] truncate">
+                      {trackB?.tags.title ?? 'Unknown Track'}
+                    </div>
+                    <div className="text-[11px] text-[#71717a] truncate">
+                      {trackB?.tags.artist ?? 'Unknown Artist'}
+                    </div>
+                    <div className="flex items-center gap-2 pt-1 font-mono text-[11px]">
+                      <span
+                        className="px-1.5 py-0.5 rounded-[2px] font-mono font-bold text-[10px] border border-black/30"
+                        style={{ backgroundColor: bgB, color: fgB }}
+                      >
+                        {keyBStr}
+                      </span>
+                      <span className="text-[#a1a1aa]">{bpmB} BPM</span>
+                      <span className="text-[#71717a]">
+                        E{trackB?.analysis?.energy_score ?? '—'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Incoming Track B */}
-                <div className="space-y-1 pl-1">
-                  <div className="text-[9px] uppercase font-mono font-bold tracking-wider text-[#555555]">
-                    INCOMING TRACK (B)
-                  </div>
-                  <div className="font-medium text-xs text-[#ededed] truncate">
-                    {trackB?.tags.title ?? 'Unknown Track'}
-                  </div>
-                  <div className="text-[11px] text-[#71717a] truncate">
-                    {trackB?.tags.artist ?? 'Unknown Artist'}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1 font-mono text-[11px]">
-                    <span
-                      className="px-1.5 py-0.5 rounded-[2px] font-mono font-bold text-[10px] border border-black/30"
-                      style={{ backgroundColor: bgB, color: fgB }}
-                    >
-                      {keyBStr}
+                {/* Audition Speed Control Bar */}
+                {auditionTrackId && (
+                  <div className="pt-2 border-t border-[#1c1c1c] flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-[#888888]">
+                      AUDITIONING: {auditionTrackId === trackA?.id ? 'Track A' : 'Track B'}
                     </span>
-                    <span className="text-[#a1a1aa]">{bpmB} BPM</span>
-                    <span className="text-[#71717a]">
-                      E{trackB?.analysis?.energy_score ?? '—'}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[#666666]">Speed:</span>
+                      {SPEED_OPTIONS.map((rate) => {
+                        const isActive = Math.abs(auditionSpeed - rate) < 0.01;
+                        return (
+                          <button
+                            key={rate}
+                            type="button"
+                            onClick={() => void handleSetSpeed(rate)}
+                            className={`px-1.5 py-0.5 text-[9px] cursor-pointer border rounded-none ${
+                              isActive
+                                ? 'bg-[#1e3a5f] text-[#38bdf8] border-[#38bdf8] font-bold'
+                                : 'bg-[#121212] hover:bg-[#1a1a1a] text-[#888888] border-transparent'
+                            }`}
+                          >
+                            {rate}x
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Status Badges: Interventions & Recommendations */}

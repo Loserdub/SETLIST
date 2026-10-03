@@ -80,6 +80,23 @@ describe('Position Interpolation Math', () => {
     expect(interpolatePosition(lastPos, lastEventTime, 5000, 'stopped', durationMs)).toBe(42_000);
   });
 
+  it('scales interpolation rate according to playback speed multiplier', () => {
+    const lastPos = 5_000;
+    const lastEventTime = 1000;
+
+    // At 2.0x speed, 50 ms elapsed moves 100 ms
+    const pos2x = interpolatePosition(lastPos, lastEventTime, 1050, 'playing', durationMs, 2.0);
+    expect(pos2x).toBeCloseTo(5100, 1);
+
+    // At 0.5x speed, 50 ms elapsed moves 25 ms
+    const posHalf = interpolatePosition(lastPos, lastEventTime, 1050, 'playing', durationMs, 0.5);
+    expect(posHalf).toBeCloseTo(5025, 1);
+
+    // Clamps extreme speeds safely to [0.1, 4.0]
+    const posExtreme = interpolatePosition(lastPos, lastEventTime, 1050, 'playing', durationMs, 10.0);
+    expect(posExtreme).toBeCloseTo(5200, 1); // 50 * 4.0 = 200
+  });
+
   it('handles negative or zero duration safely', () => {
     expect(interpolatePosition(5000, 1000, 1050, 'playing', 0)).toBe(0);
   });
@@ -250,5 +267,27 @@ describe('Keyboard Event Handler Pure Function', () => {
     expect(handleTrackKeyDown({ key: 'ArrowLeft', ctrlKey: true }, context)).toBeNull();
     expect(handleTrackKeyDown({ key: 'ArrowRight', altKey: true }, context)).toBeNull();
     expect(handleTrackKeyDown({ key: ' ', code: 'Space', metaKey: true }, context)).toBeNull();
+  });
+
+  it('triggers step_speed up on ] and Shift + >', () => {
+    expect(handleTrackKeyDown({ key: ']' }, context)).toEqual({
+      type: 'step_speed',
+      direction: 'up',
+    });
+    expect(handleTrackKeyDown({ key: '>', shiftKey: true }, context)).toEqual({
+      type: 'step_speed',
+      direction: 'up',
+    });
+  });
+
+  it('triggers step_speed down on [ and Shift + <', () => {
+    expect(handleTrackKeyDown({ key: '[' }, context)).toEqual({
+      type: 'step_speed',
+      direction: 'down',
+    });
+    expect(handleTrackKeyDown({ key: '<', shiftKey: true }, context)).toEqual({
+      type: 'step_speed',
+      direction: 'down',
+    });
   });
 });

@@ -20,6 +20,8 @@ import { sortTracks } from './sorting';
 import { generateMockTracks } from './mock5000';
 import { DEFAULT_FILTERS, type LibraryFilters, type SortField } from './types';
 import { EditedBadge, isFieldOverridden } from '../track/overrides';
+import { getPlaybackClient } from '../../api/playback';
+import { SPEED_OPTIONS } from '../track/PlaybackBar';
 
 const columnHelper = createColumnHelper<Track>();
 
@@ -56,6 +58,51 @@ export function LibraryView() {
   // Sorting state (single column sort for high-performance virtualizer)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+
+  // Audio Playback Auditioning State
+  const [auditionTrackId, setAuditionTrackId] = useState<string | null>(null);
+  const [auditionState, setAuditionState] = useState<'stopped' | 'playing' | 'paused'>('stopped');
+  const [auditionPositionMs, setAuditionPositionMs] = useState(0);
+  const [auditionDurationMs, setAuditionDurationMs] = useState(0);
+  const [auditionSpeed, setAuditionSpeed] = useState(1.0);
+
+  useEffect(() => {
+    const client = getPlaybackClient();
+    const unsub = client.onPosition((payload) => {
+      setAuditionState(payload.state);
+      setAuditionPositionMs(payload.position_ms);
+      setAuditionDurationMs(payload.duration_ms);
+      if (payload.speed && payload.speed > 0) {
+        setAuditionSpeed(payload.speed);
+      }
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
+
+  const handleToggleAudition = async (trackId: string) => {
+    const client = getPlaybackClient();
+    if (auditionTrackId === trackId && auditionState === 'playing') {
+      await client.pause();
+    } else if (auditionTrackId === trackId && auditionState === 'paused') {
+      await client.play();
+    } else {
+      setAuditionTrackId(trackId);
+      await client.load(trackId);
+      await client.play();
+    }
+  };
+
+  const handleSetAuditionSpeed = async (newSpeed: number) => {
+    setAuditionSpeed(newSpeed);
+    await getPlaybackClient().setSpeed(newSpeed);
+  };
+
+  const handleStopAudition = async () => {
+    await getPlaybackClient().stop();
+    setAuditionTrackId(null);
+  };
 
   // Auto-load store tracks once on mount if not yet attempted
   useEffect(() => {
@@ -267,12 +314,27 @@ export function LibraryView() {
         cell: ({ row }) => {
           const track = row.original;
           const isInSetlist = setlistTrackIds.has(track.id);
+          const isAuditioning = auditionTrackId === track.id && auditionState === 'playing';
 
           return (
             <div
               className="flex items-center justify-end gap-1.5 pr-2"
               onClick={(e) => e.stopPropagation()}
             >
+              <button
+                type="button"
+                onClick={() => void handleToggleAudition(track.id)}
+                className={`px-2 py-0.5 text-[10px] font-mono tracking-wider uppercase border transition-colors cursor-pointer rounded-none flex items-center gap-1 ${
+                  isAuditioning
+                    ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
+                    : 'border-[#2b2b2b] bg-[#141414] hover:bg-[#202020] text-[#a1a1aa] hover:text-white'
+                }`}
+                title={isAuditioning ? 'Pause audition' : 'Audition track audio'}
+                data-testid={`audition-btn-${track.id}`}
+              >
+                <span>{isAuditioning ? '⏸' : '▶'}</span>
+                <span>{isAuditioning ? 'PAUSE' : 'AUDITION'}</span>
+              </button>
               <button
                 type="button"
                 onClick={() => void addToSetlist(track.id)}
@@ -289,10 +351,10 @@ export function LibraryView() {
             </div>
           );
         },
-        size: 85,
+        size: 165,
       }),
     ],
-    [setlistTrackIds, addToSetlist]
+    [setlistTrackIds, addToSetlist, auditionTrackId, auditionState]
   );
 
   // TanStack Table Instance
@@ -848,6 +910,77 @@ export function LibraryView() {
           </table>
         )}
       </div>
+
+      {/* Quick Audition Player Bar */}
+      {auditionTrackId && (
+        <div
+          className="px-4 py-2 border-t border-[#1c1c1c] bg-[#0c0c0c] flex flex-wrap items-center justify-between gap-3 text-xs font-mono"
+          data-testid="library-audition-bar"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#38bdf8] bg-[#142332] border border-[#1e3a5f] px-2 py-0.5">
+              AUDITIONING
+            </span>
+            <div className="flex items-center gap-1.5 text-white font-medium truncate max-w-sm">
+              <span className="truncate">
+                {activeDataset.find((t) => t.id === auditionTrackId)?.tags.title ?? 'Untitled Track'}
+              </span>
+              <span className="text-[#666666]">by</span>
+              <span className="text-[#a1a1aa] truncate">
+                {activeDataset.find((t) => t.id === auditionTrackId)?.tags.artist ?? 'Unknown Artist'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Play/Pause Button */}
+            <button
+              type="button"
+              onClick={() => void handleToggleAudition(auditionTrackId)}
+              className="px-3 py-1 bg-[#1a1a1a] hover:bg-[#252525] text-white border border-[#333333] text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer"
+            >
+              {auditionState === 'playing' ? '⏸ Pause' : '▶ Play'}
+            </button>
+
+            {/* Time readout */}
+            <div className="text-[11px] text-[#888888] tabular-nums font-mono">
+              {formatDuration(auditionPositionMs)} / {formatDuration(auditionDurationMs)}
+            </div>
+
+            {/* Speed Presets */}
+            <div className="flex items-center gap-0.5 bg-[#050505] p-0.5 border border-[#222222]">
+              <span className="text-[9px] text-[#666666] px-1 uppercase hidden sm:inline">Speed:</span>
+              {SPEED_OPTIONS.map((rate) => {
+                const isActive = Math.abs(auditionSpeed - rate) < 0.01;
+                return (
+                  <button
+                    key={rate}
+                    type="button"
+                    onClick={() => void handleSetAuditionSpeed(rate)}
+                    className={`px-1.5 py-0.5 text-[9px] font-mono cursor-pointer border rounded-none ${
+                      isActive
+                        ? 'bg-[#1e3a5f] text-[#38bdf8] border-[#38bdf8] font-bold'
+                        : 'bg-[#101010] hover:bg-[#1a1a1a] text-[#888888] border-transparent'
+                    }`}
+                  >
+                    {rate}x
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Stop audition */}
+            <button
+              type="button"
+              onClick={() => void handleStopAudition()}
+              className="px-2 py-1 bg-[#181818] hover:bg-[#242424] text-[#888888] hover:text-white border border-[#2e2e2e] text-[10px] uppercase font-mono transition-colors cursor-pointer"
+              title="Stop audition"
+            >
+              ✕ Stop
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Footer Status Bar */}
       <footer className="px-5 py-2 border-t border-[#1a1a1a] bg-[#0a0a0a] flex items-center justify-between text-[10px] text-[#555555] font-mono">

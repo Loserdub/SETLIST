@@ -39,6 +39,7 @@ fn ensure_ticker_running(app: AppHandle) {
                     position_ms: state_res.position_ms,
                     duration_ms: player.duration_ms(),
                     state: state_res.state,
+                    speed: state_res.speed,
                 };
                 let _ = app.emit("playback-position", payload);
 
@@ -114,6 +115,20 @@ pub fn playback_set_click_core(enabled: bool) {
     get_player().set_click(enabled);
 }
 
+/// Core implementation of setting the playback speed multiplier.
+///
+/// # Errors
+/// Returns error if setting player speed fails.
+pub fn playback_set_speed_core(speed: f32) -> Result<(), String> {
+    get_player().set_speed(speed).map_err(|e| e.to_string())
+}
+
+/// Core implementation of retrieving the current playback speed multiplier.
+#[must_use]
+pub fn playback_get_speed_core() -> f64 {
+    f64::from(get_player().speed())
+}
+
 /// Loads a track by ID into the player and prepares it for auditioning.
 ///
 /// Returns `{ duration_ms }` of the loaded track.
@@ -140,6 +155,7 @@ pub async fn playback_load(
             position_ms: 0.0,
             duration_ms: res.duration_ms,
             state: PlayerState::Stopped,
+            speed: playback_get_speed_core(),
         },
     );
 
@@ -162,6 +178,7 @@ pub async fn playback_play(app: AppHandle) -> Result<(), String> {
             position_ms: state_res.position_ms,
             duration_ms: get_player().duration_ms(),
             state: state_res.state,
+            speed: state_res.speed,
         },
     );
 
@@ -183,6 +200,7 @@ pub async fn playback_pause(app: AppHandle) -> Result<(), String> {
             position_ms: state_res.position_ms,
             duration_ms: get_player().duration_ms(),
             state: state_res.state,
+            speed: state_res.speed,
         },
     );
 
@@ -212,6 +230,7 @@ pub async fn playback_seek(
             position_ms: state_res.position_ms,
             duration_ms: get_player().duration_ms(),
             state: state_res.state,
+            speed: state_res.speed,
         },
     );
 
@@ -237,6 +256,45 @@ pub async fn playback_state() -> Result<PlaybackStateResult, String> {
 pub async fn playback_set_click(enabled: bool) -> Result<(), String> {
     playback_set_click_core(enabled);
     Ok(())
+}
+
+/// Sets the playback speed multiplier, clamped to `[0.1, 4.0]`.
+///
+/// # Errors
+/// Returns error text if setting speed fails.
+#[tauri::command]
+pub async fn playback_set_speed(
+    app: AppHandle,
+    speed: Option<f64>,
+    #[allow(non_snake_case)] playSpeed: Option<f64>,
+) -> Result<(), String> {
+    let s = speed
+        .or(playSpeed)
+        .ok_or_else(|| "speed parameter is required".to_string())?;
+
+    playback_set_speed_core(s as f32)?;
+
+    let state_res = get_player().state();
+    let _ = app.emit(
+        "playback-position",
+        PlaybackPositionPayload {
+            position_ms: state_res.position_ms,
+            duration_ms: get_player().duration_ms(),
+            state: state_res.state,
+            speed: state_res.speed,
+        },
+    );
+
+    Ok(())
+}
+
+/// Returns the current playback speed multiplier.
+///
+/// # Errors
+/// Always returns `Ok`.
+#[tauri::command]
+pub async fn playback_get_speed() -> Result<f64, String> {
+    Ok(playback_get_speed_core())
 }
 
 #[cfg(test)]
@@ -385,5 +443,13 @@ mod tests {
         let state = AppState::in_memory().expect("in-memory state created");
         let err = playback_load_core(&state, "non-existent-id").unwrap_err();
         assert!(err.contains("Track not found"));
+    }
+
+    #[test]
+    fn test_playback_set_speed() {
+        playback_set_speed_core(1.5).expect("set speed 1.5 succeeds");
+        assert_eq!(get_player().speed(), 1.5);
+        playback_set_speed_core(1.0).expect("reset speed 1.0 succeeds");
+        assert_eq!(get_player().speed(), 1.0);
     }
 }

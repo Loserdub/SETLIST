@@ -44,6 +44,12 @@ pub trait PlaybackStateMachine: Send + Sync {
 
     /// Returns total track duration in milliseconds.
     fn duration_ms(&self) -> f64;
+
+    /// Returns the current playback speed multiplier.
+    fn speed(&self) -> f64;
+
+    /// Sets the playback speed multiplier, clamped to `[0.1, 4.0]`.
+    fn set_speed(&mut self, speed: f64);
 }
 
 /// State machine implementation parameterised over a [`Clock`].
@@ -54,6 +60,7 @@ pub struct StateMachine<C: Clock> {
     duration_ms: f64,
     base_position_ms: f64,
     play_start_time: Duration,
+    speed: f64,
 }
 
 impl<C: Clock> StateMachine<C> {
@@ -66,6 +73,7 @@ impl<C: Clock> StateMachine<C> {
             duration_ms: 0.0,
             base_position_ms: 0.0,
             play_start_time: Duration::ZERO,
+            speed: 1.0,
         }
     }
 
@@ -82,7 +90,7 @@ impl<C: Clock> StateMachine<C> {
             PlayerState::Playing => {
                 let now = self.clock.now();
                 let elapsed_duration = now.saturating_sub(self.play_start_time);
-                let elapsed_ms = elapsed_duration.as_secs_f64() * 1000.0;
+                let elapsed_ms = elapsed_duration.as_secs_f64() * 1000.0 * self.speed;
                 let calculated = self.base_position_ms + elapsed_ms;
                 calculated.clamp(0.0, self.duration_ms)
             }
@@ -154,6 +162,19 @@ impl<C: Clock> PlaybackStateMachine for StateMachine<C> {
 
     fn duration_ms(&self) -> f64 {
         self.duration_ms
+    }
+
+    fn speed(&self) -> f64 {
+        self.speed
+    }
+
+    fn set_speed(&mut self, speed: f64) {
+        let clamped = speed.clamp(0.1, 4.0);
+        if self.state == PlayerState::Playing {
+            self.base_position_ms = self.calculate_raw_position_ms();
+            self.play_start_time = self.clock.now();
+        }
+        self.speed = clamped;
     }
 }
 
@@ -286,5 +307,27 @@ mod tests {
         sm.play();
         sm.clock().advance_ms(2_000.0);
         assert_eq!(sm.position_ms(), 32_000.0);
+    }
+
+    #[test]
+    fn test_speed_scaling_affects_position_progression() {
+        let clock = FakeClock::new();
+        let mut sm = StateMachine::new(clock);
+
+        sm.load(60_000.0);
+
+        // Double speed: 1 second clock advance moves position by 2 seconds
+        sm.set_speed(2.0);
+        assert_eq!(sm.speed(), 2.0);
+        sm.play();
+        sm.clock().advance_ms(1_000.0);
+        assert_eq!(sm.position_ms(), 2_000.0);
+
+        // Change speed mid-play to half speed (0.5x)
+        sm.set_speed(0.5);
+        assert_eq!(sm.speed(), 0.5);
+        // Advance clock by 2 seconds: position should advance by 1 second (to 3_000 ms)
+        sm.clock().advance_ms(2_000.0);
+        assert_eq!(sm.position_ms(), 3_000.0);
     }
 }

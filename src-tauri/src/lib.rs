@@ -257,6 +257,8 @@ pub fn run() {
             playback::playback_seek,
             playback::playback_state,
             playback::playback_set_click,
+            playback::playback_set_speed,
+            playback::playback_get_speed,
         ]);
 
     // Catch initialization / webview creation errors

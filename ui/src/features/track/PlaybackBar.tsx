@@ -2,15 +2,19 @@ import React from 'react';
 import type { PlayerState } from '../../api/playback';
 import { formatTimeMs } from '../../components/waveform';
 
+export const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0] as const;
+
 export interface PlaybackBarProps {
   state: PlayerState;
   positionMs: number;
   durationMs: number;
   clickEnabled: boolean;
+  speed?: number;
   onPlay: () => void;
   onPause: () => void;
   onSeek: (positionMs: number) => void;
   onToggleClick: () => void;
+  onSetSpeed?: (speed: number) => void;
   className?: string;
 }
 
@@ -19,10 +23,12 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
   positionMs,
   durationMs,
   clickEnabled,
+  speed = 1.0,
   onPlay,
   onPause,
   onSeek,
   onToggleClick,
+  onSetSpeed,
   className = '',
 }) => {
   const isPlaying = state === 'playing';
@@ -133,8 +139,37 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         </div>
       </div>
 
-      {/* ── Right Section: Click Track Toggle & Keyboard Shortcuts Hint ───── */}
-      <div className="flex items-center gap-4">
+      {/* ── Right Section: Speed Controls, Click Track Toggle & Shortcuts ─── */}
+      <div className="flex items-center gap-3">
+        {/* Play Speed Controls */}
+        <div
+          className="flex items-center gap-0.5 bg-[#050505] p-1 border border-[#222222]"
+          data-testid="playback-speed-controls"
+        >
+          <span className="text-[10px] font-mono text-[#666666] px-1 uppercase tracking-wider hidden sm:inline">
+            Speed:
+          </span>
+          {SPEED_OPTIONS.map((rate) => {
+            const isActive = Math.abs(speed - rate) < 0.01;
+            return (
+              <button
+                key={rate}
+                type="button"
+                onClick={() => onSetSpeed?.(rate)}
+                className={`px-1.5 py-0.5 font-mono text-[10px] uppercase transition-colors cursor-pointer border rounded-none ${
+                  isActive
+                    ? 'bg-[#1e3a5f] text-[#38bdf8] border-[#38bdf8] font-bold'
+                    : 'bg-[#101010] hover:bg-[#1a1a1a] text-[#888888] hover:text-white border-transparent'
+                }`}
+                data-testid={`playback-speed-${rate}`}
+                title={`Set playback speed to ${rate}x`}
+              >
+                {rate}x
+              </button>
+            );
+          })}
+        </div>
+
         {/* Click Track (Metronome) Toggle */}
         <button
           type="button"
@@ -156,12 +191,14 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         </button>
 
         {/* Keyboard Shortcuts Hint */}
-        <div className="hidden lg:flex items-center gap-2 text-[10px] font-mono text-[#555555]">
+        <div className="hidden xl:flex items-center gap-2 text-[10px] font-mono text-[#555555]">
           <span>[Space] Play/Pause</span>
           <span>•</span>
           <span>[←/→] ±5s</span>
           <span>•</span>
           <span>[Shift+←/→] ±1 Bar</span>
+          <span>•</span>
+          <span>[[ / ]] Speed</span>
         </div>
       </div>
     </div>

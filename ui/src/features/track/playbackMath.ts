@@ -3,7 +3,8 @@ import type { PlayerState } from '../../api/playback';
 
 export type TrackKeyboardAction =
   | { type: 'toggle_play_pause' }
-  | { type: 'seek'; targetMs: number };
+  | { type: 'seek'; targetMs: number }
+  | { type: 'step_speed'; direction: 'up' | 'down' };
 
 export interface KeyboardActionInput {
   key: string;
@@ -84,7 +85,7 @@ export function calculateBarSeek(
 }
 
 /**
- * Interpolates playback position between 50 ms events using real-time elapsed clock.
+ * Interpolates playback position between 50 ms events using real-time elapsed clock and speed multiplier.
  *
  * Pure function: deterministic and zero side effects.
  */
@@ -93,7 +94,8 @@ export function interpolatePosition(
   lastEventTimestamp: number,
   nowTimestamp: number,
   state: PlayerState,
-  durationMs: number
+  durationMs: number,
+  speed: number = 1.0
 ): number {
   const safeDuration = Math.max(0, durationMs);
   if (safeDuration === 0) return 0;
@@ -102,7 +104,8 @@ export function interpolatePosition(
     return Math.max(0, Math.min(safeDuration, lastPositionMs));
   }
 
-  const elapsed = Math.max(0, nowTimestamp - lastEventTimestamp);
+  const safeSpeed = Math.max(0.1, Math.min(4.0, Number.isFinite(speed) ? speed : 1.0));
+  const elapsed = Math.max(0, nowTimestamp - lastEventTimestamp) * safeSpeed;
   return Math.max(0, Math.min(safeDuration, lastPositionMs + elapsed));
 }
 
@@ -168,6 +171,15 @@ export function handleTrackKeyDown(
       const targetMs = Math.min(durationMs, currentPositionMs + 5000);
       return { type: 'seek', targetMs };
     }
+  }
+
+  // Speed adjustments: [ or < to decrease, ] or > to increase
+  if (input.key === '[' || (input.shiftKey && (input.key === '<' || input.key === ','))) {
+    return { type: 'step_speed', direction: 'down' };
+  }
+
+  if (input.key === ']' || (input.shiftKey && (input.key === '>' || input.key === '.'))) {
+    return { type: 'step_speed', direction: 'up' };
   }
 
   return null;

@@ -11,12 +11,14 @@ export interface PlaybackLoadResult {
 export interface PlaybackStateResult {
   state: PlayerState;
   position_ms: number;
+  speed?: number;
 }
 
 export interface PlaybackPositionPayload {
   position_ms: number;
   duration_ms: number;
   state: PlayerState;
+  speed?: number;
 }
 
 /**
@@ -29,6 +31,8 @@ export interface PlaybackClient {
   seek(positionMs: number): Promise<void>;
   getState(): Promise<PlaybackStateResult>;
   setClick(enabled: boolean): Promise<void>;
+  setSpeed(speed: number): Promise<void>;
+  getSpeed(): Promise<number>;
   stop(): Promise<void>;
   onPosition(callback: (payload: PlaybackPositionPayload) => void): () => void;
 }
@@ -41,6 +45,7 @@ export class MockPlaybackClient implements PlaybackClient {
   private currentPositionMs = 0;
   private currentDurationMs = 180_000; // Default 3 minutes
   private currentState: PlayerState = 'stopped';
+  private currentSpeed = 1.0;
   private clickEnabled = false;
   private listeners = new Set<(payload: PlaybackPositionPayload) => void>();
   private tickerId: ReturnType<typeof setInterval> | null = null;
@@ -56,6 +61,7 @@ export class MockPlaybackClient implements PlaybackClient {
     positionMs: number;
     durationMs: number;
     state: PlayerState;
+    speed: number;
     clickEnabled: boolean;
   } {
     return {
@@ -63,6 +69,7 @@ export class MockPlaybackClient implements PlaybackClient {
       positionMs: this.currentPositionMs,
       durationMs: this.currentDurationMs,
       state: this.currentState,
+      speed: this.currentSpeed,
       clickEnabled: this.clickEnabled,
     };
   }
@@ -72,6 +79,7 @@ export class MockPlaybackClient implements PlaybackClient {
     this.currentTrackId = null;
     this.currentPositionMs = 0;
     this.currentState = 'stopped';
+    this.currentSpeed = 1.0;
     this.clickEnabled = false;
     this.listeners.clear();
   }
@@ -81,6 +89,7 @@ export class MockPlaybackClient implements PlaybackClient {
       position_ms: this.currentPositionMs,
       duration_ms: this.currentDurationMs,
       state: this.currentState,
+      speed: this.currentSpeed,
     };
     for (const listener of this.listeners) {
       try {
@@ -122,7 +131,7 @@ export class MockPlaybackClient implements PlaybackClient {
 
     this.tickerId = setInterval(() => {
       const now = Date.now();
-      const elapsed = now - this.lastTickTime;
+      const elapsed = (now - this.lastTickTime) * this.currentSpeed;
       this.lastTickTime = now;
 
       this.currentPositionMs = Math.min(this.currentDurationMs, this.currentPositionMs + elapsed);
@@ -154,11 +163,23 @@ export class MockPlaybackClient implements PlaybackClient {
     return {
       state: this.currentState,
       position_ms: this.currentPositionMs,
+      speed: this.currentSpeed,
     };
   }
 
   public async setClick(enabled: boolean): Promise<void> {
     this.clickEnabled = enabled;
+  }
+
+  public async setSpeed(speed: number): Promise<void> {
+    const clamped = Math.max(0.1, Math.min(4.0, speed));
+    this.currentSpeed = clamped;
+    this.lastTickTime = Date.now();
+    this.emit();
+  }
+
+  public async getSpeed(): Promise<number> {
+    return this.currentSpeed;
   }
 
   public async stop(): Promise<void> {
@@ -208,6 +229,14 @@ export class TauriPlaybackClient implements PlaybackClient {
 
   public async setClick(enabled: boolean): Promise<void> {
     return invoke<void>('playback_set_click', { enabled });
+  }
+
+  public async setSpeed(speed: number): Promise<void> {
+    return invoke<void>('playback_set_speed', { speed });
+  }
+
+  public async getSpeed(): Promise<number> {
+    return invoke<number>('playback_get_speed');
   }
 
   public async stop(): Promise<void> {
@@ -273,6 +302,12 @@ export const playbackState = (): Promise<PlaybackStateResult> =>
 
 export const playbackSetClick = (enabled: boolean): Promise<void> =>
   getPlaybackClient().setClick(enabled);
+
+export const playbackSetSpeed = (speed: number): Promise<void> =>
+  getPlaybackClient().setSpeed(speed);
+
+export const playbackGetSpeed = (): Promise<number> =>
+  getPlaybackClient().getSpeed();
 
 export const playbackStop = (): Promise<void> => getPlaybackClient().stop();
 

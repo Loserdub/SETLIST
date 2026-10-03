@@ -214,6 +214,36 @@ describe('TrackView Component', () => {
     expect(mockPlaybackClient.getMockState().positionMs).toBe(0);
   });
 
+  it('renders speed controls on PlaybackBar and changes speed on preset click', async () => {
+    render(<TrackView />);
+
+    expect(screen.getByTestId('playback-speed-controls')).toBeDefined();
+    const btn15 = screen.getByTestId('playback-speed-1.5');
+    expect(btn15).toBeDefined();
+
+    await act(async () => {
+      fireEvent.click(btn15);
+    });
+
+    expect(mockPlaybackClient.getMockState().speed).toBe(1.5);
+  });
+
+  it('steps playback speed up and down using bracket keys [ and ]', async () => {
+    render(<TrackView />);
+
+    // Initial speed 1.0 -> press ] -> steps to 1.25
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: ']' }));
+    });
+    expect(mockPlaybackClient.getMockState().speed).toBe(1.25);
+
+    // Press [ -> steps back down to 1.0
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '[' }));
+    });
+    expect(mockPlaybackClient.getMockState().speed).toBe(1.0);
+  });
+
   it('stops playback when unmounting component', async () => {
     const { unmount } = render(<TrackView />);
 

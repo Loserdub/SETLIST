@@ -17,6 +17,7 @@ export interface UsePlaybackReturn {
   positionMs: number;
   durationMs: number;
   clickEnabled: boolean;
+  speed: number;
   isLoading: boolean;
   play: () => Promise<void>;
   pause: () => Promise<void>;
@@ -24,6 +25,7 @@ export interface UsePlaybackReturn {
   seek: (targetMs: number) => Promise<void>;
   setClick: (enabled: boolean) => Promise<void>;
   toggleClick: () => Promise<void>;
+  setSpeed: (speed: number) => Promise<void>;
   stop: () => Promise<void>;
 }
 
@@ -31,6 +33,7 @@ export function usePlayback({ trackId, durationMs }: UsePlaybackOptions): UsePla
   const [playerState, setPlayerState] = useState<PlayerState>('stopped');
   const [positionMs, setPositionMs] = useState(0);
   const [clickEnabled, setClickEnabled] = useState(false);
+  const [speed, setSpeedState] = useState(1.0);
   const [isLoading, setIsLoading] = useState(false);
 
   const setPlayheadPositionMs = useTrackState((s) => s.setPlayheadPositionMs);
@@ -39,6 +42,7 @@ export function usePlayback({ trackId, durationMs }: UsePlaybackOptions): UsePla
   const lastEventPositionRef = useRef(0);
   const lastEventTimestampRef = useRef(0);
   const stateRef = useRef<PlayerState>('stopped');
+  const speedRef = useRef(1.0);
   const durationRef = useRef(durationMs);
   durationRef.current = durationMs;
 
@@ -58,7 +62,8 @@ export function usePlayback({ trackId, durationMs }: UsePlaybackOptions): UsePla
           lastEventTimestampRef.current,
           now,
           'playing',
-          durationRef.current
+          durationRef.current,
+          speedRef.current
         );
 
         setPositionMs(currentPos);
@@ -89,6 +94,10 @@ export function usePlayback({ trackId, durationMs }: UsePlaybackOptions): UsePla
       lastEventTimestampRef.current = performance.now();
       stateRef.current = payload.state;
       setPlayerState(payload.state);
+      if (payload.speed !== undefined && payload.speed > 0) {
+        speedRef.current = payload.speed;
+        setSpeedState(payload.speed);
+      }
 
       if (payload.state === 'playing') {
         startRafLoop();
@@ -204,11 +213,39 @@ export function usePlayback({ trackId, durationMs }: UsePlaybackOptions): UsePla
     }
   }, [client, stopRafLoop]);
 
+  const setSpeed = useCallback(
+    async (newSpeed: number) => {
+      const clamped = Math.max(0.1, Math.min(4.0, newSpeed));
+      if (stateRef.current === 'playing') {
+        const now = performance.now();
+        const currentPos = interpolatePosition(
+          lastEventPositionRef.current,
+          lastEventTimestampRef.current,
+          now,
+          'playing',
+          durationRef.current,
+          speedRef.current
+        );
+        lastEventPositionRef.current = currentPos;
+        lastEventTimestampRef.current = now;
+      }
+      speedRef.current = clamped;
+      setSpeedState(clamped);
+      try {
+        await client.setSpeed(clamped);
+      } catch (err) {
+        console.error('Playback set speed failed:', err);
+      }
+    },
+    [client]
+  );
+
   return {
     state: playerState,
     positionMs,
     durationMs,
     clickEnabled,
+    speed,
     isLoading,
     play,
     pause,
@@ -216,6 +253,7 @@ export function usePlayback({ trackId, durationMs }: UsePlaybackOptions): UsePla
     seek,
     setClick,
     toggleClick,
+    setSpeed,
     stop,
   };
 }
