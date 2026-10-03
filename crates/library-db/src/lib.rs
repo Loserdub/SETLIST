@@ -4,6 +4,7 @@ pub mod blob;
 pub mod error;
 pub mod filter;
 pub mod migrate;
+pub mod overrides;
 pub mod repo;
 pub mod scan;
 pub mod setlist;
@@ -12,6 +13,7 @@ pub use blob::*;
 pub use error::*;
 pub use filter::*;
 pub use migrate::*;
+pub use overrides::*;
 pub use repo::*;
 pub use scan::*;
 pub use setlist::*;
@@ -39,12 +41,12 @@ mod tests {
 
         // Verify version tracking
         let version = get_schema_version(&conn).expect("get schema version");
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
 
         // Verify idempotent application
         apply_migrations(&conn).expect("re-apply migrations cleanly");
         let version_after = get_schema_version(&conn).expect("get schema version");
-        assert_eq!(version_after, 4);
+        assert_eq!(version_after, 5);
 
         // Verify tracks insert with constant beat grid fields and optional beats_json
         conn.execute(

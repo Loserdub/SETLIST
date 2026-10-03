@@ -276,22 +276,29 @@ pub async fn list_tracks(state: State<'_, AppState>) -> Result<Vec<Track>, Strin
 ///
 /// # Errors
 /// Returns error text if querying the database fails.
-pub fn get_track_core(state: &AppState, id: &str) -> Result<Option<Track>, String> {
+pub fn get_track_core(
+    state: &AppState,
+    id: &str,
+) -> Result<Option<library_db::TrackWithOverrides>, String> {
     let conn = state
         .db
         .lock()
         .map_err(|e| format!("database mutex error: {e}"))?;
-    library_db::get_track(&conn, id).map_err(|e| e.to_string())
+    library_db::get_track_with_overrides(&conn, id).map_err(|e| e.to_string())
 }
 
-/// Retrieves a single track by identifier from the library database.
+/// Retrieves a single track by identifier from the library database, including
+/// field-level override flags.
 ///
 /// Returns `Ok(None)` if no track with the given identifier exists.
 ///
 /// # Errors
 /// Returns error text if querying the database fails.
 #[tauri::command]
-pub async fn get_track(id: String, state: State<'_, AppState>) -> Result<Option<Track>, String> {
+pub async fn get_track(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<library_db::TrackWithOverrides>, String> {
     get_track_core(&state, &id)
 }
 

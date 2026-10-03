@@ -1,6 +1,8 @@
 //! Tauri backend application for SETLIST.
 
 pub mod commands;
+pub mod overrides;
+pub mod playback;
 pub mod state;
 
 pub use commands::*;
@@ -47,44 +49,68 @@ pub fn show_native_error_dialog(title: &str, description: &str) {
         .show();
 }
 
-/// Installs a panic hook to capture unhandled panics, log them, display a native message box,
-/// and exit with a nonzero code.
-pub fn install_panic_hook() {
-    std::panic::set_hook(Box::new(|panic_info| {
-        let pid = std::process::id();
-        let location = panic_info
-            .location()
-            .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
-            .unwrap_or_else(|| "unknown location".to_string());
+/// Handles a panic, scoping fatal termination and native modal dialogs to the "main" thread only.
+/// On any other thread (e.g. background scan workers or analysis threads), the panic is logged
+/// with the thread name and the function returns without showing a dialog or terminating the process.
+///
+/// Both `show_dialog` and `exit_fn` are injectable to support deterministic unit testing.
+pub fn handle_panic_scoped<D, E, R>(
+    panic_info: &std::panic::PanicHookInfo<'_>,
+    mut show_dialog: D,
+    mut exit_fn: E,
+) where
+    D: FnMut(&str, &str),
+    E: FnMut(i32) -> R,
+{
+    let current_thread = std::thread::current();
+    let thread_name = current_thread.name().unwrap_or("<unnamed>");
+    let pid = std::process::id();
+    let location = panic_info
+        .location()
+        .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
+        .unwrap_or_else(|| "unknown location".to_string());
 
-        let payload = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            (*s).to_string()
-        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Internal panic with unspecified payload".to_string()
-        };
+    let payload = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "Internal panic with unspecified payload".to_string()
+    };
 
-        let log_msg = format!("[FATAL PANIC] (PID: {pid}) {payload} at {location}");
+    if thread_name != "main" {
+        let log_msg =
+            format!("[WORKER PANIC] (PID: {pid}) Thread '{thread_name}': {payload} at {location}");
         eprintln!("{log_msg}");
         log::error!("{log_msg}");
         append_to_setlist_log(&log_msg);
+        return;
+    }
 
-        let log_path = resolve_app_data_dir().join("setlist.log");
-        let dialog_msg = format!(
-            "SETLIST encountered an unrecoverable error and must terminate.\n\n\
-             Error: {}\n\
-             Location: {}\n\
-             Process ID: {}\n\n\
-             Log file:\n{}",
-            payload,
-            location,
-            pid,
-            log_path.display()
-        );
+    let log_msg =
+        format!("[FATAL PANIC] (PID: {pid}) Thread '{thread_name}': {payload} at {location}");
+    eprintln!("{log_msg}");
+    log::error!("{log_msg}");
+    append_to_setlist_log(&log_msg);
 
-        show_native_error_dialog("SETLIST - Fatal Error", &dialog_msg);
-        std::process::exit(1);
+    let log_path = resolve_app_data_dir().join("setlist.log");
+    let dialog_msg = format!(
+        "SETLIST encountered an unrecoverable error on thread '{thread_name}' and must terminate.\n\n\
+         Error: {payload}\n\
+         Location: {location}\n\
+         Process ID: {pid}\n\n\
+         Log file:\n{}",
+        log_path.display()
+    );
+
+    show_dialog("SETLIST - Fatal Error", &dialog_msg);
+    exit_fn(1);
+}
+
+/// Installs the panic hook with default native dialog and process termination handlers.
+pub fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|panic_info| {
+        handle_panic_scoped(panic_info, show_native_error_dialog, std::process::exit);
     }));
 }
 
@@ -104,6 +130,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let pid = std::process::id();
 
@@ -139,6 +166,17 @@ pub fn run() {
             log::info!("App Data Folder: {}", app_data.display());
             log::info!("Log File: {}", app_data.join("setlist.log").display());
             append_to_setlist_log(&format!("[STARTUP] SETLIST started (PID: {pid})"));
+
+            // Deliberate test failure switch for manual verification of startup error handling
+            if std::env::var("SETLIST_TEST_STARTUP_ERROR")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false)
+            {
+                let err_msg = "Deliberate startup error triggered by SETLIST_TEST_STARTUP_ERROR=1";
+                log::error!("{err_msg}");
+                append_to_setlist_log(&format!("[TEST ERROR] {err_msg}"));
+                return Err(err_msg.into());
+            }
 
             let db_path = app_data.join("library.db");
             log::info!("Connecting to library database at {}", db_path.display());
@@ -209,6 +247,16 @@ pub fn run() {
             commands::get_unusual_transitions,
             commands::get_catalog_summary_stats,
             commands::explore_candidate_paths,
+            overrides::set_track_override,
+            overrides::clear_track_override,
+            overrides::get_track_override,
+            overrides::get_track_override_flags,
+            playback::playback_load,
+            playback::playback_play,
+            playback::playback_pause,
+            playback::playback_seek,
+            playback::playback_state,
+            playback::playback_set_click,
         ]);
 
     // Catch initialization / webview creation errors
@@ -270,5 +318,99 @@ mod tests {
         assert!(log_file.exists());
         let content = std::fs::read_to_string(&log_file).unwrap();
         assert!(content.contains(&test_msg));
+    }
+
+    #[test]
+    fn test_panic_in_spawned_thread_does_not_call_exit() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let dialog_called = Arc::new(AtomicBool::new(false));
+        let exit_called = Arc::new(AtomicBool::new(false));
+
+        let d_clone = Arc::clone(&dialog_called);
+        let e_clone = Arc::clone(&exit_called);
+
+        let handle = std::thread::Builder::new()
+            .name("scan-worker-test".to_string())
+            .spawn(move || {
+                let prev_hook = std::panic::take_hook();
+                std::panic::set_hook(Box::new(move |info| {
+                    handle_panic_scoped(
+                        info,
+                        |_title, _desc| {
+                            d_clone.store(true, Ordering::SeqCst);
+                        },
+                        |_code| {
+                            e_clone.store(true, Ordering::SeqCst);
+                        },
+                    );
+                }));
+
+                let _ = std::panic::catch_unwind(|| {
+                    panic!("Simulated scan worker panic for testing isolation");
+                });
+
+                std::panic::set_hook(prev_hook);
+            })
+            .unwrap();
+
+        handle.join().unwrap();
+
+        assert!(
+            !dialog_called.load(Ordering::SeqCst),
+            "Dialog must not be called for worker threads"
+        );
+        assert!(
+            !exit_called.load(Ordering::SeqCst),
+            "Exit must not be called for worker threads"
+        );
+    }
+
+    #[test]
+    fn test_panic_in_main_thread_calls_dialog_and_exit() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let dialog_called = Arc::new(AtomicBool::new(false));
+        let exit_called = Arc::new(AtomicBool::new(false));
+
+        let d_clone = Arc::clone(&dialog_called);
+        let e_clone = Arc::clone(&exit_called);
+
+        let handle = std::thread::Builder::new()
+            .name("main".to_string())
+            .spawn(move || {
+                let prev_hook = std::panic::take_hook();
+                std::panic::set_hook(Box::new(move |info| {
+                    handle_panic_scoped(
+                        info,
+                        |_title, _desc| {
+                            d_clone.store(true, Ordering::SeqCst);
+                        },
+                        |_code| {
+                            e_clone.store(true, Ordering::SeqCst);
+                        },
+                    );
+                }));
+
+                let _ = std::panic::catch_unwind(|| {
+                    panic!("Simulated main thread panic");
+                });
+
+                std::panic::set_hook(prev_hook);
+            })
+            .unwrap();
+
+        handle.join().unwrap();
+
+        assert!(
+            dialog_called.load(Ordering::SeqCst),
+            "Dialog must be called for main thread panic"
+        );
+        assert!(
+            exit_called.load(Ordering::SeqCst),
+            "Exit must be called for main thread panic"
+        );
     }
 }

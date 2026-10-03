@@ -24,6 +24,8 @@ use rusqlite::{Connection, OptionalExtension, Transaction};
 ///
 /// # Errors
 /// Returns `DbError` on database execution or JSON failure.
+pub use upsert_track as insert_track;
+
 pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError> {
     let tx = conn.unchecked_transaction()?;
 
@@ -649,7 +651,7 @@ pub fn get_track(conn: &Connection, id: &str) -> Result<Option<Track>, DbError> 
         None
     };
 
-    Ok(Some(Track {
+    let mut track = Track {
         id,
         path,
         hash,
@@ -658,7 +660,33 @@ pub fn get_track(conn: &Connection, id: &str) -> Result<Option<Track>, DbError> 
         analysis,
         analyzed_at,
         analysis_version,
-    }))
+    };
+
+    if let Some(ovr) = crate::overrides::get_override(conn, &track.id)? {
+        crate::overrides::apply_overrides_to_track(&mut track, &ovr)?;
+    }
+
+    Ok(Some(track))
+}
+
+/// Retrieves a track by ID along with boolean flags indicating active user overrides.
+///
+/// # Errors
+/// Returns `DbError` on query execution, JSON deserialization, or data integrity errors.
+pub fn get_track_with_overrides(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<crate::overrides::TrackWithOverrides>, DbError> {
+    match get_track(conn, id)? {
+        Some(track) => {
+            let flags = crate::overrides::get_override_flags(conn, id)?;
+            Ok(Some(crate::overrides::TrackWithOverrides {
+                track,
+                overrides: flags,
+            }))
+        }
+        None => Ok(None),
+    }
 }
 
 /// Lists tracks matching the given filter criteria (BPM range, Camelot keys, energy range, text search).
@@ -666,17 +694,19 @@ pub fn get_track(conn: &Connection, id: &str) -> Result<Option<Track>, DbError> 
 /// # Errors
 /// Returns `DbError` on database query execution failure.
 pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>, DbError> {
-    let mut sql = "SELECT id FROM tracks WHERE 1=1".to_string();
+    let mut sql =
+        "SELECT t.id FROM tracks t LEFT JOIN track_overrides o ON o.track_id = t.id WHERE 1=1"
+            .to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if let Some((min_bpm, max_bpm)) = filter.bpm_range {
-        sql.push_str(" AND bpm >= ? AND bpm <= ?");
+        sql.push_str(" AND coalesce(o.bpm, t.bpm) >= ? AND coalesce(o.bpm, t.bpm) <= ?");
         params.push(Box::new(min_bpm));
         params.push(Box::new(max_bpm));
     }
 
     if let Some((min_energy, max_energy)) = filter.energy_range {
-        sql.push_str(" AND energy_score >= ? AND energy_score <= ?");
+        sql.push_str(" AND t.energy_score >= ? AND t.energy_score <= ?");
         params.push(Box::new(min_energy));
         params.push(Box::new(max_energy));
     }
@@ -688,13 +718,18 @@ pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>
                 if i > 0 {
                     sql.push_str(" OR ");
                 }
-                sql.push_str("(camelot_number = ? AND camelot_letter = ?)");
-                params.push(Box::new(key.number));
-                let letter_str = match key.letter {
-                    CamelotLetter::A => "A",
-                    CamelotLetter::B => "B",
-                };
-                params.push(Box::new(letter_str));
+                let code = format!(
+                    "{}{}",
+                    key.number,
+                    match key.letter {
+                        CamelotLetter::A => "A",
+                        CamelotLetter::B => "B",
+                    }
+                );
+                sql.push_str(
+                    "(coalesce(o.key_camelot, CASE WHEN t.camelot_number IS NOT NULL AND t.camelot_letter IS NOT NULL THEN t.camelot_number || t.camelot_letter ELSE NULL END) = ?)",
+                );
+                params.push(Box::new(code));
             }
             sql.push(')');
         }
@@ -703,7 +738,7 @@ pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>
     if let Some(ref search) = filter.text_search {
         let trimmed = search.trim();
         if !trimmed.is_empty() {
-            sql.push_str(" AND (title LIKE ? OR artist LIKE ? OR album LIKE ?)");
+            sql.push_str(" AND (t.title LIKE ? OR t.artist LIKE ? OR t.album LIKE ?)");
             let pattern = format!("%{trimmed}%");
             params.push(Box::new(pattern.clone()));
             params.push(Box::new(pattern.clone()));
@@ -711,7 +746,7 @@ pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>
         }
     }
 
-    sql.push_str(" ORDER BY artist ASC, title ASC, id ASC");
+    sql.push_str(" ORDER BY t.artist ASC, t.title ASC, t.id ASC");
 
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
@@ -728,6 +763,26 @@ pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>
     }
 
     Ok(tracks)
+}
+
+/// Lists tracks matching filter criteria along with active override flags.
+///
+/// # Errors
+/// Returns `DbError` on query execution error.
+pub fn list_tracks_with_overrides(
+    conn: &Connection,
+    filter: &TrackFilter,
+) -> Result<Vec<crate::overrides::TrackWithOverrides>, DbError> {
+    let tracks = list_tracks(conn, filter)?;
+    let mut result = Vec::with_capacity(tracks.len());
+    for track in tracks {
+        let flags = crate::overrides::get_override_flags(conn, &track.id)?;
+        result.push(crate::overrides::TrackWithOverrides {
+            track,
+            overrides: flags,
+        });
+    }
+    Ok(result)
 }
 
 /// Deletes a track from the library. Cascades to delete segments, cue points, and analysis blobs.

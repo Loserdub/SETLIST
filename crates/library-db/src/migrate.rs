@@ -36,6 +36,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "0004_domain_and_setlist_items.sql",
         sql: include_str!("../migrations/0004_domain_and_setlist_items.sql"),
     },
+    Migration {
+        version: 5,
+        name: "0005_track_overrides.sql",
+        sql: include_str!("../migrations/0005_track_overrides.sql"),
+    },
 ];
 
 /// Applies all pending migrations in order, recording the schema version in SQLite.
