@@ -1,8 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { camelotColor, camelotTextColor } from '../../utils/camelotColor';
 import { WaveformContainer, formatTimeMs } from '../../components/waveform';
 import { useTrackState } from './useTrackState';
+import { usePlayback } from './usePlayback';
+import { PlaybackBar } from './PlaybackBar';
+import { handleTrackKeyDown } from './playbackMath';
 
 const SEGMENT_COLORS: Record<string, string> = {
   intro: '#0284c7', // Sky Blue
@@ -24,6 +27,79 @@ export const TrackView: React.FC = () => {
     setPlayheadPositionMs,
     jumpToTime,
   } = useTrackState();
+
+  // Audio Playback Engine Hook with 60 FPS requestAnimationFrame Interpolation
+  const playback = usePlayback({
+    trackId: selectedTrack?.id,
+    durationMs: selectedTrack?.duration_ms ?? 0,
+  });
+
+  // Unified Seek handler ensuring both audio playback and visual canvas state synchronize
+  const handleSeek = useCallback(
+    (timeMs: number) => {
+      if (!selectedTrack) return;
+      const clamped = Math.max(0, Math.min(selectedTrack.duration_ms, timeMs));
+      setPlayheadPositionMs(clamped);
+      void playback.seek(clamped);
+    },
+    [selectedTrack, setPlayheadPositionMs, playback]
+  );
+
+  // Jump viewport and seek audio
+  const handleJumpAndSeek = useCallback(
+    (timeMs: number) => {
+      if (!selectedTrack) return;
+      jumpToTime(timeMs, selectedTrack.duration_ms);
+      void playback.seek(timeMs);
+    },
+    [selectedTrack, jumpToTime, playback]
+  );
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Keyboard Shortcuts (Track View Only):
+  // [Space]: Toggle Play / Pause
+  // [Left Arrow]: Seek -5 seconds
+  // [Right Arrow]: Seek +5 seconds
+  // [Shift + Left Arrow]: Seek 1 bar backward using beat grid
+  // [Shift + Right Arrow]: Seek 1 bar forward using beat grid
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedTrack) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const action = handleTrackKeyDown(
+        {
+          key: e.key,
+          code: e.code,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          targetTagName: (e.target as HTMLElement)?.tagName,
+          isContentEditable: (e.target as HTMLElement)?.isContentEditable,
+        },
+        {
+          currentPositionMs: playheadPositionMs ?? 0,
+          durationMs: selectedTrack.duration_ms,
+          grid: selectedTrack.analysis?.rhythm.grid,
+        }
+      );
+
+      if (action) {
+        e.preventDefault();
+        if (action.type === 'toggle_play_pause') {
+          void playback.togglePlayPause();
+        } else if (action.type === 'seek') {
+          handleSeek(action.targetMs);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [playheadPositionMs, selectedTrack, playback, handleSeek]);
 
   if (!selectedTrack) {
     return (
@@ -198,9 +274,21 @@ export const TrackView: React.FC = () => {
           playheadPositionMs={playheadPositionMs}
           onZoomChange={setZoomLevel}
           onScrollChange={setScrollOffsetMs}
-          onSetPlayhead={setPlayheadPositionMs}
+          onSetPlayhead={handleSeek}
         />
       )}
+
+      {/* ── Audio Playback Control Bar ────────────────────────────────────── */}
+      <PlaybackBar
+        state={playback.state}
+        positionMs={playheadPositionMs ?? playback.positionMs}
+        durationMs={selectedTrack.duration_ms}
+        clickEnabled={playback.clickEnabled}
+        onPlay={playback.play}
+        onPause={playback.pause}
+        onSeek={handleSeek}
+        onToggleClick={playback.toggleClick}
+      />
 
       {/* ── Playhead Scrubbing Status Bar ──────────────────────────────────── */}
       <div className="p-2.5 bg-[#0a0a0a] border border-[#1c1c1c] flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
@@ -238,7 +326,7 @@ export const TrackView: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => jumpToTime(0, selectedTrack.duration_ms)}
+            onClick={() => handleJumpAndSeek(0)}
             className="px-2.5 py-1 bg-[#141414] hover:bg-[#1e1e1e] text-[#a1a1aa] hover:text-white border border-[#27272a] text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer"
           >
             Jump to Start (0:00)
@@ -266,7 +354,7 @@ export const TrackView: React.FC = () => {
             return (
               <div
                 key={cue.index}
-                onClick={() => jumpToTime(cue.time_ms, selectedTrack.duration_ms)}
+                onClick={() => handleJumpAndSeek(cue.time_ms)}
                 className={`p-2.5 border flex items-start gap-2.5 transition-colors cursor-pointer select-none ${
                   isNearPlayhead
                     ? 'bg-[#181818] border-[#38bdf8]'
@@ -322,7 +410,7 @@ export const TrackView: React.FC = () => {
             return (
               <div
                 key={idx}
-                onClick={() => jumpToTime(seg.start_ms, selectedTrack.duration_ms)}
+                onClick={() => handleJumpAndSeek(seg.start_ms)}
                 className="h-full flex items-center justify-center text-[9px] font-mono font-bold text-white uppercase tracking-wider overflow-hidden px-1 border-r border-[#000000]/60 transition-opacity hover:opacity-80 cursor-pointer"
                 style={{ width: `${pct}%`, backgroundColor: color }}
                 title={`${seg.label}: ${formatTimeMs(seg.start_ms)} - ${formatTimeMs(seg.end_ms)} (Energy ${seg.energy})`}
@@ -338,7 +426,7 @@ export const TrackView: React.FC = () => {
           {analysis?.segments.map((seg, idx) => (
             <div
               key={idx}
-              onClick={() => jumpToTime(seg.start_ms, selectedTrack.duration_ms)}
+              onClick={() => handleJumpAndSeek(seg.start_ms)}
               className="p-2 bg-[#0e0e0e] border border-[#1c1c1c] text-xs flex flex-col gap-0.5 hover:border-[#2a2a2a] cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-1.5 font-mono font-semibold text-[#ededed] uppercase text-[10px]">

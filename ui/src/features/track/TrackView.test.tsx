@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { TrackView } from './TrackView';
 import { useAppStore } from '../../store/useAppStore';
 import { useTrackState } from './useTrackState';
 import { mockBackend } from '../../api';
+import { mockPlaybackClient } from '../../api/playback';
 
 if (typeof window !== 'undefined' && !window.ResizeObserver) {
   window.ResizeObserver = class {
@@ -16,6 +17,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 describe('TrackView Component', () => {
   beforeEach(async () => {
     useTrackState.getState().resetView();
+    mockPlaybackClient.reset();
     // Load mock tracks
     const tracks = await mockBackend.listTracks();
     act(() => {
@@ -26,6 +28,10 @@ describe('TrackView Component', () => {
         currentRoute: 'track',
       });
     });
+  });
+
+  afterEach(() => {
+    mockPlaybackClient.reset();
   });
 
   it('renders empty placeholder when no track is selected', () => {
@@ -69,6 +75,88 @@ describe('TrackView Component', () => {
     expect(screen.getAllByText(/Playhead/i).length).toBeGreaterThan(0);
   });
 
+  it('renders PlaybackBar with transport controls, time readout, and click toggle', () => {
+    render(<TrackView />);
+
+    expect(screen.getByTestId('playback-bar')).toBeDefined();
+    expect(screen.getByTestId('playback-play-pause-btn')).toBeDefined();
+    expect(screen.getByTestId('playback-time-readout')).toBeDefined();
+    expect(screen.getByTestId('playback-status-badge')).toBeDefined();
+    expect(screen.getByTestId('playback-click-toggle')).toBeDefined();
+    expect(screen.getByTestId('playback-jump-start-btn')).toBeDefined();
+    expect(screen.getByTestId('playback-seek-back-5s')).toBeDefined();
+    expect(screen.getByTestId('playback-seek-fwd-5s')).toBeDefined();
+  });
+
+  it('toggles play and pause on PlaybackBar button click', async () => {
+    render(<TrackView />);
+
+    const playPauseBtn = screen.getByTestId('playback-play-pause-btn');
+    expect(playPauseBtn.textContent).toContain('PLAY');
+
+    await act(async () => {
+      fireEvent.click(playPauseBtn);
+    });
+
+    expect(mockPlaybackClient.getMockState().state).toBe('playing');
+    expect(screen.getByTestId('playback-status-badge').textContent).toBe('playing');
+
+    await act(async () => {
+      fireEvent.click(playPauseBtn);
+    });
+
+    expect(mockPlaybackClient.getMockState().state).toBe('paused');
+    expect(screen.getByTestId('playback-status-badge').textContent).toBe('paused');
+  });
+
+  it('toggles click track on click toggle button', async () => {
+    render(<TrackView />);
+
+    const clickBtn = screen.getByTestId('playback-click-toggle');
+    expect(clickBtn.textContent).toContain('Click: OFF');
+
+    await act(async () => {
+      fireEvent.click(clickBtn);
+    });
+
+    expect(mockPlaybackClient.getMockState().clickEnabled).toBe(true);
+    expect(screen.getByTestId('playback-click-toggle').textContent).toContain('Click: ON');
+  });
+
+  it('responds to keyboard Space to toggle play/pause and arrow keys to seek', async () => {
+    render(<TrackView />);
+
+    // Space -> Play
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ' }));
+    });
+    expect(mockPlaybackClient.getMockState().state).toBe('playing');
+
+    // Space -> Pause
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ' }));
+    });
+    expect(mockPlaybackClient.getMockState().state).toBe('paused');
+
+    // Reset position to 0 to test exact seek deltas
+    await act(async () => {
+      await mockPlaybackClient.seek(0);
+      useTrackState.getState().setPlayheadPositionMs(0);
+    });
+
+    // ArrowRight -> seek +5000 ms
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    });
+    expect(mockPlaybackClient.getMockState().positionMs).toBe(5000);
+
+    // ArrowLeft -> seek -5000 ms
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+    });
+    expect(mockPlaybackClient.getMockState().positionMs).toBe(0);
+  });
+
   it('renders all cue points (Registers A to H) with colors and labels', () => {
     render(<TrackView />);
 
@@ -82,14 +170,17 @@ describe('TrackView Component', () => {
     }
   });
 
-  it('clicking a cue card jumps playhead and scrolls waveform to cue time', () => {
+  it('clicking a cue card jumps playhead and scrolls waveform to cue time', async () => {
     render(<TrackView />);
 
     const cueA = screen.getByTestId('cue-card-A');
-    fireEvent.click(cueA);
+    await act(async () => {
+      fireEvent.click(cueA);
+    });
 
     const playheadMs = useTrackState.getState().playheadPositionMs;
     expect(playheadMs).toBe(120); // First downbeat in mock track is 120ms
+    expect(mockPlaybackClient.getMockState().positionMs).toBe(120);
   });
 
   it('adjusts zoom level when clicking zoom in and zoom out buttons', () => {
@@ -106,7 +197,7 @@ describe('TrackView Component', () => {
     expect(useTrackState.getState().zoomLevel).toBeCloseTo(1.0, 1);
   });
 
-  it('renders structural segments and jumps to segment when clicked', () => {
+  it('renders structural segments and jumps to segment when clicked', async () => {
     render(<TrackView />);
 
     const introElements = screen.getAllByText(/intro/i);
@@ -115,8 +206,26 @@ describe('TrackView Component', () => {
     expect(screen.getAllByText(/drop/i).length).toBeGreaterThan(0);
 
     // Click first intro element
-    fireEvent.click(introElements[0]);
+    await act(async () => {
+      fireEvent.click(introElements[0]);
+    });
 
     expect(useTrackState.getState().playheadPositionMs).toBe(0);
+    expect(mockPlaybackClient.getMockState().positionMs).toBe(0);
+  });
+
+  it('stops playback when unmounting component', async () => {
+    const { unmount } = render(<TrackView />);
+
+    await act(async () => {
+      await mockPlaybackClient.play();
+    });
+    expect(mockPlaybackClient.getMockState().state).toBe('playing');
+
+    act(() => {
+      unmount();
+    });
+
+    expect(mockPlaybackClient.getMockState().state).toBe('stopped');
   });
 });
