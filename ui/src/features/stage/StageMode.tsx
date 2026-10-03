@@ -5,6 +5,7 @@ import { usePerformanceClock, formatDuration, formatDurationCompact } from './us
 import { useStageKeyboard } from './useStageKeyboard';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
 import type { TransitionAdvice } from '../../bindings/TransitionAdvice';
+import { EditedBadge, isFieldOverridden } from '../track/overrides';
 
 /**
  * Stage Mode — a dedicated, read-only live performance view.
@@ -223,8 +224,16 @@ export function StageMode() {
 
           {/* Track metadata technical blocks */}
           <div className="flex items-center justify-center gap-2 pt-2">
-            <MetadataPill label="BPM" value={trackBpm(currentEntry)} />
-            <MetadataPill label="KEY" value={trackKey(currentEntry)} />
+            <MetadataPill
+              label="BPM"
+              value={trackBpm(currentEntry)}
+              isOverridden={isFieldOverridden(currentEntry?.track, 'bpm')}
+            />
+            <MetadataPill
+              label="KEY"
+              value={trackKey(currentEntry)}
+              isOverridden={isFieldOverridden(currentEntry?.track, 'key_camelot')}
+            />
             <MetadataPill label="ENERGY" value={trackEnergy(currentEntry)} />
             {currentSongDurationMs != null && (
               <MetadataPill label="LENGTH" value={formatDuration(currentSongDurationMs)} />
@@ -439,13 +448,29 @@ export function StageMode() {
 
 /* ───── Helper Components ───── */
 
-function MetadataPill({ label, value }: { label: string; value: string }) {
+function MetadataPill({
+  label,
+  value,
+  isOverridden,
+}: {
+  label: string;
+  value: string;
+  isOverridden?: boolean;
+}) {
   return (
     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#0c0c0c] border border-[#1f1f1f] rounded-none">
       <span className="text-[9px] uppercase tracking-wider text-[#555555] font-mono font-semibold">
         {label}
       </span>
-      <span className="text-xs font-mono text-[#ededed] font-medium">{value}</span>
+      <span className="text-xs font-mono text-[#ededed] font-medium inline-flex items-center gap-1">
+        <span>{value}</span>
+        {isOverridden && (
+          <EditedBadge
+            field={label === 'BPM' ? 'bpm' : 'key_camelot'}
+            title={`${label} analysis overridden`}
+          />
+        )}
+      </span>
     </div>
   );
 }
@@ -490,8 +515,22 @@ function SetlistJumpItem({
         {artist && <p className="text-[10px] text-[#555555] truncate">{artist}</p>}
       </div>
       <div className="flex items-center gap-2 text-xs text-[#666666] font-mono shrink-0">
-        {bpm != null && <span>{Math.round(bpm)} BPM</span>}
-        {keyStr && <span>{keyStr}</span>}
+        {bpm != null && (
+          <span className="inline-flex items-center gap-1">
+            <span>{Math.round(bpm)} BPM</span>
+            {isFieldOverridden(entry.track, 'bpm') && (
+              <EditedBadge field="bpm" title="BPM analysis overridden" />
+            )}
+          </span>
+        )}
+        {keyStr && (
+          <span className="inline-flex items-center gap-1">
+            <span>{keyStr}</span>
+            {isFieldOverridden(entry.track, 'key_camelot') && (
+              <EditedBadge field="key_camelot" title="Key analysis overridden" />
+            )}
+          </span>
+        )}
       </div>
       {isCurrent && (
         <span className="text-[#ededed] text-[10px] font-mono uppercase tracking-wider font-semibold">▶ NOW</span>

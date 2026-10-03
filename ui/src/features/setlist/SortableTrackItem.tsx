@@ -2,6 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
 import { camelotColor, camelotTextColor } from '../../utils/camelotColor';
+import { EditedBadge, isFieldOverridden } from '../track/overrides';
 
 interface SortableTrackItemProps {
   entry: SetlistEntry;
@@ -141,16 +142,20 @@ export function SortableTrackItem({
       {/* Right: Key, BPM, Energy, Duration & Remove */}
       <div className="flex items-center gap-4 pl-2 shrink-0">
         {/* BPM */}
-        <span className="font-mono text-xs font-medium text-[#d0d0d0] w-14 text-right tabular-nums">
-          {bpm > 0 ? `${bpm} BPM` : '—'}
+        <span className="font-mono text-xs font-medium text-[#d0d0d0] text-right tabular-nums inline-flex items-center gap-1">
+          <span>{bpm > 0 ? `${bpm} BPM` : '—'}</span>
+          {isFieldOverridden(track, 'bpm') && <EditedBadge field="bpm" title="BPM analysis overridden" />}
         </span>
 
         {/* Camelot Key Chip */}
-        <span
-          className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-[2px] tracking-tight w-7 text-center"
-          style={{ backgroundColor: bg, color: fg }}
-        >
-          {keyStr}
+        <span className="inline-flex items-center gap-1">
+          <span
+            className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-[2px] tracking-tight w-7 text-center"
+            style={{ backgroundColor: bg, color: fg }}
+          >
+            {keyStr}
+          </span>
+          {isFieldOverridden(track, 'key_camelot') && <EditedBadge field="key_camelot" title="Key analysis overridden" />}
         </span>
 
         {/* Energy */}

@@ -19,6 +19,7 @@ import { filterTracks, getTrackCamelotKey } from './filters';
 import { sortTracks } from './sorting';
 import { generateMockTracks } from './mock5000';
 import { DEFAULT_FILTERS, type LibraryFilters, type SortField } from './types';
+import { EditedBadge, isFieldOverridden } from '../track/overrides';
 
 const columnHelper = createColumnHelper<Track>();
 
@@ -167,13 +168,15 @@ export function LibraryView() {
         header: 'BPM',
         cell: (info) => {
           const bpm = info.getValue();
+          const isOverridden = isFieldOverridden(info.row.original, 'bpm');
           return (
-            <span className="font-mono text-xs tabular-nums text-[#d0d0d0]">
-              {bpm > 0 ? bpm.toFixed(1) : '—'}
+            <span className="font-mono text-xs tabular-nums text-[#d0d0d0] inline-flex items-center gap-1">
+              <span>{bpm > 0 ? bpm.toFixed(1) : '—'}</span>
+              {isOverridden && <EditedBadge field="bpm" title="BPM analysis overridden" />}
             </span>
           );
         },
-        size: 75,
+        size: 90,
       }),
 
       // Camelot Key
@@ -185,18 +188,22 @@ export function LibraryView() {
           if (!keyStr) {
             return <span className="text-[#555555] font-mono text-[11px]">—</span>;
           }
+          const isOverridden = isFieldOverridden(info.row.original, 'key_camelot');
           const bg = camelotColor(keyStr);
           const fg = camelotTextColor(keyStr);
           return (
-            <span
-              className="inline-flex items-center justify-center font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-[2px] tracking-tight"
-              style={{ backgroundColor: bg, color: fg }}
-            >
-              {keyStr}
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="inline-flex items-center justify-center font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-[2px] tracking-tight"
+                style={{ backgroundColor: bg, color: fg }}
+              >
+                {keyStr}
+              </span>
+              {isOverridden && <EditedBadge field="key_camelot" title="Key analysis overridden" />}
             </span>
           );
         },
-        size: 70,
+        size: 85,
       }),
 
       // Energy
