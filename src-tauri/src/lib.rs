@@ -8,11 +8,105 @@ pub use state::*;
 
 use tauri::Manager;
 
+/// Resolves the application data directory where logs and SQLite database are stored.
+pub fn resolve_app_data_dir() -> std::path::PathBuf {
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        std::path::PathBuf::from(appdata).join("com.setlist.desktop")
+    } else if let Ok(profile) = std::env::var("USERPROFILE") {
+        std::path::PathBuf::from(profile)
+            .join("AppData")
+            .join("Roaming")
+            .join("com.setlist.desktop")
+    } else {
+        std::path::PathBuf::from(".setlist")
+    }
+}
+
+/// Appends a diagnostic message directly to setlist.log on disk.
+/// This works even if the log plugin has not initialized or during a fatal panic.
+pub fn append_to_setlist_log(msg: &str) {
+    let dir = resolve_app_data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let log_file = dir.join("setlist.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+    {
+        use std::io::Write;
+        let _ = writeln!(file, "{}", msg);
+    }
+}
+
+/// Shows a native OS error dialog using `rfd` (without requiring any webview).
+pub fn show_native_error_dialog(title: &str, description: &str) {
+    rfd::MessageDialog::new()
+        .set_title(title)
+        .set_description(description)
+        .set_level(rfd::MessageLevel::Error)
+        .show();
+}
+
+/// Installs a panic hook to capture unhandled panics, log them, display a native message box,
+/// and exit with a nonzero code.
+pub fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|panic_info| {
+        let pid = std::process::id();
+        let location = panic_info
+            .location()
+            .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+
+        let payload = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Internal panic with unspecified payload".to_string()
+        };
+
+        let log_msg = format!("[FATAL PANIC] (PID: {pid}) {payload} at {location}");
+        eprintln!("{log_msg}");
+        log::error!("{log_msg}");
+        append_to_setlist_log(&log_msg);
+
+        let log_path = resolve_app_data_dir().join("setlist.log");
+        let dialog_msg = format!(
+            "SETLIST encountered an unrecoverable error and must terminate.\n\n\
+             Error: {}\n\
+             Location: {}\n\
+             Process ID: {}\n\n\
+             Log file:\n{}",
+            payload,
+            location,
+            pid,
+            log_path.display()
+        );
+
+        show_native_error_dialog("SETLIST - Fatal Error", &dialog_msg);
+        std::process::exit(1);
+    }));
+}
+
 /// Runs the Tauri application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Install panic hook early so any unhandled panic displays a native dialog and logs to setlist.log
+    install_panic_hook();
+
     let builder = tauri::Builder::default()
+        // 7. Register single-instance plugin first in the builder
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            log::info!("Second instance launch detected; focusing existing main window");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(|app| {
+            let pid = std::process::id();
+
             // Determine application data directory
             let app_data = app
                 .path()
@@ -41,9 +135,10 @@ pub fn run() {
             )?;
 
             log::info!("========================================");
-            log::info!("SETLIST Desktop Application Starting");
+            log::info!("SETLIST Desktop Application Starting (PID: {pid})");
             log::info!("App Data Folder: {}", app_data.display());
             log::info!("Log File: {}", app_data.join("setlist.log").display());
+            append_to_setlist_log(&format!("[STARTUP] SETLIST started (PID: {pid})"));
 
             let db_path = app_data.join("library.db");
             log::info!("Connecting to library database at {}", db_path.display());
@@ -64,12 +159,14 @@ pub fn run() {
                 }
             }
 
-            // Ensure window title and icon are set
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_title("SETLIST");
-                if let Some(icon) = app.default_window_icon() {
-                    let _ = window.set_icon(icon.clone());
-                }
+            // Catch webview creation and setup errors: ensure main window is created
+            let main_window = app.get_webview_window("main").ok_or_else(|| {
+                "Failed to find or create main webview window. Ensure Microsoft Edge WebView2 is installed.".to_string()
+            })?;
+
+            let _ = main_window.set_title("SETLIST");
+            if let Some(icon) = app.default_window_icon() {
+                let _ = main_window.set_icon(icon.clone());
             }
 
             app.manage(app_state);
@@ -114,9 +211,40 @@ pub fn run() {
             commands::explore_candidate_paths,
         ]);
 
-    if let Err(err) = builder.run(tauri::generate_context!()) {
-        eprintln!("error while running tauri application: {err}");
-    }
+    // Catch initialization / webview creation errors
+    let app = match builder.build(tauri::generate_context!()) {
+        Ok(app) => app,
+        Err(err) => {
+            let pid = std::process::id();
+            let log_msg = format!("[STARTUP ERROR] (PID: {pid}) Application build failed: {err}");
+            eprintln!("{log_msg}");
+            log::error!("{log_msg}");
+            append_to_setlist_log(&log_msg);
+
+            let log_path = resolve_app_data_dir().join("setlist.log");
+            let dialog_msg = format!(
+                "SETLIST failed to start during initialization.\n\n\
+                 Error: {}\n\
+                 Process ID: {}\n\n\
+                 Log file:\n{}",
+                err,
+                pid,
+                log_path.display()
+            );
+            show_native_error_dialog("SETLIST - Startup Error", &dialog_msg);
+            std::process::exit(1);
+        }
+    };
+
+    // Log clean exit with PID when application terminates
+    app.run(move |_app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            let pid = std::process::id();
+            log::info!("SETLIST cleanly exiting (PID: {pid})");
+            log::info!("========================================");
+            append_to_setlist_log(&format!("[CLEAN EXIT] SETLIST cleanly exited (PID: {pid})"));
+        }
+    });
 }
 
 #[cfg(test)]
@@ -126,5 +254,21 @@ mod tests {
     #[test]
     fn test_ping() {
         assert_eq!(commands::ping(), "pong");
+    }
+
+    #[test]
+    fn test_resolve_app_data_dir() {
+        let dir = resolve_app_data_dir();
+        assert!(dir.to_string_lossy().contains("com.setlist.desktop"));
+    }
+
+    #[test]
+    fn test_append_to_setlist_log() {
+        let test_msg = format!("[TEST] Unit test diagnostic message {}", std::process::id());
+        append_to_setlist_log(&test_msg);
+        let log_file = resolve_app_data_dir().join("setlist.log");
+        assert!(log_file.exists());
+        let content = std::fs::read_to_string(&log_file).unwrap();
+        assert!(content.contains(&test_msg));
     }
 }
