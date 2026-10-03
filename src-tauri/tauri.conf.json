@@ -13,11 +13,15 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "SETLIST",
         "width": 1200,
         "height": 800,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "center": true,
+        "visible": true,
+        "focus": true
       }
     ],
     "security": {

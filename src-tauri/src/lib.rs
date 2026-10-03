@@ -206,6 +206,9 @@ pub fn run() {
             if let Some(icon) = app.default_window_icon() {
                 let _ = main_window.set_icon(icon.clone());
             }
+            let _ = main_window.show();
+            let _ = main_window.unminimize();
+            let _ = main_window.set_focus();
 
             app.manage(app_state);
             log::info!("Application state initialized successfully");
