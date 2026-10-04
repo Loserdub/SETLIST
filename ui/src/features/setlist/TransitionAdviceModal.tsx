@@ -126,14 +126,14 @@ export function TransitionAdviceModal({
             <h3 className="text-xs font-mono font-bold tracking-wider uppercase text-[#ededed] leading-tight">
               Transition Copilot Advice
             </h3>
-            <p className="text-[10px] font-mono text-[#666666] mt-0.5">
+            <p className="text-xs font-mono text-[#a8a8a8] mt-0.5">
               Harmonic alignment, cue point blending, and pacing recommendations
             </p>
           </div>
           <button
             type="button"
             onClick={() => void handleClose()}
-            className="w-6 h-6 border border-[#222222] bg-[#111111] text-[#666666] hover:text-[#ededed] hover:border-[#333333] transition-colors flex items-center justify-center text-xs font-mono cursor-pointer"
+            className="w-6 h-6 border border-[#222222] bg-[#111111] text-[#a8a8a8] hover:text-[#ededed] hover:border-[#333333] transition-colors flex items-center justify-center text-xs font-mono cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
             aria-label="Close dialog"
           >
             ✕
@@ -141,9 +141,9 @@ export function TransitionAdviceModal({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-4 text-xs text-[#a1a1aa]">
+        <div className="p-5 overflow-y-auto space-y-4 text-xs text-[#cfcfcf]">
           {isLoading ? (
-            <div className="py-10 flex flex-col items-center justify-center gap-2 text-[#71717a] font-mono text-xs">
+            <div className="py-10 flex flex-col items-center justify-center gap-2 text-[#a8a8a8] font-mono text-xs">
               <span className="animate-pulse">[ ANALYZING COMPATIBILITY... ]</span>
             </div>
           ) : error ? (
@@ -158,17 +158,17 @@ export function TransitionAdviceModal({
                   {/* Outgoing Track A */}
                   <div className="space-y-1 border-r border-[#1c1c1c] pr-3">
                     <div className="flex items-center justify-between">
-                      <div className="text-[9px] uppercase font-mono font-bold tracking-wider text-[#555555]">
+                      <div className="text-xs uppercase font-mono font-bold tracking-wider text-[#a8a8a8]">
                         OUTGOING TRACK (A)
                       </div>
                       {trackA && (
                         <button
                           type="button"
                           onClick={() => void handleToggleAudition(trackA.id)}
-                          className={`px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border rounded-none flex items-center gap-1 transition-colors cursor-pointer ${
+                          className={`px-1.5 py-0.5 text-xs font-mono uppercase tracking-wider border rounded-none flex items-center gap-1 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
                             auditionTrackId === trackA.id && auditionState === 'playing'
                               ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
-                              : 'border-[#27272a] bg-[#141414] hover:bg-[#202020] text-[#a1a1aa]'
+                              : 'border-[#27272a] bg-[#141414] hover:bg-[#202020] text-[#cfcfcf]'
                           }`}
                         >
                           <span>{auditionTrackId === trackA.id && auditionState === 'playing' ? '⏸' : '▶'}</span>
@@ -179,18 +179,18 @@ export function TransitionAdviceModal({
                     <div className="font-medium text-xs text-[#ededed] truncate">
                       {trackA?.tags.title ?? 'Unknown Track'}
                     </div>
-                    <div className="text-[11px] text-[#71717a] truncate">
+                    <div className="text-xs text-[#a8a8a8] truncate">
                       {trackA?.tags.artist ?? 'Unknown Artist'}
                     </div>
-                    <div className="flex items-center gap-2 pt-1 font-mono text-[11px]">
+                    <div className="flex items-center gap-2 pt-1 font-mono text-xs">
                       <span
-                        className="px-1.5 py-0.5 rounded-[2px] font-mono font-bold text-[10px] border border-black/30"
+                        className="px-1.5 py-0.5 rounded-[2px] font-mono font-bold text-xs border border-black/30"
                         style={{ backgroundColor: bgA, color: fgA }}
                       >
                         {keyAStr}
                       </span>
-                      <span className="text-[#a1a1aa]">{bpmA} BPM</span>
-                      <span className="text-[#71717a]">
+                      <span className="text-[#cfcfcf]">{bpmA} BPM</span>
+                      <span className="text-[#a8a8a8]">
                         E{trackA?.analysis?.energy_score ?? '—'}
                       </span>
                     </div>
@@ -199,17 +199,17 @@ export function TransitionAdviceModal({
                   {/* Incoming Track B */}
                   <div className="space-y-1 pl-1">
                     <div className="flex items-center justify-between">
-                      <div className="text-[9px] uppercase font-mono font-bold tracking-wider text-[#555555]">
+                      <div className="text-xs uppercase font-mono font-bold tracking-wider text-[#a8a8a8]">
                         INCOMING TRACK (B)
                       </div>
                       {trackB && (
                         <button
                           type="button"
                           onClick={() => void handleToggleAudition(trackB.id)}
-                          className={`px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider border rounded-none flex items-center gap-1 transition-colors cursor-pointer ${
+                          className={`px-1.5 py-0.5 text-xs font-mono uppercase tracking-wider border rounded-none flex items-center gap-1 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
                             auditionTrackId === trackB.id && auditionState === 'playing'
                               ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
-                              : 'border-[#27272a] bg-[#141414] hover:bg-[#202020] text-[#a1a1aa]'
+                              : 'border-[#27272a] bg-[#141414] hover:bg-[#202020] text-[#cfcfcf]'
                           }`}
                         >
                           <span>{auditionTrackId === trackB.id && auditionState === 'playing' ? '⏸' : '▶'}</span>
@@ -220,18 +220,18 @@ export function TransitionAdviceModal({
                     <div className="font-medium text-xs text-[#ededed] truncate">
                       {trackB?.tags.title ?? 'Unknown Track'}
                     </div>
-                    <div className="text-[11px] text-[#71717a] truncate">
+                    <div className="text-xs text-[#a8a8a8] truncate">
                       {trackB?.tags.artist ?? 'Unknown Artist'}
                     </div>
-                    <div className="flex items-center gap-2 pt-1 font-mono text-[11px]">
+                    <div className="flex items-center gap-2 pt-1 font-mono text-xs">
                       <span
-                        className="px-1.5 py-0.5 rounded-[2px] font-mono font-bold text-[10px] border border-black/30"
+                        className="px-1.5 py-0.5 rounded-[2px] font-mono font-bold text-xs border border-black/30"
                         style={{ backgroundColor: bgB, color: fgB }}
                       >
                         {keyBStr}
                       </span>
-                      <span className="text-[#a1a1aa]">{bpmB} BPM</span>
-                      <span className="text-[#71717a]">
+                      <span className="text-[#cfcfcf]">{bpmB} BPM</span>
+                      <span className="text-[#a8a8a8]">
                         E{trackB?.analysis?.energy_score ?? '—'}
                       </span>
                     </div>
@@ -240,12 +240,12 @@ export function TransitionAdviceModal({
 
                 {/* Audition Speed Control Bar */}
                 {auditionTrackId && (
-                  <div className="pt-2 border-t border-[#1c1c1c] flex items-center justify-between text-[10px] font-mono">
-                    <span className="text-[#888888]">
+                  <div className="pt-2 border-t border-[#1c1c1c] flex items-center justify-between text-xs font-mono">
+                    <span className="text-[#a8a8a8]">
                       AUDITIONING: {auditionTrackId === trackA?.id ? 'Track A' : 'Track B'}
                     </span>
                     <div className="flex items-center gap-1">
-                      <span className="text-[#666666]">Speed:</span>
+                      <span className="text-[#a8a8a8]">Speed:</span>
                       {SPEED_OPTIONS.map((rate) => {
                         const isActive = Math.abs(auditionSpeed - rate) < 0.01;
                         return (
@@ -253,10 +253,10 @@ export function TransitionAdviceModal({
                             key={rate}
                             type="button"
                             onClick={() => void handleSetSpeed(rate)}
-                            className={`px-1.5 py-0.5 text-[9px] cursor-pointer border rounded-none ${
+                            className={`px-1.5 py-0.5 text-xs cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
                               isActive
                                 ? 'bg-[#1e3a5f] text-[#38bdf8] border-[#38bdf8] font-bold'
-                                : 'bg-[#121212] hover:bg-[#1a1a1a] text-[#888888] border-transparent'
+                                : 'bg-[#121212] hover:bg-[#1a1a1a] text-[#a8a8a8] border-transparent'
                             }`}
                           >
                             {rate}x
@@ -269,12 +269,12 @@ export function TransitionAdviceModal({
               </div>
 
               {/* Status Badges: Interventions & Recommendations */}
-              <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
-                <span className="px-2 py-0.5 bg-[#121212] border border-[#2b2b2b] text-[#cccccc] uppercase tracking-wider">
+              <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                <span className="px-2 py-0.5 bg-[#121212] border border-[#2b2b2b] text-[#cfcfcf] uppercase tracking-wider">
                   Type: {advice.transition_type}
                 </span>
 
-                <span className="px-2 py-0.5 bg-[#121212] border border-[#222222] text-[#888888] uppercase tracking-wider">
+                <span className="px-2 py-0.5 bg-[#121212] border border-[#222222] text-[#a8a8a8] uppercase tracking-wider">
                   Phrase Length: {advice.phrase_bars} Bars
                 </span>
 
@@ -295,29 +295,29 @@ export function TransitionAdviceModal({
               {cost.isAvailable ? (
                 <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] space-y-2.5">
                   <div className="flex items-center justify-between font-mono text-xs">
-                    <span className="font-semibold text-[#888888] uppercase tracking-wider text-[10px]">Cost Model Terms (AGENTS.md 6.3)</span>
-                    <span className="text-[#cccccc] font-mono text-[11px]">
+                    <span className="font-semibold text-[#a8a8a8] uppercase tracking-wider text-xs">Cost Model Terms (AGENTS.md 6.3)</span>
+                    <span className="text-[#cfcfcf] font-mono text-xs">
                       Total C_ij: <span className="font-bold text-white">{cost.total.toFixed(2)}</span>
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2.5 font-mono text-[10px]">
+                  <div className="grid grid-cols-3 gap-2.5 font-mono text-xs">
                     <div className="p-2 bg-[#111111] border border-[#1f1f1f]">
-                      <div className="text-[#666666] uppercase">Tempo (Φ_tempo)</div>
+                      <div className="text-[#a8a8a8] uppercase">Tempo (Φ_tempo)</div>
                       <div className="text-sm font-bold text-[#ededed] my-0.5">{cost.phiTempo.toFixed(2)}</div>
-                      <div className="text-[#555555]">ΔBPM: {cost.bpmDelta > 0 ? `+${cost.bpmDelta}` : cost.bpmDelta}</div>
+                      <div className="text-[#cfcfcf]">ΔBPM: {cost.bpmDelta > 0 ? `+${cost.bpmDelta}` : cost.bpmDelta}</div>
                     </div>
 
                     <div className="p-2 bg-[#111111] border border-[#1f1f1f]">
-                      <div className="text-[#666666] uppercase">Key (Φ_key)</div>
+                      <div className="text-[#a8a8a8] uppercase">Key (Φ_key)</div>
                       <div className="text-sm font-bold text-[#ededed] my-0.5">{cost.phiKey.toFixed(2)}</div>
-                      <div className="text-[#555555]">d = {cost.keyDistance} {cost.modeFlip ? '(flip)' : ''}</div>
+                      <div className="text-[#cfcfcf]">d = {cost.keyDistance} {cost.modeFlip ? '(flip)' : ''}</div>
                     </div>
 
                     <div className="p-2 bg-[#111111] border border-[#1f1f1f]">
-                      <div className="text-[#666666] uppercase">Energy (Φ_energy)</div>
+                      <div className="text-[#a8a8a8] uppercase">Energy (Φ_energy)</div>
                       <div className="text-sm font-bold text-[#ededed] my-0.5">{cost.phiEnergy.toFixed(2)}</div>
-                      <div className="text-[#555555]">
+                      <div className="text-[#cfcfcf]">
                         Dev: {(
                           (trackB?.analysis?.energy_score ?? 0) -
                           (trackA?.analysis?.energy_score ?? 0) -
@@ -330,10 +330,10 @@ export function TransitionAdviceModal({
               ) : (
                 <div className="p-3 bg-[#0a0a0a] border border-[#2b2b2b] space-y-1 font-mono text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-[#888888] uppercase text-[10px]">Cost Model Terms (AGENTS.md 6.3)</span>
+                    <span className="font-semibold text-[#a8a8a8] uppercase text-xs">Cost Model Terms (AGENTS.md 6.3)</span>
                     <span className="text-amber-500/80">Analysis Unavailable</span>
                   </div>
-                  <p className="text-[11px] text-[#666666]">
+                  <p className="text-xs text-[#a8a8a8]">
                     Transition cost cannot be evaluated because one or both tracks lack complete audio analysis.
                   </p>
                 </div>
@@ -341,14 +341,14 @@ export function TransitionAdviceModal({
 
               {/* Actionable Notes & Tips */}
               <div className="space-y-1.5">
-                <div className="font-mono text-[10px] uppercase font-bold tracking-wider text-[#888888]">DJ Performance Notes:</div>
+                <div className="font-mono text-xs uppercase font-bold tracking-wider text-[#a8a8a8]">DJ Performance Notes:</div>
                 <div className="space-y-1.5">
                   {(advice.notes ?? []).map((note, idx) => (
                     <div
                       key={idx}
                       className="p-2.5 bg-[#0a0a0a] border border-[#1c1c1c] text-[#cccccc] text-xs leading-relaxed flex items-start gap-2 font-sans"
                     >
-                      <span className="text-[#71717a] font-mono text-xs">0{idx + 1}</span>
+                      <span className="text-[#a8a8a8] font-mono text-xs">0{idx + 1}</span>
                       <span>{note}</span>
                     </div>
                   ))}
@@ -357,8 +357,8 @@ export function TransitionAdviceModal({
 
               {/* Cue Alignment Recommendations */}
               <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] space-y-2">
-                <div className="font-mono text-[10px] uppercase font-bold tracking-wider text-[#888888]">Recommended Cue Strategy:</div>
-                <div className="flex items-center gap-2 text-[10px] font-mono text-[#888888]">
+                <div className="font-mono text-xs uppercase font-bold tracking-wider text-[#a8a8a8]">Recommended Cue Strategy:</div>
+                <div className="flex items-center gap-2 text-xs font-mono text-[#a8a8a8]">
                   <span className="px-2 py-0.5 bg-[#121212] border border-[#242424] text-[#d4d4d8]">
                     Mix-Out: Cue G (Outro Start)
                   </span>
@@ -374,7 +374,7 @@ export function TransitionAdviceModal({
               </div>
             </>
           ) : (
-            <div className="py-8 text-center text-[#555555] font-mono text-xs">
+            <div className="py-8 text-center text-[#a8a8a8] font-mono text-xs">
               No transition data available.
             </div>
           )}
@@ -385,7 +385,7 @@ export function TransitionAdviceModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 bg-[#181818] hover:bg-[#222222] text-[#ededed] text-xs font-mono uppercase tracking-wider border border-[#2b2b2b] transition-colors cursor-pointer rounded-none"
+            className="px-3 py-1 bg-[#181818] hover:bg-[#222222] text-[#ededed] text-xs font-mono uppercase tracking-wider border border-[#2b2b2b] transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
           >
             Close Advice
           </button>

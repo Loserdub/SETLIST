@@ -55,7 +55,7 @@ export function EnergyChart({ points, profile }: EnergyChartProps) {
 
   if (n === 0) {
     return (
-      <div className="h-24 flex items-center justify-center bg-[#0a0a0a] border border-[#1a1a1a] text-xs text-[#555555] font-mono rounded-none">
+      <div className="h-24 flex items-center justify-center bg-[#0a0a0a] border border-[#1a1a1a] text-xs text-[#a8a8a8] font-mono rounded-none">
         Add tracks to chart energy progression
       </div>
     );
@@ -72,20 +72,20 @@ export function EnergyChart({ points, profile }: EnergyChartProps) {
     <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-3 space-y-1.5 select-none rounded-none">
       <div className="flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#cccccc]">
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#cfcfcf]">
             Energy Trajectory
           </span>
-          <span className="text-[10px] text-[#666666] font-mono">
-            Target: <span className="text-[#a0a0a0]">{profileLabel}</span>
+          <span className="text-xs text-[#a8a8a8] font-mono">
+            Target: <span className="text-[#cfcfcf]">{profileLabel}</span>
           </span>
         </div>
-        <div className="flex items-center gap-4 text-[10px] font-mono">
-          <span className="flex items-center gap-1.5 text-[#666666]">
-            <span className="w-3 h-0.5 bg-[#666666] inline-block border-t border-dashed" />
+        <div className="flex items-center gap-4 text-xs font-mono">
+          <span className="flex items-center gap-1.5 text-[#a8a8a8]">
+            <span className="w-3 h-0.5 bg-[#a8a8a8] inline-block border-t border-dashed" />
             <span>Target Arc</span>
           </span>
-          <span className="flex items-center gap-1.5 text-[#d0d0d0]">
-            <span className="w-2 h-0.5 bg-[#d0d0d0] inline-block" />
+          <span className="flex items-center gap-1.5 text-[#cfcfcf]">
+            <span className="w-2 h-0.5 bg-[#cfcfcf] inline-block" />
             <span>Actual Setlist</span>
           </span>
         </div>
@@ -114,8 +114,8 @@ export function EnergyChart({ points, profile }: EnergyChartProps) {
                   x={paddingX - 8}
                   y={y + 3}
                   textAnchor="end"
-                  fontSize="8"
-                  fill="#444444"
+                  fontSize="10"
+                  fill="#a8a8a8"
                   fontFamily="monospace"
                 >
                   {level}
@@ -128,7 +128,7 @@ export function EnergyChart({ points, profile }: EnergyChartProps) {
           <path
             d={targetPath}
             fill="none"
-            stroke="#555555"
+            stroke="#888888"
             strokeWidth="1.5"
             strokeDasharray="3 3"
           />
@@ -172,8 +172,8 @@ export function EnergyChart({ points, profile }: EnergyChartProps) {
                 x={pt.x}
                 y={height - 5}
                 textAnchor="middle"
-                fontSize="8"
-                fill="#555555"
+                fontSize="10"
+                fill="#a8a8a8"
                 fontFamily="monospace"
               >
                 #{pt.data.position}

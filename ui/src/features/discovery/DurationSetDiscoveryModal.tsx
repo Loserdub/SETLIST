@@ -106,7 +106,7 @@ export function DurationSetDiscoveryModal({
         {/* Header */}
         <div className="p-4 border-b border-[#222222] bg-[#121212] flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-mono tracking-widest text-[#777777] uppercase">
+            <span className="text-xs font-mono text-[#a8a8a8] uppercase">
               DURATION-AWARE SET DISCOVERY
             </span>
             <h2 className="text-base font-semibold text-[#f0f0f0] font-sans">
@@ -117,7 +117,7 @@ export function DurationSetDiscoveryModal({
             type="button"
             onClick={onClose}
             aria-label="Close duration discovery modal"
-            className="p-1.5 text-[#777777] hover:text-white hover:bg-[#222222] transition-colors rounded-none cursor-pointer"
+            className="p-1.5 text-[#a8a8a8] hover:text-white hover:bg-[#222222] transition-colors rounded-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
           >
             <svg
               className="w-5 h-5"
@@ -135,7 +135,7 @@ export function DurationSetDiscoveryModal({
         <div className="p-4 border-b border-[#202020] bg-[#101010] grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-mono">
           {/* Duration Selector */}
           <div className="space-y-1 bg-[#141414] p-2.5 border border-[#242424]">
-            <span className="text-[10px] text-[#777777] uppercase font-bold block">
+            <span className="text-xs text-[#a8a8a8] uppercase font-bold block">
               TARGET DURATION
             </span>
             <div className="flex gap-1">
@@ -144,10 +144,10 @@ export function DurationSetDiscoveryModal({
                   key={d}
                   type="button"
                   onClick={() => setTargetDurationMin(d)}
-                  className={`flex-1 py-1 text-center font-bold text-xs border cursor-pointer ${
+                  className={`flex-1 py-1 text-center font-bold text-xs border cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 ${
                     targetDurationMin === d
                       ? 'bg-[#222222] text-white border-[#555555]'
-                      : 'bg-[#0a0a0a] text-[#777777] border-[#222222] hover:text-[#cccccc]'
+                      : 'bg-[#0a0a0a] text-[#a8a8a8] border-[#222222] hover:text-[#cccccc]'
                   }`}
                 >
                   {d}m
@@ -158,14 +158,14 @@ export function DurationSetDiscoveryModal({
 
           {/* Anchor Start Song */}
           <div className="space-y-1 bg-[#141414] p-2.5 border border-[#242424]">
-            <span className="text-[10px] text-[#777777] uppercase font-bold block">
+            <span className="text-xs text-[#a8a8a8] uppercase font-bold block">
               START WITH (OPENER)
             </span>
             <select
               aria-label="Select opener track to anchor set discovery"
               value={startSongId}
               onChange={(e) => setStartSongId(e.target.value)}
-              className="w-full bg-[#0a0a0a] border border-[#2a2a2a] p-1.5 text-xs text-[#b0b0b0] outline-none cursor-pointer truncate"
+              className="w-full bg-[#0a0a0a] border border-[#2a2a2a] p-1.5 text-xs text-[#cfcfcf] outline-none focus:ring-1 focus:ring-sky-400 cursor-pointer truncate"
             >
               <option value="">(Any Natural Opener)</option>
               {songs.map((s) => (
@@ -178,14 +178,14 @@ export function DurationSetDiscoveryModal({
 
           {/* Anchor Closer Song */}
           <div className="space-y-1 bg-[#141414] p-2.5 border border-[#242424]">
-            <span className="text-[10px] text-[#777777] uppercase font-bold block">
+            <span className="text-xs text-[#a8a8a8] uppercase font-bold block">
               END WITH (CLOSER)
             </span>
             <select
               aria-label="Select closer track to anchor set discovery"
               value={endSongId}
               onChange={(e) => setEndSongId(e.target.value)}
-              className="w-full bg-[#0a0a0a] border border-[#2a2a2a] p-1.5 text-xs text-[#b0b0b0] outline-none cursor-pointer truncate"
+              className="w-full bg-[#0a0a0a] border border-[#2a2a2a] p-1.5 text-xs text-[#cfcfcf] outline-none focus:ring-1 focus:ring-sky-400 cursor-pointer truncate"
             >
               <option value="">(Any Natural Closer)</option>
               {songs.map((s) => (
@@ -202,7 +202,7 @@ export function DurationSetDiscoveryModal({
               type="button"
               onClick={handleRunDiscovery}
               disabled={isLoading}
-              className="w-full py-2.5 bg-[#1a2e1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase transition-colors cursor-pointer text-center"
+              className="w-full py-2.5 bg-[#1a2e1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase transition-colors cursor-pointer text-center text-xs focus:outline-none focus:ring-1 focus:ring-sky-400"
             >
               {isLoading ? 'Computing Paths...' : 'Discover Candidate Sets'}
             </button>
@@ -210,8 +210,8 @@ export function DurationSetDiscoveryModal({
         </div>
 
         {/* Must Include Songs Filter Drawer */}
-        <div className="px-4 py-2 bg-[#0c0c0c] border-b border-[#1a1a1a] flex items-center gap-2 text-[11px] font-mono overflow-x-auto">
-          <span className="text-[#666666] shrink-0 font-bold uppercase">MUST INCLUDE:</span>
+        <div className="px-4 py-2 bg-[#0c0c0c] border-b border-[#1a1a1a] flex items-center gap-2 text-xs font-mono overflow-x-auto">
+          <span className="text-[#a8a8a8] shrink-0 font-bold uppercase">MUST INCLUDE:</span>
           {songs.slice(0, 10).map((s) => {
             const isIncluded = mustIncludeIds.includes(s.id);
             return (
@@ -219,10 +219,10 @@ export function DurationSetDiscoveryModal({
                 key={s.id}
                 type="button"
                 onClick={() => toggleMustInclude(s.id)}
-                className={`px-2 py-0.5 border text-[10px] shrink-0 cursor-pointer ${
+                className={`px-2 py-0.5 border text-xs shrink-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 ${
                   isIncluded
                     ? 'bg-[#1b2b1b] border-[#335533] text-[#88ee88]'
-                    : 'bg-[#121212] border-[#222222] text-[#777777] hover:text-[#bbbbbb]'
+                    : 'bg-[#121212] border-[#222222] text-[#a8a8a8] hover:text-[#bbbbbb]'
                 }`}
               >
                 {isIncluded ? '✓ ' : '+ '}
@@ -236,18 +236,18 @@ export function DurationSetDiscoveryModal({
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           {/* Candidate Paths List (Left Sidebar) */}
           <div className="w-full md:w-80 border-r border-[#202020] bg-[#0b0b0b] overflow-y-auto p-3 space-y-2">
-            <span className="text-[10px] font-mono text-[#666666] uppercase font-bold block pb-1">
+            <span className="text-xs font-mono text-[#a8a8a8] uppercase font-bold block pb-1">
               DISCOVERED CANDIDATE SETS ({candidatePaths.length})
             </span>
 
             {isLoading && (
-              <div className="py-8 text-center text-xs font-mono text-[#666666]">
+              <div className="py-8 text-center text-xs font-mono text-[#a8a8a8]">
                 Searching graph paths...
               </div>
             )}
 
             {!isLoading && candidatePaths.length === 0 && (
-              <div className="py-8 text-center text-xs font-mono text-[#666666]">
+              <div className="py-8 text-center text-xs font-mono text-[#a8a8a8]">
                 No paths found matching constraints. Try adjusting target duration or anchors.
               </div>
             )}
@@ -260,11 +260,18 @@ export function DurationSetDiscoveryModal({
                 return (
                   <div
                     key={path.song_ids.join('-')}
+                    tabIndex={0}
+                    role="button"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        setSelectedPathIndex(idx);
+                      }
+                    }}
                     onClick={() => setSelectedPathIndex(idx)}
-                    className={`p-3 border cursor-pointer transition-all space-y-1.5 ${
+                    className={`p-3 border cursor-pointer transition-all space-y-1.5 focus:outline-none focus:ring-1 focus:ring-sky-400 ${
                       isSelected
                         ? 'bg-[#151515] border-[#444444] text-white'
-                        : 'bg-[#0f0f0f] border-[#202020] text-[#888888] hover:text-[#cccccc] hover:bg-[#121212]'
+                        : 'bg-[#0f0f0f] border-[#202020] text-[#a8a8a8] hover:text-[#cccccc] hover:bg-[#121212]'
                     }`}
                   >
                     <div className="flex items-center justify-between text-xs font-mono">
@@ -274,14 +281,14 @@ export function DurationSetDiscoveryModal({
                       </span>
                     </div>
 
-                    <div className="text-[11px] font-mono text-[#777777] flex items-center justify-between">
+                    <div className="text-xs font-mono text-[#a8a8a8] flex items-center justify-between">
                       <span>
                         {path.songs.length} tracks • ~{mins} min
                       </span>
                       <span>Min: {Math.round(path.min_score * 100)}%</span>
                     </div>
 
-                    <div className="text-[10px] font-mono text-[#666666] truncate">
+                    <div className="text-xs font-mono text-[#a8a8a8] truncate">
                       {path.songs[0]?.title} → {path.songs[path.songs.length - 1]?.title}
                     </div>
                   </div>
@@ -297,8 +304,8 @@ export function DurationSetDiscoveryModal({
                 <div className="p-3.5 bg-[#121212] border border-[#242424] space-y-2">
                   <div className="flex items-start justify-between">
                     <div>
-                      <span className="text-[10px] font-mono text-[#777777] uppercase font-bold">
-                        CANDIDATE SEQUENCE DETAILS
+                      <span className="text-xs font-mono text-[#a8a8a8] uppercase font-bold">
+                        Candidate Sequence Details
                       </span>
                       <h3 className="text-sm font-semibold text-white font-sans">
                         {activePath.summary}
@@ -308,7 +315,7 @@ export function DurationSetDiscoveryModal({
                     <button
                       type="button"
                       onClick={() => handleApplyPathToSetlist(activePath)}
-                      className="px-3.5 py-1.5 text-xs font-mono bg-[#1a2d1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase cursor-pointer"
+                      className="px-3.5 py-1.5 text-xs font-mono bg-[#1a2d1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
                     >
                       Load This Set into Setlist
                     </button>
@@ -316,14 +323,14 @@ export function DurationSetDiscoveryModal({
 
                   {/* Energy Progression Map */}
                   <div className="pt-2 border-t border-[#1c1c1c] flex items-center gap-2 text-xs font-mono">
-                    <span className="text-[10px] text-[#666666] uppercase font-bold">
+                    <span className="text-xs text-[#a8a8a8] uppercase font-bold">
                       ENERGY CURVE:
                     </span>
                     <div className="flex items-center gap-1.5">
                       {activePath.energy_progression.map((e, i) => (
                         <div key={i} className="flex items-center gap-1">
                           <span
-                            className="px-1.5 py-0.2 text-[10px] font-bold text-black rounded-[1px]"
+                            className="px-1.5 py-0.5 text-xs font-bold text-black rounded-[1px]"
                             style={{
                               backgroundColor:
                                 e >= 8 ? '#e11d48' : e >= 5 ? '#d97706' : '#059669',
@@ -332,7 +339,7 @@ export function DurationSetDiscoveryModal({
                             E{e}
                           </span>
                           {i < activePath.energy_progression.length - 1 && (
-                            <span className="text-[#444444]">→</span>
+                            <span className="text-[#a8a8a8]">→</span>
                           )}
                         </div>
                       ))}
@@ -342,8 +349,8 @@ export function DurationSetDiscoveryModal({
 
                 {/* Step-by-Step Transition Journey Cards */}
                 <div className="space-y-3">
-                  <span className="text-[10px] font-mono text-[#777777] uppercase font-bold tracking-wider block">
-                    STEP-BY-STEP TRANSITION BREAKDOWN ({activePath.transitions.length} TRANSITIONS)
+                  <span className="text-xs font-mono text-[#a8a8a8] font-bold block">
+                    Step-by-step transition breakdown ({activePath.transitions.length} transitions)
                   </span>
 
                   {activePath.songs.map((song, i) => {
@@ -355,19 +362,19 @@ export function DurationSetDiscoveryModal({
                         {/* Song Card */}
                         <div className="p-3 bg-[#131313] border border-[#222222] flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 rounded-full bg-[#1e1e1e] text-[#888888] font-mono text-xs flex items-center justify-center font-bold">
+                            <span className="w-6 h-6 rounded-full bg-[#1e1e1e] text-[#cfcfcf] font-mono text-xs flex items-center justify-center font-bold">
                               {i + 1}
                             </span>
                             <div>
                               <h4 className="text-xs font-semibold text-white">{song.title}</h4>
-                              <p className="text-[10px] text-[#777777]">{song.artist}</p>
+                              <p className="text-xs text-[#a8a8a8]">{song.artist}</p>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 font-mono text-xs">
                             {song.camelot_code && (
                               <span
-                                className="px-1.5 py-0.2 font-bold text-[10px] rounded-[2px]"
+                                className="px-1.5 py-0.5 font-bold text-xs rounded-[2px]"
                                 style={{
                                   backgroundColor: camelotColor(song.camelot_code),
                                   color: camelotTextColor(song.camelot_code),
@@ -377,12 +384,12 @@ export function DurationSetDiscoveryModal({
                               </span>
                             )}
                             {song.bpm && (
-                              <span className="text-[11px] text-[#999999]">
+                              <span className="text-xs text-[#a8a8a8]">
                                 {song.bpm.toFixed(0)} BPM
                               </span>
                             )}
                             {song.energy_rating && (
-                              <span className="text-[11px] text-[#666666]">
+                              <span className="text-xs text-[#a8a8a8]">
                                 E{song.energy_rating}
                               </span>
                             )}
@@ -392,8 +399,8 @@ export function DurationSetDiscoveryModal({
                         {/* Transition Connector Card */}
                         {nextSong && transition && (
                           <div className="mx-6 p-2.5 bg-[#0a0a0a] border-l-2 border-emerald-500/80 pl-3 space-y-1 text-xs font-mono">
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-[#a0a0a0] font-medium">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-[#cfcfcf] font-medium">
                                 Transition into #{i + 2} ({nextSong.title})
                               </span>
                               <span className="text-emerald-400 font-bold">
@@ -401,7 +408,7 @@ export function DurationSetDiscoveryModal({
                                 {Math.round(transition.overall_score * 100)}%
                               </span>
                             </div>
-                            <p className="text-[10px] text-[#777777]">
+                            <p className="text-xs text-[#a8a8a8]">
                               {transition.explanation.summary}
                             </p>
                           </div>
@@ -412,7 +419,7 @@ export function DurationSetDiscoveryModal({
                 </div>
               </div>
             ) : (
-              <div className="py-12 text-center text-xs font-mono text-[#666666]">
+              <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
                 Select a candidate sequence from the left to inspect its detailed transitions.
               </div>
             )}

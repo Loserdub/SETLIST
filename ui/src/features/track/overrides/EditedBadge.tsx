@@ -18,7 +18,7 @@ export const EditedBadge: React.FC<EditedBadgeProps> = ({
 }) => {
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/40 rounded-[2px] select-none ${className}`}
+      className={`inline-flex items-center px-1.5 py-0.5 text-xs font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/40 rounded-[2px] select-none ${className}`}
       title={title}
       data-testid={field ? `edited-badge-${field}` : 'edited-badge'}
       aria-label={title}

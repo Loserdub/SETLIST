@@ -1,5 +1,22 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import type { TrackAnalysis } from '../../bindings/TrackAnalysis';
+import { formatTimeMs } from './waveformMath';
+
+export interface MinimapHoverInfo {
+  timeMs: number;
+  pixelX: number;
+  cue?: {
+    letter: string;
+    label: string;
+    colorHex: string;
+  } | null;
+  segment?: {
+    label: string;
+    colorHex: string;
+    energy: number;
+  } | null;
+  isLingering?: boolean;
+}
 
 export interface WaveformMinimapProps {
   analysis: TrackAnalysis;
@@ -34,9 +51,19 @@ export const WaveformMinimap: React.FC<WaveformMinimapProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 44 });
+  const [hoverInfo, setHoverInfo] = useState<MinimapHoverInfo | null>(null);
+  const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDraggingViewportRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartOffsetRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (hoverLeaveTimerRef.current) {
+        clearTimeout(hoverLeaveTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -170,8 +197,20 @@ export const WaveformMinimap: React.FC<WaveformMinimapProps> = ({
       ctx.stroke();
     }
 
+    // 6. Hover guide line
+    if (hoverInfo) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hoverInfo.pixelX, 0);
+      ctx.lineTo(hoverInfo.pixelX, height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     ctx.restore();
-  }, [dimensions, analysis, durationMs, startTimeMs, visibleDurationMs, playheadPositionMs]);
+  }, [dimensions, analysis, durationMs, startTimeMs, visibleDurationMs, playheadPositionMs, hoverInfo]);
 
   useEffect(() => {
     renderMinimap();
@@ -203,6 +242,54 @@ export const WaveformMinimap: React.FC<WaveformMinimapProps> = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      // Cancel lingering countdown
+      if (hoverLeaveTimerRef.current) {
+        clearTimeout(hoverLeaveTimerRef.current);
+        hoverLeaveTimerRef.current = null;
+      }
+
+      const mouseX = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, mouseX / dimensions.width));
+      const hoverTime = ratio * durationMs;
+
+      // Identify nearby cue
+      let matchedCue: MinimapHoverInfo['cue'] = null;
+      let minCueDist = 10;
+      for (const cue of analysis.cue_points) {
+        const cx = (cue.time_ms / durationMs) * dimensions.width;
+        const dist = Math.abs(mouseX - cx);
+        if (dist < minCueDist) {
+          minCueDist = dist;
+          matchedCue = {
+            letter: String.fromCharCode(65 + cue.index),
+            label: cue.label,
+            colorHex: cue.color_hex,
+          };
+        }
+      }
+
+      // Identify active segment
+      const seg = analysis.segments.find(
+        (s) => hoverTime >= s.start_ms && hoverTime <= s.end_ms
+      );
+
+      setHoverInfo({
+        timeMs: hoverTime,
+        pixelX: mouseX,
+        cue: matchedCue,
+        segment: seg
+          ? {
+              label: seg.label,
+              colorHex: SEGMENT_COLORS[seg.label.toLowerCase()] || '#64748b',
+              energy: seg.energy,
+            }
+          : null,
+        isLingering: false,
+      });
+    }
+
     if (!isDraggingViewportRef.current) return;
     const deltaX = e.clientX - dragStartXRef.current;
     const deltaMs = (deltaX / dimensions.width) * durationMs;
@@ -214,14 +301,29 @@ export const WaveformMinimap: React.FC<WaveformMinimapProps> = ({
     isDraggingViewportRef.current = false;
   };
 
+  const handleMouseLeave = () => {
+    isDraggingViewportRef.current = false;
+
+    // Start 2-second hover linger decay (Teenage Engineering hardware style)
+    if (hoverLeaveTimerRef.current) {
+      clearTimeout(hoverLeaveTimerRef.current);
+    }
+    setHoverInfo((prev) => (prev ? { ...prev, isLingering: true } : null));
+
+    hoverLeaveTimerRef.current = setTimeout(() => {
+      setHoverInfo(null);
+      hoverLeaveTimerRef.current = null;
+    }, 2000);
+  };
+
   return (
     <div
       ref={containerRef}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      className={`relative select-none h-10 bg-[#050505] rounded-none overflow-hidden border border-[#242424] cursor-pointer ${className}`}
+      onMouseLeave={handleMouseLeave}
+      className={`relative select-none h-10 bg-[#050505] rounded-none overflow-visible border border-[#242424] cursor-pointer ${className}`}
       data-testid="waveform-minimap"
     >
       <canvas
@@ -229,6 +331,42 @@ export const WaveformMinimap: React.FC<WaveformMinimapProps> = ({
         className="w-full h-full block"
         style={{ width: '100%', height: '100%' }}
       />
+
+      {/* Teenage Engineering Minimap Hover Tooltip (2s linger) */}
+      {hoverInfo && !isDraggingViewportRef.current && (
+        <div
+          className={`absolute -top-7 pointer-events-none transform -translate-x-1/2 z-20 flex flex-col items-center transition-opacity duration-300 ${
+            hoverInfo.isLingering ? 'opacity-90' : 'opacity-100'
+          }`}
+          style={{
+            left: `${Math.max(70, Math.min(dimensions.width - 70, hoverInfo.pixelX))}px`,
+          }}
+          data-testid="minimap-te-tooltip"
+        >
+          <div className="bg-[#0c0c0c]/95 backdrop-blur-sm border border-[#333333] px-2 py-0.5 text-xs font-mono tracking-wide uppercase text-[#ededed] shadow-[0_2px_8px_rgba(0,0,0,0.8)] flex items-center gap-1.5 rounded-none leading-none">
+            <span className="text-[#38bdf8] font-bold">{formatTimeMs(hoverInfo.timeMs)}</span>
+            {hoverInfo.cue ? (
+              <>
+                <span className="text-[#666666]">//</span>
+                <span className="font-bold" style={{ color: hoverInfo.cue.colorHex }}>
+                  CUE {hoverInfo.cue.letter}
+                </span>
+              </>
+            ) : hoverInfo.segment ? (
+              <>
+                <span className="text-[#666666]">//</span>
+                <span className="font-bold text-white">{hoverInfo.segment.label}</span>
+              </>
+            ) : null}
+            {hoverInfo.isLingering && (
+              <span className="text-xs text-[#fbbf24] border border-[#fbbf24]/50 px-1.5 py-0.5 tracking-normal bg-[#ca8a04]/20 rounded-none ml-0.5">
+                2S
+              </span>
+            )}
+          </div>
+          <div className="w-[1px] h-1 bg-[#38bdf8]/60" />
+        </div>
+      )}
     </div>
   );
 };

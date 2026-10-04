@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useDeferredValue } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   useReactTable,
@@ -20,10 +20,17 @@ import { sortTracks } from './sorting';
 import { generateMockTracks } from './mock5000';
 import { DEFAULT_FILTERS, type LibraryFilters, type SortField } from './types';
 import { EditedBadge, isFieldOverridden } from '../track/overrides';
-import { getPlaybackClient } from '../../api/playback';
-import { SPEED_OPTIONS } from '../track/PlaybackBar';
+import { IconArrowUp, IconArrowDown, IconArrowUpDown } from '../../components/icons';
+import { getTrackDisplayTitle, getTrackDisplayArtist } from '../../utils/trackDisplay';
 
 const columnHelper = createColumnHelper<Track>();
+
+const formatDuration = (ms: number): string => {
+  const totalSecs = Math.floor(ms / 1000);
+  const mins = Math.floor(totalSecs / 60);
+  const secs = totalSecs % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+};
 
 export function LibraryView() {
   const {
@@ -39,6 +46,8 @@ export function LibraryView() {
     setlist,
     progress,
     setUseMockBackend,
+    trackTitleOverrides,
+    trackArtistOverrides,
   } = useAppStore();
 
   // Local state for benchmark 5,000 tracks mode
@@ -58,50 +67,15 @@ export function LibraryView() {
   // Sorting state (single column sort for high-performance virtualizer)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
 
-  // Audio Playback Auditioning State
-  const [auditionTrackId, setAuditionTrackId] = useState<string | null>(null);
-  const [auditionState, setAuditionState] = useState<'stopped' | 'playing' | 'paused'>('stopped');
-  const [auditionPositionMs, setAuditionPositionMs] = useState(0);
-  const [auditionDurationMs, setAuditionDurationMs] = useState(0);
-  const [auditionSpeed, setAuditionSpeed] = useState(1.0);
-
-  useEffect(() => {
-    const client = getPlaybackClient();
-    const unsub = client.onPosition((payload) => {
-      setAuditionState(payload.state);
-      setAuditionPositionMs(payload.position_ms);
-      setAuditionDurationMs(payload.duration_ms);
-      if (payload.speed && payload.speed > 0) {
-        setAuditionSpeed(payload.speed);
-      }
-    });
-    return () => {
-      unsub();
-    };
-  }, []);
+  // Audio Playback Auditioning State from Global Store
+  const auditionTrackId = useAppStore((s) => s.auditionTrackId);
+  const auditionState = useAppStore((s) => s.auditionState);
+  const toggleAudition = useAppStore((s) => s.toggleAudition);
 
   const handleToggleAudition = async (trackId: string) => {
-    const client = getPlaybackClient();
-    if (auditionTrackId === trackId && auditionState === 'playing') {
-      await client.pause();
-    } else if (auditionTrackId === trackId && auditionState === 'paused') {
-      await client.play();
-    } else {
-      setAuditionTrackId(trackId);
-      await client.load(trackId);
-      await client.play();
-    }
-  };
-
-  const handleSetAuditionSpeed = async (newSpeed: number) => {
-    setAuditionSpeed(newSpeed);
-    await getPlaybackClient().setSpeed(newSpeed);
-  };
-
-  const handleStopAudition = async () => {
-    await getPlaybackClient().stop();
-    setAuditionTrackId(null);
+    await toggleAudition(trackId);
   };
 
   // Auto-load store tracks once on mount if not yet attempted
@@ -112,9 +86,14 @@ export function LibraryView() {
   }, [isBenchmarkMode, hasLoadedTracks, isLoadingTracks, tracksError, loadTracks]);
 
   // 1. Filter tracks with pure filterTracks function
+  const deferredSearchQuery = useDeferredValue(filters.searchQuery);
+  const effectiveFilters = useMemo(() => {
+    return { ...filters, searchQuery: deferredSearchQuery };
+  }, [filters, deferredSearchQuery]);
+
   const filteredData = useMemo(() => {
-    return filterTracks(activeDataset, filters);
-  }, [activeDataset, filters]);
+    return filterTracks(activeDataset, effectiveFilters);
+  }, [activeDataset, effectiveFilters]);
 
   // 2. Sort tracks with pure sortTracks function
   const sortedData = useMemo(() => {
@@ -128,14 +107,6 @@ export function LibraryView() {
     () => new Set(setlist.map((e) => e.track_id)),
     [setlist]
   );
-
-  // Time formatting helper
-  const formatDuration = (ms: number): string => {
-    const totalSecs = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSecs / 60);
-    const secs = totalSecs % 60;
-    return `${mins}:${String(secs).padStart(2, '0')}`;
-  };
 
   // TanStack Table Column Definitions
   const columns = useMemo(
@@ -178,36 +149,72 @@ export function LibraryView() {
       }),
 
       // Title & Path
-      columnHelper.accessor((row: Track) => row.tags.title ?? 'Untitled', {
-        id: 'title',
-        header: 'Title',
-        cell: (info) => {
-          const track = info.row.original;
-          return (
-            <div className="flex flex-col min-w-0 pr-2">
-              <span className="font-medium text-[#ececec] truncate text-xs leading-tight">
-                {track.tags.title ?? 'Untitled'}
-              </span>
-              <span className="text-[10px] text-[#666666] truncate font-mono">
-                {track.tags.album ?? track.path.split(/[/\\]/).pop()}
-              </span>
-            </div>
-          );
-        },
-        size: 260,
-      }),
+      columnHelper.accessor(
+        (row: Track) => getTrackDisplayTitle(row, trackTitleOverrides[row.id]),
+        {
+          id: 'title',
+          header: 'Title',
+          cell: (info) => {
+            const track = info.row.original;
+            const displayTitle = getTrackDisplayTitle(track, trackTitleOverrides[track.id]);
+            const isCustom = Boolean(trackTitleOverrides[track.id]);
+            const filename = track.path.split(/[/\\]/).pop();
+            const subtext = track.tags.album ?? (track.tags.title ? filename : track.tags.artist ?? filename);
+
+            return (
+              <div className="flex flex-col min-w-0 pr-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="font-medium text-[#ececec] truncate text-xs leading-tight">
+                    {displayTitle}
+                  </span>
+                  {isCustom && (
+                    <span
+                      className="text-xs font-mono px-1.5 py-0.5 bg-[#1c2e3d] text-[#38bdf8] border border-[#234863] shrink-0"
+                      title="Custom in-app title"
+                    >
+                      Custom
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-[#a8a8a8] truncate font-mono">
+                  {subtext}
+                </span>
+              </div>
+            );
+          },
+          size: 260,
+        }
+      ),
 
       // Artist
-      columnHelper.accessor((row: Track) => row.tags.artist ?? 'Unknown Artist', {
-        id: 'artist',
-        header: 'Artist',
-        cell: (info) => (
-          <span className="text-[#a0a0a0] truncate text-xs font-normal pr-2">
-            {info.getValue()}
-          </span>
-        ),
-        size: 180,
-      }),
+      columnHelper.accessor(
+        (row: Track) => getTrackDisplayArtist(row, trackArtistOverrides[row.id]),
+        {
+          id: 'artist',
+          header: 'Artist',
+          cell: (info) => {
+            const track = info.row.original;
+            const displayArtist = getTrackDisplayArtist(track, trackArtistOverrides[track.id]);
+            const isCustom = Boolean(trackArtistOverrides[track.id]);
+            return (
+              <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                <span className="text-[#a8a8a8] truncate text-xs font-normal">
+                  {displayArtist}
+                </span>
+                {isCustom && (
+                  <span
+                    className="text-xs font-mono px-1.5 py-0.5 bg-[#1c2e3d] text-[#38bdf8] border border-[#234863] shrink-0"
+                    title="Custom in-app artist"
+                  >
+                    Custom
+                  </span>
+                )}
+              </div>
+            );
+          },
+          size: 180,
+        }
+      ),
 
       // BPM
       columnHelper.accessor((row: Track) => row.analysis?.rhythm.grid.bpm ?? 0, {
@@ -217,7 +224,7 @@ export function LibraryView() {
           const bpm = info.getValue();
           const isOverridden = isFieldOverridden(info.row.original, 'bpm');
           return (
-            <span className="font-mono text-xs tabular-nums text-[#d0d0d0] inline-flex items-center gap-1">
+            <span className="font-mono text-xs tabular-nums text-[#cfcfcf] inline-flex items-center gap-1">
               <span>{bpm > 0 ? bpm.toFixed(1) : '—'}</span>
               {isOverridden && <EditedBadge field="bpm" title="BPM analysis overridden" />}
             </span>
@@ -233,7 +240,7 @@ export function LibraryView() {
         cell: (info) => {
           const keyStr = info.getValue();
           if (!keyStr) {
-            return <span className="text-[#555555] font-mono text-[11px]">—</span>;
+            return <span className="text-[#a8a8a8] font-mono text-xs">—</span>;
           }
           const isOverridden = isFieldOverridden(info.row.original, 'key_camelot');
           const bg = camelotColor(keyStr);
@@ -241,7 +248,7 @@ export function LibraryView() {
           return (
             <span className="inline-flex items-center gap-1">
               <span
-                className="inline-flex items-center justify-center font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-[2px] tracking-tight"
+                className="inline-flex items-center justify-center font-mono font-bold text-xs px-1.5 py-0.5 rounded-[2px] tracking-tight"
                 style={{ backgroundColor: bg, color: fg }}
               >
                 {keyStr}
@@ -261,7 +268,7 @@ export function LibraryView() {
           const energy = info.getValue();
           return (
             <div className="flex items-center gap-1.5">
-              <span className="font-mono text-[11px] text-[#888888] w-3 tabular-nums">
+              <span className="font-mono text-xs text-[#a8a8a8] w-3 tabular-nums">
                 {energy > 0 ? energy : '—'}
               </span>
               <div className="w-10 bg-[#1c1c1c] h-1 overflow-hidden">
@@ -287,7 +294,7 @@ export function LibraryView() {
         cell: (info) => {
           const val = info.getValue();
           return (
-            <span className="font-mono text-[11px] text-[#777777] tabular-nums">
+            <span className="font-mono text-xs text-[#a8a8a8] tabular-nums">
               {val > -90 ? `${val.toFixed(1)} dB` : '—'}
             </span>
           );
@@ -300,7 +307,7 @@ export function LibraryView() {
         id: 'duration',
         header: 'Duration',
         cell: (info) => (
-          <span className="font-mono text-[11px] text-[#777777] tabular-nums">
+          <span className="font-mono text-xs text-[#a8a8a8] tabular-nums">
             {formatDuration(info.getValue())}
           </span>
         ),
@@ -324,25 +331,25 @@ export function LibraryView() {
               <button
                 type="button"
                 onClick={() => void handleToggleAudition(track.id)}
-                className={`px-2 py-0.5 text-[10px] font-mono tracking-wider uppercase border transition-colors cursor-pointer rounded-none flex items-center gap-1 ${
+                className={`px-2 py-0.5 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer rounded-none flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
                   isAuditioning
                     ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
-                    : 'border-[#2b2b2b] bg-[#141414] hover:bg-[#202020] text-[#a1a1aa] hover:text-white'
+                    : 'border-[#2b2b2b] bg-[#141414] hover:bg-[#202020] text-[#cfcfcf] hover:text-white'
                 }`}
                 title={isAuditioning ? 'Pause audition' : 'Audition track audio'}
                 data-testid={`audition-btn-${track.id}`}
               >
                 <span>{isAuditioning ? '⏸' : '▶'}</span>
-                <span>{isAuditioning ? 'PAUSE' : 'AUDITION'}</span>
+                <span>{isAuditioning ? 'AUDITIONING' : 'AUDITION'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => void addToSetlist(track.id)}
                 disabled={isInSetlist}
-                className={`px-2 py-0.5 text-[10px] font-mono tracking-wider uppercase border transition-colors cursor-pointer rounded-none ${
+                className={`px-2 py-0.5 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
                   isInSetlist
-                    ? 'border-[#222222] bg-[#111111] text-[#555555] cursor-default'
-                    : 'border-[#333333] bg-[#161616] hover:bg-[#222222] text-[#d4d4d4]'
+                    ? 'border-[#222222] bg-[#111111] text-[#888888] cursor-default'
+                    : 'border-[#333333] bg-[#161616] hover:bg-[#222222] text-[#cfcfcf]'
                 }`}
                 title={isInSetlist ? 'Already in active setlist' : 'Add track to setlist'}
               >
@@ -354,7 +361,14 @@ export function LibraryView() {
         size: 165,
       }),
     ],
-    [setlistTrackIds, addToSetlist, auditionTrackId, auditionState]
+    [
+      setlistTrackIds,
+      addToSetlist,
+      auditionTrackId,
+      auditionState,
+      trackTitleOverrides,
+      trackArtistOverrides,
+    ]
   );
 
   // TanStack Table Instance
@@ -461,6 +475,49 @@ export function LibraryView() {
     setRoute('track');
   };
 
+  // Keyboard navigation handler for rapid DJ curation
+  const handleTableKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'SELECT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (rows.length === 0) return;
+      const nextIndex =
+        focusedRowIndex === null ? 0 : Math.min(rows.length - 1, focusedRowIndex + 1);
+      setFocusedRowIndex(nextIndex);
+      rowVirtualizer.scrollToIndex(nextIndex, { align: 'auto' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (rows.length === 0) return;
+      const prevIndex =
+        focusedRowIndex === null ? 0 : Math.max(0, focusedRowIndex - 1);
+      setFocusedRowIndex(prevIndex);
+      rowVirtualizer.scrollToIndex(prevIndex, { align: 'auto' });
+    } else if (e.key === ' ' || e.code === 'Space') {
+      e.preventDefault();
+      if (focusedRowIndex !== null && rows[focusedRowIndex]) {
+        void handleToggleAudition(rows[focusedRowIndex].original.id);
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (focusedRowIndex !== null && rows[focusedRowIndex]) {
+        const trackId = rows[focusedRowIndex].original.id;
+        if (!setlistTrackIds.has(trackId)) {
+          void addToSetlist(trackId);
+        }
+      }
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#080808] text-[#e2e2e2]">
       {/* ── Top Header & Folder Scanner ── */}
@@ -471,21 +528,21 @@ export function LibraryView() {
               <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-[#f0f0f0]">
                 Music Library
               </h2>
-              <span className="text-[10px] font-mono px-2 py-0.5 border border-[#222222] bg-[#111111] text-[#777777]">
+              <span className="text-xs font-mono px-2 py-0.5 border border-[#222222] bg-[#111111] text-[#a8a8a8]">
                 {rows.length.toLocaleString()} {rows.length === 1 ? 'track' : 'tracks'}
                 {rows.length !== activeDataset.length && (
-                  <span className="text-[#555555] ml-1">
+                  <span className="text-[#a8a8a8] ml-1">
                     (of {activeDataset.length.toLocaleString()})
                   </span>
                 )}
               </span>
               {isBenchmarkMode && (
-                <span className="text-[10px] font-mono px-2 py-0.5 border border-[#404040] bg-[#181818] text-[#cccccc] uppercase tracking-wide">
+                <span className="text-xs font-mono px-2 py-0.5 border border-[#404040] bg-[#181818] text-[#cfcfcf] uppercase tracking-wide">
                   5,000 Tracks Benchmark
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-[#666666] font-mono mt-0.5">
+            <p className="text-xs text-[#a8a8a8] font-mono mt-0.5">
               Deterministic DSP audio analysis repository • 24-key harmonic Camelot indexing
             </p>
           </div>
@@ -496,7 +553,7 @@ export function LibraryView() {
             <button
               type="button"
               onClick={toggleBenchmarkMode}
-              className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#2b2b2b] bg-[#121212] hover:bg-[#1a1a1a] text-[#b8b8b8] transition-colors cursor-pointer rounded-none"
+              className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#2b2b2b] bg-[#121212] hover:bg-[#1a1a1a] text-[#cfcfcf] hover:text-white transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
             >
               {isBenchmarkMode ? 'Exit 5K Benchmark' : 'Load 5K Mock Tracks'}
             </button>
@@ -505,7 +562,7 @@ export function LibraryView() {
             <button
               type="button"
               onClick={() => void handleChooseFolder()}
-              className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#2b2b2b] bg-[#121212] hover:bg-[#1a1a1a] text-[#b8b8b8] transition-colors cursor-pointer rounded-none"
+              className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#2b2b2b] bg-[#121212] hover:bg-[#1a1a1a] text-[#cfcfcf] hover:text-white transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
             >
               Choose Folder
             </button>
@@ -517,13 +574,13 @@ export function LibraryView() {
                 value={folderPathInput}
                 onChange={(e) => setFolderPathInput(e.target.value)}
                 placeholder="Choose folder or paste path..."
-                className="bg-transparent px-2.5 py-1 text-xs font-mono text-[#d0d0d0] focus:outline-none w-52 placeholder-[#555555]"
+                className="bg-transparent px-2.5 py-1 text-xs font-mono text-[#d0d0d0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] w-52 placeholder-[#888888]"
               />
               <button
                 type="button"
                 onClick={() => void scanFolder(folderPathInput)}
                 disabled={isLoadingTracks || !folderPathInput.trim()}
-                className="px-3 py-1 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 border-l border-[#262626] text-[#e0e0e0] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                className="px-3 py-1 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 border-l border-[#262626] text-[#e0e0e0] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
               >
                 {isLoadingTracks ? 'Scanning...' : 'Scan'}
               </button>
@@ -533,12 +590,12 @@ export function LibraryView() {
 
         {/* Live Progress Bar */}
         {progress && (
-          <div className="p-2 bg-[#0e0e0e] border border-[#242424] space-y-1.5">
+          <div className="p-2 bg-[#0e0e0e] border border-[#242424] space-y-1.5" aria-live="polite">
             <div className="flex items-center justify-between text-xs font-mono">
-              <span className="text-[#cccccc] uppercase tracking-wide">
+              <span className="text-[#a1a1aa] uppercase tracking-wide">
                 {progress.stage}...
               </span>
-              <span className="text-[#666666]">
+              <span className="text-[#a8a8a8]">
                 {progress.current} / {progress.total} (
                 {Math.round((progress.current / (progress.total || 1)) * 100)}%)
               </span>
@@ -552,7 +609,7 @@ export function LibraryView() {
               />
             </div>
             {progress.message && (
-              <p className="text-[10px] font-mono text-[#666666] truncate">{progress.message}</p>
+              <p className="text-xs font-mono text-[#a8a8a8] truncate">{progress.message}</p>
             )}
           </div>
         )}
@@ -568,13 +625,13 @@ export function LibraryView() {
                 setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
               }
               placeholder="Search title, artist, album, key..."
-              className="w-full px-2.5 py-1 bg-[#0e0e0e] border border-[#222222] text-[#d0d0d0] placeholder-[#555555] text-xs font-mono focus:outline-none focus:border-[#404040]"
+              className="w-full px-2.5 py-1 bg-[#0e0e0e] border border-[#222222] text-[#d0d0d0] placeholder-[#888888] text-xs font-mono focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8]"
             />
           </div>
 
           {/* BPM Filter */}
           <div className="flex items-center gap-1 bg-[#0e0e0e] border border-[#222222] px-2 py-1">
-            <span className="text-[#666666] uppercase text-[10px]">BPM:</span>
+            <span className="text-[#a8a8a8] uppercase text-xs">BPM:</span>
             <input
               type="number"
               placeholder="Min"
@@ -585,9 +642,9 @@ export function LibraryView() {
                   minBpm: e.target.value ? parseFloat(e.target.value) : null,
                 }))
               }
-              className="w-12 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none"
+              className="w-12 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8]"
             />
-            <span className="text-[#444444]">-</span>
+            <span className="text-[#666666]">-</span>
             <input
               type="number"
               placeholder="Max"
@@ -598,13 +655,13 @@ export function LibraryView() {
                   maxBpm: e.target.value ? parseFloat(e.target.value) : null,
                 }))
               }
-              className="w-12 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none"
+              className="w-12 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8]"
             />
           </div>
 
           {/* Camelot Key Filter */}
           <div className="flex items-center gap-1.5 bg-[#0e0e0e] border border-[#222222] px-2 py-1">
-            <span className="text-[#666666] uppercase text-[10px]">Key:</span>
+            <span className="text-[#a8a8a8] uppercase text-xs">Key:</span>
             <select
               value={filters.selectedKey ?? ''}
               onChange={(e) =>
@@ -614,7 +671,7 @@ export function LibraryView() {
                 }))
               }
               aria-label="Filter by Camelot Key"
-              className="bg-[#090909] border border-[#1a1a1a] text-xs text-[#d0d0d0] focus:outline-none font-mono cursor-pointer"
+              className="bg-[#090909] border border-[#1a1a1a] text-xs text-[#d0d0d0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8] font-mono cursor-pointer"
             >
               <option value="">All Keys</option>
               {ALL_CAMELOT_KEYS.map((k) => (
@@ -625,7 +682,7 @@ export function LibraryView() {
             </select>
 
             {filters.selectedKey && (
-              <label className="flex items-center gap-1 cursor-pointer select-none text-[#888888] ml-1">
+              <label className="flex items-center gap-1 cursor-pointer select-none text-[#a1a1aa] ml-1">
                 <input
                   type="checkbox"
                   checked={filters.includeCompatibleKeys}
@@ -635,9 +692,9 @@ export function LibraryView() {
                       includeCompatibleKeys: e.target.checked,
                     }))
                   }
-                  className="rounded-none border-[#333333] bg-[#111111] accent-[#888888] cursor-pointer w-3 h-3"
+                  className="rounded-none border-[#333333] bg-[#111111] accent-[#888888] cursor-pointer w-3 h-3 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
                 />
-                <span className="text-[10px] text-[#666666]">
+                <span className="text-xs text-[#a8a8a8]">
                   Harmonic (±1)
                 </span>
               </label>
@@ -646,7 +703,7 @@ export function LibraryView() {
 
           {/* Energy Filter */}
           <div className="flex items-center gap-1 bg-[#0e0e0e] border border-[#222222] px-2 py-1">
-            <span className="text-[#666666] uppercase text-[10px]">Energy:</span>
+            <span className="text-[#a8a8a8] uppercase text-xs">Energy:</span>
             <input
               type="number"
               min="1"
@@ -659,9 +716,9 @@ export function LibraryView() {
                   minEnergy: e.target.value ? parseInt(e.target.value, 10) : null,
                 }))
               }
-              className="w-8 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none"
+              className="w-8 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8]"
             />
-            <span className="text-[#444444]">-</span>
+            <span className="text-[#666666]">-</span>
             <input
               type="number"
               min="1"
@@ -674,7 +731,7 @@ export function LibraryView() {
                   maxEnergy: e.target.value ? parseInt(e.target.value, 10) : null,
                 }))
               }
-              className="w-8 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none"
+              className="w-8 bg-[#090909] border border-[#1a1a1a] text-center font-mono text-xs text-[#d0d0d0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8]"
             />
           </div>
 
@@ -688,7 +745,7 @@ export function LibraryView() {
             <button
               type="button"
               onClick={resetFilters}
-              className="text-xs font-mono text-[#777777] hover:text-[#cccccc] underline transition-colors cursor-pointer px-1"
+              className="text-xs font-mono text-[#a1a1aa] hover:text-[#ffffff] underline transition-colors cursor-pointer px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
             >
               Reset Filters
             </button>
@@ -704,7 +761,7 @@ export function LibraryView() {
                 type="button"
                 onClick={() => void handleAddSelectedToSetlist()}
                 disabled={isAddingBatch}
-                className="px-2.5 py-1 bg-[#181818] hover:bg-[#222222] disabled:opacity-50 text-[#f0f0f0] font-mono text-xs uppercase border border-[#333333] transition-colors cursor-pointer"
+                className="px-2.5 py-1 bg-[#181818] hover:bg-[#222222] disabled:opacity-50 text-[#f0f0f0] font-mono text-xs uppercase border border-[#333333] transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               >
                 Add to Setlist
               </button>
@@ -717,7 +774,11 @@ export function LibraryView() {
       <div
         ref={tableContainerRef}
         data-testid="virtual-table-container"
-        className="flex-1 overflow-y-auto relative focus:outline-none"
+        tabIndex={0}
+        onKeyDown={handleTableKeyDown}
+        className="flex-1 overflow-y-auto relative focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+        role="region"
+        aria-label="Track list"
       >
         {isLoadingTracks && activeDataset.length === 0 ? (
           <div
@@ -730,7 +791,7 @@ export function LibraryView() {
                 ? `${progress.stage.toUpperCase()}: ${progress.message ?? 'Analyzing tracks...'}`
                 : 'Loading Library...'}
             </h3>
-            <p className="text-[11px] font-mono text-[#666666] mt-1 max-w-sm">
+            <p className="text-xs font-mono text-[#a8a8a8] mt-1 max-w-sm">
               Connecting to local SQLite database and reading audio analysis metadata.
             </p>
           </div>
@@ -739,7 +800,7 @@ export function LibraryView() {
             <h3 className="text-sm font-mono font-bold tracking-widest text-[#f0f0f0] uppercase">
               Your library is empty
             </h3>
-            <p className="text-xs font-mono text-[#777777] max-w-md mt-2 leading-relaxed">
+            <p className="text-xs font-mono text-[#a8a8a8] max-w-md mt-2 leading-relaxed">
               DJ Set Assistant is a local-first desktop co-pilot. Your audio files are strictly read-only and never modified. Scan a music folder to extract tempo, Camelot keys, energy ratings, and cue points using pure CPU Rust DSP.
             </p>
 
@@ -751,21 +812,21 @@ export function LibraryView() {
                 onChange={(e) => setFolderPathInput(e.target.value)}
                 placeholder="C:/Music or /path/to/tracks"
                 aria-label="Music folder path"
-                className="flex-1 w-full px-3 py-1.5 bg-[#0e0e0e] border border-[#262626] text-xs font-mono text-[#d0d0d0] focus:outline-none focus:border-[#444444] placeholder-[#555555]"
+                className="flex-1 w-full px-3 py-1.5 bg-[#0e0e0e] border border-[#262626] text-xs font-mono text-[#d0d0d0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] placeholder-[#888888]"
               />
               <button
                 type="button"
                 onClick={() => void scanFolder(folderPathInput)}
                 disabled={isLoadingTracks}
                 aria-label="Scan Folder"
-                className="w-full sm:w-auto px-4 py-1.5 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 border border-[#333333] text-[#e0e0e0] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                className="w-full sm:w-auto px-4 py-1.5 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 border border-[#333333] text-[#e0e0e0] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               >
                 {isLoadingTracks ? 'Scanning...' : 'Scan Folder'}
               </button>
             </div>
 
             {/* Quick Demo Mode */}
-            <div className="mt-4 flex items-center gap-2 text-xs font-mono text-[#666666]">
+            <div className="mt-4 flex items-center gap-2 text-xs font-mono text-[#a8a8a8]">
               <span>Or explore features immediately:</span>
               <button
                 type="button"
@@ -773,7 +834,7 @@ export function LibraryView() {
                   setUseMockBackend(true);
                   void loadTracks();
                 }}
-                className="text-[#aaaaaa] hover:text-white underline cursor-pointer"
+                className="text-[#cfcfcf] hover:text-white underline cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               >
                 Load Demo Library (40 Tracks)
               </button>
@@ -785,7 +846,7 @@ export function LibraryView() {
                 <div className="text-[#d0d0d0] font-semibold text-xs">
                   Local & Read-Only
                 </div>
-                <p className="text-[10px] text-[#666666] mt-1 leading-snug">
+                <p className="text-xs text-[#a8a8a8] mt-1 leading-snug">
                   Zero cloud telemetry. Audio files are strictly read-only.
                 </p>
               </div>
@@ -794,7 +855,7 @@ export function LibraryView() {
                 <div className="text-[#d0d0d0] font-semibold text-xs">
                   Pure Rust DSP
                 </div>
-                <p className="text-[10px] text-[#666666] mt-1 leading-snug">
+                <p className="text-xs text-[#a8a8a8] mt-1 leading-snug">
                   Deterministic analysis: beat tracking, Camelot keys, energy.
                 </p>
               </div>
@@ -803,7 +864,7 @@ export function LibraryView() {
                 <div className="text-[#d0d0d0] font-semibold text-xs">
                   Hardware Ready
                 </div>
-                <p className="text-[10px] text-[#666666] mt-1 leading-snug">
+                <p className="text-xs text-[#a8a8a8] mt-1 leading-snug">
                   Exports to Rekordbox XML, M3U8, and markdown/CSV set sheets.
                 </p>
               </div>
@@ -814,13 +875,13 @@ export function LibraryView() {
             <h3 className="text-xs font-mono uppercase tracking-wider text-[#cccccc]">
               No matching tracks
             </h3>
-            <p className="text-[11px] font-mono text-[#666666] max-w-sm mt-1 mb-4">
+            <p className="text-xs font-mono text-[#a8a8a8] max-w-sm mt-1 mb-4">
               Adjust search query, BPM range, or Camelot key filter.
             </p>
             <button
               type="button"
               onClick={resetFilters}
-              className="px-3 py-1 bg-[#161616] hover:bg-[#202020] border border-[#2e2e2e] text-[#cccccc] text-xs font-mono uppercase transition-colors cursor-pointer rounded-none"
+              className="px-3 py-1 bg-[#161616] hover:bg-[#202020] border border-[#2e2e2e] text-[#cccccc] text-xs font-mono uppercase transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
             >
               Clear Filters
             </button>
@@ -840,8 +901,8 @@ export function LibraryView() {
                         key={header.id}
                         style={{ width: header.getSize() }}
                         onClick={header.column.getToggleSortingHandler()}
-                        className={`px-3 py-1.5 text-[10px] font-mono font-medium uppercase tracking-wider text-[#666666] ${
-                          canSort ? 'cursor-pointer hover:text-[#d0d0d0] select-none' : ''
+                        className={`px-3 py-1.5 text-xs font-mono font-medium uppercase tracking-wider text-[#cfcfcf] ${
+                          canSort ? 'cursor-pointer hover:text-white select-none' : ''
                         }`}
                       >
                         <div className="flex items-center gap-1.5">
@@ -850,12 +911,14 @@ export function LibraryView() {
                             header.getContext()
                           )}
                           {canSort && (
-                            <span className="text-[9px] text-[#555555] font-mono">
-                              {sortDirection === 'asc'
-                                ? '▲'
-                                : sortDirection === 'desc'
-                                ? '▼'
-                                : '⇅'}
+                            <span className="text-xs text-[#a8a8a8] font-mono flex items-center">
+                              {sortDirection === 'asc' ? (
+                                <IconArrowUp size={11} className="text-[#38bdf8]" />
+                              ) : sortDirection === 'desc' ? (
+                                <IconArrowDown size={11} className="text-[#38bdf8]" />
+                              ) : (
+                                <IconArrowUpDown size={11} className="text-[#888888]" />
+                              )}
                             </span>
                           )}
                         </div>
@@ -876,14 +939,24 @@ export function LibraryView() {
 
               {itemsToRender.map(({ row, index }) => {
                 const isSelected = row.getIsSelected();
+                const isFocused = focusedRowIndex === index;
 
                 return (
                   <tr
                     key={row.id}
                     data-index={index}
-                    onClick={() => handleRowClick(row.original.id)}
-                    className={`h-[52px] border-b border-[#141414] transition-colors cursor-pointer ${
-                      isSelected
+                    tabIndex={0}
+                    role="row"
+                    aria-selected={isFocused || isSelected}
+                    onClick={() => {
+                      setFocusedRowIndex(index);
+                      handleRowClick(row.original.id);
+                    }}
+                    onFocus={() => setFocusedRowIndex(index)}
+                    className={`h-[52px] border-b border-[#141414] transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-inset ${
+                      isFocused
+                        ? 'bg-[#181818] border-l-2 border-l-[#38bdf8] ring-1 ring-inset ring-[#38bdf8]/30'
+                        : isSelected
                         ? 'bg-[#161616] border-l-2 border-l-[#d0d0d0]'
                         : 'hover:bg-[#111111]'
                     }`}
@@ -892,7 +965,7 @@ export function LibraryView() {
                       <td
                         key={cell.id}
                         style={{ width: cell.column.getSize() }}
-                        className="px-3 py-1.5 text-xs text-[#b8b8b8] align-middle"
+                        className="px-3 py-1.5 text-xs text-[#cfcfcf] align-middle"
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
@@ -911,79 +984,10 @@ export function LibraryView() {
         )}
       </div>
 
-      {/* Quick Audition Player Bar */}
-      {auditionTrackId && (
-        <div
-          className="px-4 py-2 border-t border-[#1c1c1c] bg-[#0c0c0c] flex flex-wrap items-center justify-between gap-3 text-xs font-mono"
-          data-testid="library-audition-bar"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#38bdf8] bg-[#142332] border border-[#1e3a5f] px-2 py-0.5">
-              AUDITIONING
-            </span>
-            <div className="flex items-center gap-1.5 text-white font-medium truncate max-w-sm">
-              <span className="truncate">
-                {activeDataset.find((t) => t.id === auditionTrackId)?.tags.title ?? 'Untitled Track'}
-              </span>
-              <span className="text-[#666666]">by</span>
-              <span className="text-[#a1a1aa] truncate">
-                {activeDataset.find((t) => t.id === auditionTrackId)?.tags.artist ?? 'Unknown Artist'}
-              </span>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            {/* Play/Pause Button */}
-            <button
-              type="button"
-              onClick={() => void handleToggleAudition(auditionTrackId)}
-              className="px-3 py-1 bg-[#1a1a1a] hover:bg-[#252525] text-white border border-[#333333] text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer"
-            >
-              {auditionState === 'playing' ? '⏸ Pause' : '▶ Play'}
-            </button>
-
-            {/* Time readout */}
-            <div className="text-[11px] text-[#888888] tabular-nums font-mono">
-              {formatDuration(auditionPositionMs)} / {formatDuration(auditionDurationMs)}
-            </div>
-
-            {/* Speed Presets */}
-            <div className="flex items-center gap-0.5 bg-[#050505] p-0.5 border border-[#222222]">
-              <span className="text-[9px] text-[#666666] px-1 uppercase hidden sm:inline">Speed:</span>
-              {SPEED_OPTIONS.map((rate) => {
-                const isActive = Math.abs(auditionSpeed - rate) < 0.01;
-                return (
-                  <button
-                    key={rate}
-                    type="button"
-                    onClick={() => void handleSetAuditionSpeed(rate)}
-                    className={`px-1.5 py-0.5 text-[9px] font-mono cursor-pointer border rounded-none ${
-                      isActive
-                        ? 'bg-[#1e3a5f] text-[#38bdf8] border-[#38bdf8] font-bold'
-                        : 'bg-[#101010] hover:bg-[#1a1a1a] text-[#888888] border-transparent'
-                    }`}
-                  >
-                    {rate}x
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Stop audition */}
-            <button
-              type="button"
-              onClick={() => void handleStopAudition()}
-              className="px-2 py-1 bg-[#181818] hover:bg-[#242424] text-[#888888] hover:text-white border border-[#2e2e2e] text-[10px] uppercase font-mono transition-colors cursor-pointer"
-              title="Stop audition"
-            >
-              ✕ Stop
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Footer Status Bar */}
-      <footer className="px-5 py-2 border-t border-[#1a1a1a] bg-[#0a0a0a] flex items-center justify-between text-[10px] text-[#555555] font-mono">
+      <footer className="px-5 py-2 border-t border-[#1a1a1a] bg-[#0a0a0a] flex items-center justify-between text-xs text-[#a8a8a8] font-mono">
         <div>
           TRACKS: {rows.length.toLocaleString()} | WINDOW: {virtualRows.length} RENDERED
         </div>

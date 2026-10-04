@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import type { Song } from '../../bindings/Song';
 import type { SongRelationship } from '../../bindings/SongRelationship';
 import type { CatalogSummaryStats } from '../../bindings/CatalogSummaryStats';
@@ -12,6 +12,7 @@ import { DurationSetDiscoveryModal } from './DurationSetDiscoveryModal';
 import { CatalogClustersView } from './CatalogClustersView';
 import { CatalogMatrixView } from './CatalogMatrixView';
 import { DEFAULT_CATALOG_FILTERS, type CatalogFilterState, type DiscoveryTab } from './types';
+import { IconSearch } from '../../components/icons';
 
 export function CatalogExplorerView() {
   const { tracks, useMockBackend, addToSetlist, addToast, hasLoadedTracks, loadTracks } =
@@ -67,10 +68,12 @@ export function CatalogExplorerView() {
   }, [songs.length, useMockBackend]);
 
   // Filtered & Sorted Songs List
+  const deferredSearchQuery = useDeferredValue(filters.searchQuery);
+
   const filteredSongs = useMemo(() => {
     return songs.filter((song) => {
-      if (filters.searchQuery.trim()) {
-        const q = filters.searchQuery.toLowerCase();
+      if (deferredSearchQuery.trim()) {
+        const q = deferredSearchQuery.toLowerCase();
         const matchesTitle = song.title.toLowerCase().includes(q);
         const matchesArtist = song.artist.toLowerCase().includes(q);
         const matchesTags = song.tags.some((t) => t.toLowerCase().includes(q));
@@ -92,7 +95,7 @@ export function CatalogExplorerView() {
 
       return true;
     });
-  }, [songs, filters]);
+  }, [songs, filters, deferredSearchQuery]);
 
   const handleOpenSongDrawer = (song: Song) => {
     setInspectedSong(song);
@@ -143,11 +146,11 @@ export function CatalogExplorerView() {
               <h1 className="text-sm font-mono font-bold tracking-wider text-white uppercase">
                 CATALOG EXPLORER &amp; SET DISCOVERY
               </h1>
-              <span className="px-1.5 py-0.5 text-[9px] font-mono bg-[#1a1a1a] text-[#888888] border border-[#2a2a2a] uppercase">
+              <span className="px-1.5 py-0.5 text-xs font-mono bg-[#1a1a1a] text-[#a8a8a8] border border-[#2a2a2a] uppercase">
                 Relational Intelligence Layer
               </span>
             </div>
-            <p className="text-xs text-[#777777] font-normal pt-0.5">
+            <p className="text-xs text-[#a8a8a8] font-normal pt-0.5">
               Discover which songs naturally connect, bridge disparate genres, or build cohesive
               sets.
             </p>
@@ -158,7 +161,7 @@ export function CatalogExplorerView() {
             <button
               type="button"
               onClick={() => handleOpenBridge()}
-              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#d0d0d0] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer"
+              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#cfcfcf] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               data-testid="btn-find-bridges"
             >
               [Find Bridges]
@@ -166,7 +169,7 @@ export function CatalogExplorerView() {
             <button
               type="button"
               onClick={() => handleOpenPath()}
-              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#d0d0d0] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer"
+              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#cfcfcf] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               data-testid="btn-build-path"
             >
               [Build Path]
@@ -174,7 +177,7 @@ export function CatalogExplorerView() {
             <button
               type="button"
               onClick={() => setDurationModalOpen(true)}
-              className="px-3 py-1.5 bg-[#1a2d1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase transition-colors cursor-pointer"
+              className="px-3 py-1.5 bg-[#1a2d1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               data-testid="btn-duration-sets"
             >
               [Discover Sets by Duration]
@@ -185,29 +188,29 @@ export function CatalogExplorerView() {
         {/* Catalog Health Statistics Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-xs font-mono">
           <div className="bg-[#121212] p-2 border border-[#1e1e1e]">
-            <span className="text-[10px] text-[#666666] uppercase block">TOTAL CATALOG</span>
+            <span className="text-xs text-[#a8a8a8] uppercase block">TOTAL CATALOG</span>
             <span className="text-sm font-bold text-[#e0e0e0]">{songs.length} Tracks</span>
           </div>
           <div className="bg-[#121212] p-2 border border-[#1e1e1e]">
-            <span className="text-[10px] text-[#666666] uppercase block">STRONG CONNECTIONS</span>
+            <span className="text-xs text-[#a8a8a8] uppercase block">STRONG CONNECTIONS</span>
             <span className="text-sm font-bold text-emerald-400">
               {stats ? `${stats.strong_transitions_count}` : '—'} Pairings
             </span>
           </div>
           <div className="bg-[#121212] p-2 border border-[#1e1e1e]">
-            <span className="text-[10px] text-[#666666] uppercase block">NATURAL CLUSTERS</span>
+            <span className="text-xs text-[#a8a8a8] uppercase block">NATURAL CLUSTERS</span>
             <span className="text-sm font-bold text-teal-300">
               {stats ? `${stats.cluster_count} Groups` : '—'}
             </span>
           </div>
           <div className="bg-[#121212] p-2 border border-[#1e1e1e]">
-            <span className="text-[10px] text-[#666666] uppercase block">AVG COMPATIBILITY</span>
+            <span className="text-xs text-[#a8a8a8] uppercase block">AVG COMPATIBILITY</span>
             <span className="text-sm font-bold text-amber-300">
               {stats ? `${Math.round(stats.average_compatibility * 100)}%` : '—'}
             </span>
           </div>
           <div className="bg-[#121212] p-2 border border-[#1e1e1e]">
-            <span className="text-[10px] text-[#666666] uppercase block">CATALOG OUTLIERS</span>
+            <span className="text-xs text-[#a8a8a8] uppercase block">CATALOG OUTLIERS</span>
             <span className="text-sm font-bold text-[#e09999]">
               {stats ? `${stats.outlier_count} Tracks` : '—'}
             </span>
@@ -220,10 +223,10 @@ export function CatalogExplorerView() {
         <button
           type="button"
           onClick={() => setActiveTab('catalog')}
-          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer ${
+          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 ${
             activeTab === 'catalog'
               ? 'border-[#e0e0e0] text-white font-semibold'
-              : 'border-transparent text-[#777777] hover:text-[#cccccc]'
+              : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
           }`}
           data-testid="tab-catalog-songs"
         >
@@ -232,10 +235,10 @@ export function CatalogExplorerView() {
         <button
           type="button"
           onClick={() => setActiveTab('clusters')}
-          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer ${
+          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 ${
             activeTab === 'clusters'
               ? 'border-[#e0e0e0] text-white font-semibold'
-              : 'border-transparent text-[#777777] hover:text-[#cccccc]'
+              : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
           }`}
           data-testid="tab-clusters"
         >
@@ -244,10 +247,10 @@ export function CatalogExplorerView() {
         <button
           type="button"
           onClick={() => setActiveTab('matrix')}
-          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer ${
+          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 ${
             activeTab === 'matrix'
               ? 'border-[#e0e0e0] text-white font-semibold'
-              : 'border-transparent text-[#777777] hover:text-[#cccccc]'
+              : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
           }`}
           data-testid="tab-matrix"
         >
@@ -255,13 +258,15 @@ export function CatalogExplorerView() {
         </button>
       </div>
 
-      {/* Main Tab Views */}
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Main Tab Views & Side-by-Side Split Rail */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 min-w-0">
         {activeTab === 'catalog' && (
           <div className="space-y-4">
             {/* Search & Filter Bar */}
             <div className="p-3 bg-[#111111] border border-[#222222] flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-              <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+              <div className="flex items-center gap-2 flex-1 min-w-[240px] bg-[#0a0a0a] border border-[#2a2a2a] px-2 py-1.5 focus-within:ring-1 focus-within:ring-[#38bdf8] focus-within:border-[#38bdf8]">
+                <IconSearch size={14} className="text-[#71717a] shrink-0" />
                 <input
                   type="text"
                   placeholder="Search catalog by title, artist, tags..."
@@ -269,14 +274,14 @@ export function CatalogExplorerView() {
                   onChange={(e) =>
                     setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))
                   }
-                  className="w-full bg-[#0a0a0a] border border-[#2a2a2a] p-1.5 text-xs text-white outline-none"
+                  className="w-full bg-transparent text-xs text-white outline-none"
                   data-testid="catalog-search-input"
                 />
               </div>
 
               {/* Camelot Key Filter */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[#666666] uppercase">KEY:</span>
+                <span className="text-xs text-[#a8a8a8] uppercase">KEY:</span>
                 <select
                   aria-label="Filter catalog by Camelot key"
                   value={filters.selectedKey ?? ''}
@@ -286,7 +291,7 @@ export function CatalogExplorerView() {
                       selectedKey: e.target.value || null,
                     }))
                   }
-                  className="bg-[#0a0a0a] border border-[#2a2a2a] p-1.5 text-xs text-[#b0b0b0] outline-none cursor-pointer"
+                  className="bg-[#0a0a0a] border border-[#2a2a2a] p-1.5 text-xs text-[#cfcfcf] outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8] cursor-pointer"
                 >
                   <option value="">(All Keys)</option>
                   {[
@@ -303,7 +308,7 @@ export function CatalogExplorerView() {
                   <button
                     type="button"
                     onClick={() => setFilters(DEFAULT_CATALOG_FILTERS)}
-                    className="text-[10px] text-[#888888] hover:text-white uppercase cursor-pointer"
+                    className="text-xs text-[#cfcfcf] hover:text-white uppercase cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
                   >
                     [Reset Filters]
                   </button>
@@ -313,14 +318,14 @@ export function CatalogExplorerView() {
 
             {/* Catalog Songs Table */}
             {filteredSongs.length === 0 ? (
-              <div className="py-16 text-center text-xs font-mono text-[#666666]">
+              <div className="py-16 text-center text-xs font-mono text-[#a8a8a8]">
                 No songs match the current discovery filters.
               </div>
             ) : (
               <div className="border border-[#1f1f1f] bg-[#0a0a0a] overflow-x-auto">
                 <table className="w-full border-collapse text-xs font-mono">
                   <thead>
-                    <tr className="border-b border-[#222222] bg-[#111111] text-[10px] text-[#777777] uppercase text-left">
+                    <tr className="border-b border-[#222222] bg-[#111111] text-xs text-[#a8a8a8] uppercase text-left">
                       <th className="p-2.5 min-w-[200px]">TITLE / ARTIST</th>
                       <th className="p-2.5 w-20">KEY</th>
                       <th className="p-2.5 w-24">BPM</th>
@@ -336,7 +341,9 @@ export function CatalogExplorerView() {
                       return (
                         <tr
                           key={song.id}
-                          className="border-b border-[#141414] hover:bg-[#121212] transition-colors"
+                          role="row"
+                          tabIndex={0}
+                          className="border-b border-[#141414] hover:bg-[#121212] transition-colors focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
                           data-testid={`catalog-row-${song.id}`}
                         >
                           {/* Title & Artist */}
@@ -344,14 +351,14 @@ export function CatalogExplorerView() {
                             <div className="font-semibold text-[#f0f0f0] text-xs truncate max-w-xs">
                               {song.title}
                             </div>
-                            <div className="text-[11px] text-[#777777] truncate">{song.artist}</div>
+                            <div className="text-xs text-[#a8a8a8] truncate">{song.artist}</div>
                           </td>
 
                           {/* Camelot Key */}
                           <td className="p-2.5">
                             {song.camelot_code ? (
                               <span
-                                className="px-1.5 py-0.5 font-mono font-bold text-[10px] rounded-[2px]"
+                                className="px-1.5 py-0.5 font-mono font-bold text-xs rounded-[2px]"
                                 style={{
                                   backgroundColor: camelotColor(song.camelot_code),
                                   color: camelotTextColor(song.camelot_code),
@@ -360,12 +367,12 @@ export function CatalogExplorerView() {
                                 {song.camelot_code}
                               </span>
                             ) : (
-                              <span className="text-[#555555]">—</span>
+                              <span className="text-[#a8a8a8]">—</span>
                             )}
                           </td>
 
                           {/* BPM */}
-                          <td className="p-2.5 font-mono text-[#d0d0d0] tabular-nums">
+                          <td className="p-2.5 font-mono text-[#cfcfcf] tabular-nums">
                             {song.bpm ? `${song.bpm.toFixed(1)}` : '—'}
                           </td>
 
@@ -373,7 +380,7 @@ export function CatalogExplorerView() {
                           <td className="p-2.5">
                             {song.energy_rating ? (
                               <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-[11px] text-[#888888] w-3">
+                                <span className="font-mono text-xs text-[#a8a8a8] w-3">
                                   {song.energy_rating}
                                 </span>
                                 <div className="w-12 bg-[#1c1c1c] h-1 overflow-hidden">
@@ -392,17 +399,17 @@ export function CatalogExplorerView() {
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-[#555555]">—</span>
+                              <span className="text-[#a8a8a8]">—</span>
                             )}
                           </td>
 
                           {/* Duration */}
-                          <td className="p-2.5 text-[#888888] tabular-nums">
+                          <td className="p-2.5 text-[#a8a8a8] tabular-nums">
                             {formatDuration(song.duration_seconds)}
                           </td>
 
                           {/* Tuning & Tags */}
-                          <td className="p-2.5 text-[11px] text-[#888888] truncate max-w-xs">
+                          <td className="p-2.5 text-xs text-[#a8a8a8] truncate max-w-xs">
                             {song.tuning ?? 'Standard'}
                             {song.tags.length > 0 && ` • ${song.tags.slice(0, 2).join(', ')}`}
                           </td>
@@ -413,7 +420,7 @@ export function CatalogExplorerView() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenSongDrawer(song)}
-                                className="px-2 py-1 text-[10px] bg-[#1a1a1a] hover:bg-[#262626] text-[#cccccc] hover:text-white border border-[#2e2e2e] uppercase cursor-pointer"
+                                className="px-2 py-1 text-xs bg-[#1a1a1a] hover:bg-[#262626] text-[#cfcfcf] hover:text-white border border-[#2e2e2e] uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
                                 data-testid={`inspect-rel-btn-${song.id}`}
                               >
                                 Relationships
@@ -421,7 +428,7 @@ export function CatalogExplorerView() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenBridge(song.id)}
-                                className="px-2 py-1 text-[10px] bg-[#1a1a1a] hover:bg-[#262626] text-[#b0b0b0] hover:text-white border border-[#2e2e2e] uppercase cursor-pointer"
+                                className="px-2 py-1 text-xs bg-[#1a1a1a] hover:bg-[#262626] text-[#cfcfcf] hover:text-white border border-[#2e2e2e] uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
                                 title="Set as Source Song A for Bridge Discovery"
                               >
                                 Bridge
@@ -429,7 +436,7 @@ export function CatalogExplorerView() {
                               <button
                                 type="button"
                                 onClick={() => handleAddToSetlist(song.id)}
-                                className="px-2 py-1 text-[10px] bg-[#1e2a1e] hover:bg-[#263826] text-[#88ee88] border border-[#2d552d] uppercase cursor-pointer"
+                                className="px-2 py-1 text-xs bg-[#1e2a1e] hover:bg-[#263826] text-[#88ee88] border border-[#2d552d] uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
                                 data-testid={`add-to-setlist-${song.id}`}
                               >
                                 + Set
@@ -464,23 +471,28 @@ export function CatalogExplorerView() {
             onInspectRelationship={handleInspectRelationshipFromMatrix}
           />
         )}
+        </div>
+        {inspectedSong && (
+          <aside
+            className="w-[440px] xl:w-[500px] border-l border-[#242424] bg-[#0c0c0c] flex flex-col shrink-0 h-full overflow-hidden shadow-2xl transition-all"
+            aria-label="Song Relationship Inspector Rail"
+          >
+            <SongRelationshipDrawer
+              song={inspectedSong}
+              isDockedRail={true}
+              onClose={() => setInspectedSong(null)}
+              onSelectBridgeTarget={(targetId) => {
+                setInspectedSong(null);
+                handleOpenBridge(inspectedSong.id, targetId);
+              }}
+              onStartPathFromSong={(startId) => {
+                setInspectedSong(null);
+                handleOpenPath(startId);
+              }}
+            />
+          </aside>
+        )}
       </div>
-
-      {/* Modals & Drawers */}
-      {inspectedSong && (
-        <SongRelationshipDrawer
-          song={inspectedSong}
-          onClose={() => setInspectedSong(null)}
-          onSelectBridgeTarget={(targetId) => {
-            setInspectedSong(null);
-            handleOpenBridge(inspectedSong.id, targetId);
-          }}
-          onStartPathFromSong={(startId) => {
-            setInspectedSong(null);
-            handleOpenPath(startId);
-          }}
-        />
-      )}
 
       {bridgeModalOpen && (
         <BridgeDiscoveryModal

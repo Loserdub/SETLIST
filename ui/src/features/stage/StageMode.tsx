@@ -6,6 +6,7 @@ import { useStageKeyboard } from './useStageKeyboard';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
 import type { TransitionAdvice } from '../../bindings/TransitionAdvice';
 import { EditedBadge, isFieldOverridden } from '../track/overrides';
+import { IconPrev, IconNext, IconAlertTriangle } from '../../components/icons';
 
 /**
  * Stage Mode — a dedicated, read-only live performance view.
@@ -150,18 +151,18 @@ export function StageMode() {
       {/* Top Bar — Set name, position, clock */}
       <header className="flex items-center justify-between px-6 py-2.5 bg-[#000000] border-b border-[#1c1c1c] shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#999999]">
+          <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
             {setlistName}
           </span>
-          <span className="text-[10px] font-mono text-[#666666] bg-[#0c0c0c] border border-[#1f1f1f] px-2 py-0.5">
+          <span className="text-xs font-mono text-[#a8a8a8] bg-[#0c0c0c] border border-[#1f1f1f] px-2 py-0.5">
             {stageCurrentIndex + 1} / {setlist.length}
           </span>
         </div>
 
-        <div className="flex items-center gap-4 text-xs font-mono text-[#777777]">
+        <div className="flex items-center gap-4 text-xs font-mono text-[#a8a8a8]">
           {/* Elapsed clock */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#555555] uppercase">ELAPSED:</span>
+            <span className="text-xs text-[#a8a8a8] uppercase">ELAPSED:</span>
             <span className="font-mono text-sm text-[#ededed]" data-testid="stage-elapsed">
               {formatDuration(clock.elapsedMs)}
             </span>
@@ -170,8 +171,8 @@ export function StageMode() {
           {/* Remaining */}
           {clock.remainingMs !== null && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-[#555555] uppercase">REMAINING:</span>
-              <span className="font-mono text-sm text-[#a1a1aa]" data-testid="stage-remaining">
+              <span className="text-xs text-[#a8a8a8] uppercase">REMAINING:</span>
+              <span className="font-mono text-sm text-[#cfcfcf]" data-testid="stage-remaining">
                 −{formatDurationCompact(clock.remainingMs)}
               </span>
             </div>
@@ -179,7 +180,7 @@ export function StageMode() {
 
           {/* Total set duration */}
           {totalDurationMs !== null && (
-            <span className="text-[#555555] font-mono text-xs" data-testid="stage-total">
+            <span className="text-[#a8a8a8] font-mono text-xs" data-testid="stage-total">
               [{formatDurationCompact(totalDurationMs)} TOTAL]
             </span>
           )}
@@ -205,21 +206,21 @@ export function StageMode() {
         {/* Previous track (subtle) */}
         {prevEntry && (
           <div className="w-full max-w-3xl opacity-35 text-center" data-testid="stage-prev-track">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-[#666666] mb-0.5">PREVIOUS</p>
-            <p className="text-sm text-[#888888] font-mono truncate">{trackTitle(prevEntry)}</p>
+            <p className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8] mb-0.5">PREVIOUS</p>
+            <p className="text-sm text-[#cfcfcf] font-mono truncate">{trackTitle(prevEntry)}</p>
           </div>
         )}
 
         {/* ====== CURRENT TRACK — PRIMARY FOCUS ====== */}
         <div className="w-full max-w-4xl text-center space-y-2.5" data-testid="stage-current-track">
-          <p className="text-[10px] font-mono uppercase tracking-widest text-[#71717a] font-semibold">
+          <p className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8] font-semibold">
             NOW PLAYING
           </p>
-          <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight leading-tight truncate">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight leading-tight line-clamp-2 max-w-4xl break-words">
             {trackTitle(currentEntry)}
           </h2>
           {trackArtist(currentEntry) && (
-            <p className="text-lg text-[#999999]">{trackArtist(currentEntry)}</p>
+            <p className="text-lg text-[#cfcfcf]">{trackArtist(currentEntry)}</p>
           )}
 
           {/* Track metadata technical blocks */}
@@ -247,32 +248,32 @@ export function StageMode() {
             {/* Transition advice strip */}
             {nextTransition && (
               <div
-                className={`flex items-center justify-center gap-3 py-1.5 px-3 border rounded-none font-mono ${
+                className={`flex items-center justify-center gap-3 py-2 px-4 border rounded-none font-mono transition-all ${
                   nextTransition.intervention_required
-                    ? 'border-[#501515] bg-[#1a0808]'
+                    ? 'border-amber-500/80 bg-amber-950/40 text-amber-300 ring-1 ring-amber-500/30'
                     : 'border-[#1f1f1f] bg-[#0c0c0c]'
                 }`}
                 data-testid="stage-transition-info"
               >
                 <span
-                  className={`text-[10px] uppercase tracking-wider ${
-                    nextTransition.intervention_required ? 'text-[#f87171] font-bold' : 'text-[#888888]'
+                  className={`text-xs uppercase tracking-wider ${
+                    nextTransition.intervention_required ? 'text-amber-300 font-bold' : 'text-[#a8a8a8]'
                   }`}
                 >
                   {nextTransition.transition_type.replace(/([A-Z])/g, ' $1').trim()}
                 </span>
                 <span className="text-[#333333]">|</span>
-                <span className="text-[11px] text-[#cccccc]">
+                <span className="text-xs text-[#cfcfcf]">
                   Δ{Math.abs(nextTransition.bpm_delta).toFixed(1)} BPM
                 </span>
                 <span className="text-[#333333]">|</span>
-                <span className="text-[11px] text-[#cccccc]">
+                <span className="text-xs text-[#cfcfcf]">
                   Key dist {nextTransition.key_distance}
                 </span>
                 {nextTransition.phrase_bars > 0 && (
                   <>
                     <span className="text-[#333333]">|</span>
-                    <span className="text-[11px] text-[#888888]">
+                    <span className="text-xs text-[#a8a8a8]">
                       {nextTransition.phrase_bars} bars
                     </span>
                   </>
@@ -280,7 +281,11 @@ export function StageMode() {
                 {nextTransition.intervention_required && (
                   <>
                     <span className="text-[#333333]">|</span>
-                    <span className="text-[11px] text-[#f87171] font-semibold">⚠ Intervention</span>
+                    <span className="text-xs text-amber-300 font-bold flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      <IconAlertTriangle size={13} className="text-amber-400 shrink-0" />
+                      ⚠ Intervention
+                    </span>
                   </>
                 )}
               </div>
@@ -290,7 +295,7 @@ export function StageMode() {
             {nextTransition?.notes && nextTransition.notes.length > 0 && (
               <div className="text-center space-y-0.5" data-testid="stage-transition-notes">
                 {nextTransition.notes.slice(0, 2).map((note, i) => (
-                  <p key={i} className="text-[11px] text-[#666666] font-mono">
+                  <p key={i} className="text-xs text-[#a8a8a8] font-mono">
                     {note}
                   </p>
                 ))}
@@ -299,16 +304,16 @@ export function StageMode() {
 
             {/* Next track */}
             <div className="text-center" data-testid="stage-next-track">
-              <p className="text-[10px] font-mono uppercase tracking-widest text-[#555555] mb-1">
+              <p className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8] mb-1">
                 UP NEXT
               </p>
-              <p className="text-2xl md:text-3xl font-medium text-[#cccccc] truncate">
+              <p className="text-xl md:text-3xl font-medium text-[#ededed] line-clamp-2 break-words">
                 {trackTitle(nextEntry)}
               </p>
               {trackArtist(nextEntry) && (
-                <p className="text-sm text-[#777777] mt-0.5">{trackArtist(nextEntry)}</p>
+                <p className="text-sm text-[#a8a8a8] mt-0.5">{trackArtist(nextEntry)}</p>
               )}
-              <div className="flex items-center justify-center gap-2 mt-1.5 text-xs font-mono text-[#666666]">
+              <div className="flex items-center justify-center gap-2 mt-1.5 text-xs font-mono text-[#a8a8a8]">
                 <span>{trackBpm(nextEntry)} BPM</span>
                 <span>•</span>
                 <span>{trackKey(nextEntry)}</span>
@@ -322,56 +327,66 @@ export function StageMode() {
         {/* End of set indicator */}
         {!nextEntry && (
           <div className="text-center" data-testid="stage-end-of-set">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-[#f59e0b] mb-1">
+            <p className="text-xs font-mono uppercase tracking-wider text-[#f59e0b] mb-1">
               LAST TRACK
             </p>
-            <p className="text-sm font-mono text-[#666666]">Final song in performance setlist.</p>
+            <p className="text-sm font-mono text-[#a8a8a8]">Final song in performance setlist.</p>
           </div>
         )}
       </div>
 
-      {/* Bottom Navigation Bar */}
-      <footer className="flex items-center justify-between px-6 py-3 bg-[#000000] border-t border-[#1c1c1c] shrink-0 font-mono">
-        <div className="flex items-center gap-2">
+      {/* Bottom Navigation Bar — Wide Separation & 56px+ Touch Targets */}
+      <footer className="flex items-center justify-between px-6 py-3 bg-[#050505] border-t border-[#1c1c1c] shrink-0 font-mono gap-4">
+        {/* Left: Previous Song (Prominent, safe corner) */}
+        <div>
           <button
             type="button"
             onClick={stagePrev}
             disabled={stageCurrentIndex <= 0}
-            className="px-3.5 py-1.5 border border-[#222222] bg-[#0f0f0f] text-[#a1a1aa] hover:bg-[#1a1a1a] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs uppercase tracking-wider rounded-none cursor-pointer"
+            className="min-h-[56px] px-6 py-2 border border-[#262626] bg-[#0f0f0f] text-[#cfcfcf] hover:bg-[#1a1a1a] hover:text-white hover:border-[#38bdf8]/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all text-xs font-semibold uppercase tracking-wider rounded-none cursor-pointer flex items-center gap-2.5 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
             data-testid="stage-prev-btn"
+            title="Jump to previous track [ArrowLeft / PageUp]"
           >
-            [ PREV ]
-          </button>
-
-          <button
-            type="button"
-            onClick={stageNext}
-            disabled={stageCurrentIndex >= setlist.length - 1}
-            className="px-5 py-1.5 border border-[#333333] bg-[#1a1a1a] text-white hover:bg-[#252525] disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs font-semibold uppercase tracking-wider rounded-none cursor-pointer"
-            data-testid="stage-next-btn"
-          >
-            [ NEXT ]
+            <IconPrev className="w-4 h-4 shrink-0" />
+            <span>[ PREV ]</span>
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Jump-to setlist overlay trigger */}
+        {/* Center: Utility Stage Actions */}
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setShowSetlist(!showSetlist)}
-            className="px-3 py-1.5 border border-[#222222] bg-[#0f0f0f] text-[#888888] hover:text-[#ededed] hover:bg-[#181818] transition-colors text-xs uppercase tracking-wider rounded-none cursor-pointer"
+            className="h-10 px-4 border border-[#222222] bg-[#0f0f0f] text-[#cfcfcf] hover:text-white hover:bg-[#181818] transition-colors text-xs uppercase tracking-wider rounded-none cursor-pointer flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
             data-testid="stage-setlist-toggle"
+            title="Toggle full setlist overview drawer"
           >
-            [ SETLIST ]
+            <span>[ SETLIST ]</span>
           </button>
 
           <button
             type="button"
             onClick={handleExitRequest}
-            className="px-3 py-1.5 border border-[#222222] bg-[#0f0f0f] text-[#888888] hover:text-rose-400 hover:border-rose-900/60 transition-colors text-xs uppercase tracking-wider rounded-none cursor-pointer"
+            className="h-10 px-4 border border-[#262626] bg-[#0f0f0f] text-[#a8a8a8] hover:text-rose-400 hover:border-rose-900/60 transition-colors text-xs uppercase tracking-wider rounded-none cursor-pointer flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none"
             data-testid="stage-exit-btn"
+            title="Exit stage performance mode [Escape]"
           >
-            [ EXIT STAGE ]
+            <span>[ EXIT STAGE ]</span>
+          </button>
+        </div>
+
+        {/* Right: Next Song (Far right corner, bold forward target) */}
+        <div>
+          <button
+            type="button"
+            onClick={stageNext}
+            disabled={stageCurrentIndex >= setlist.length - 1}
+            className="min-h-[56px] px-8 py-2 border border-[#38bdf8] bg-[#12283e] hover:bg-[#1a3857] text-[#38bdf8] hover:text-white disabled:opacity-20 disabled:border-[#262626] disabled:bg-[#141414] disabled:text-[#666666] disabled:cursor-not-allowed transition-all text-sm font-bold uppercase tracking-wider rounded-none cursor-pointer flex items-center gap-3 shadow-[0_0_15px_rgba(56,189,248,0.15)] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+            data-testid="stage-next-btn"
+            title="Advance to next track [Space / ArrowRight / PageDown]"
+          >
+            <span>[ NEXT ]</span>
+            <IconNext className="w-4 h-4 shrink-0" />
           </button>
         </div>
       </footer>
@@ -387,7 +402,7 @@ export function StageMode() {
             <button
               type="button"
               onClick={() => setShowSetlist(false)}
-              className="px-2.5 py-1 border border-[#222222] bg-[#111111] text-[#888888] hover:text-white transition-colors text-xs cursor-pointer rounded-none"
+              className="px-2.5 py-1 border border-[#222222] bg-[#111111] text-[#a8a8a8] hover:text-white transition-colors text-xs cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               data-testid="stage-setlist-close"
             >
               [ CLOSE ]
@@ -418,14 +433,14 @@ export function StageMode() {
         >
           <div className="bg-[#0e0e0e] border border-[#27272a] p-6 max-w-sm text-center space-y-4 rounded-none">
             <h3 className="text-xs font-bold uppercase tracking-widest text-white">Exit Stage Mode?</h3>
-            <p className="text-[#888888] text-xs leading-relaxed font-sans">
+            <p className="text-[#a8a8a8] text-xs leading-relaxed font-sans">
               You will return to the setlist editor. Performance timer will be reset.
             </p>
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 type="button"
                 onClick={handleExitCancel}
-                className="px-4 py-1.5 border border-[#222222] bg-[#141414] text-[#888888] hover:text-white transition-colors text-xs uppercase cursor-pointer rounded-none"
+                className="px-4 py-1.5 border border-[#222222] bg-[#141414] text-[#a8a8a8] hover:text-white transition-colors text-xs uppercase cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
                 data-testid="stage-exit-cancel"
               >
                 [ STAY ]
@@ -433,7 +448,7 @@ export function StageMode() {
               <button
                 type="button"
                 onClick={handleExitConfirm}
-                className="px-4 py-1.5 border border-[#6b1515] bg-[#220a0a] text-[#f87171] hover:bg-[#331111] transition-colors text-xs font-semibold uppercase cursor-pointer rounded-none"
+                className="px-4 py-1.5 border border-[#6b1515] bg-[#220a0a] text-[#f87171] hover:bg-[#331111] transition-colors text-xs font-semibold uppercase cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none"
                 data-testid="stage-exit-confirm-btn"
               >
                 [ EXIT STAGE ]
@@ -459,7 +474,7 @@ function MetadataPill({
 }) {
   return (
     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#0c0c0c] border border-[#1f1f1f] rounded-none">
-      <span className="text-[9px] uppercase tracking-wider text-[#555555] font-mono font-semibold">
+      <span className="text-xs uppercase tracking-wider text-[#a8a8a8] font-mono font-semibold">
         {label}
       </span>
       <span className="text-xs font-mono text-[#ededed] font-medium inline-flex items-center gap-1">
@@ -496,25 +511,25 @@ function SetlistJumpItem({
     <button
       type="button"
       onClick={onJump}
-      className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors border rounded-none cursor-pointer ${
+      className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors border rounded-none cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
         isCurrent
           ? 'bg-[#141414] border-l-2 border-l-[#ededed] border-[#262626] text-white'
-          : 'bg-[#0a0a0a] border-[#161616] text-[#888888] hover:text-[#cccccc] hover:bg-[#101010]'
+          : 'bg-[#0a0a0a] border-[#161616] text-[#a8a8a8] hover:text-[#ededed] hover:bg-[#101010]'
       }`}
       data-testid={`stage-jump-${index}`}
     >
       <span
         className={`text-xs font-mono w-6 text-center tabular-nums ${
-          isCurrent ? 'text-white font-bold' : 'text-[#555555]'
+          isCurrent ? 'text-white font-bold' : 'text-[#a8a8a8]'
         }`}
       >
         {String(index + 1).padStart(2, '0')}
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium truncate">{title}</p>
-        {artist && <p className="text-[10px] text-[#555555] truncate">{artist}</p>}
+        {artist && <p className="text-xs text-[#a8a8a8] truncate">{artist}</p>}
       </div>
-      <div className="flex items-center gap-2 text-xs text-[#666666] font-mono shrink-0">
+      <div className="flex items-center gap-2 text-xs text-[#a8a8a8] font-mono shrink-0">
         {bpm != null && (
           <span className="inline-flex items-center gap-1">
             <span>{Math.round(bpm)} BPM</span>
@@ -533,7 +548,7 @@ function SetlistJumpItem({
         )}
       </div>
       {isCurrent && (
-        <span className="text-[#ededed] text-[10px] font-mono uppercase tracking-wider font-semibold">▶ NOW</span>
+        <span className="text-[#ededed] text-xs font-mono uppercase tracking-wider font-semibold">▶ NOW</span>
       )}
     </button>
   );

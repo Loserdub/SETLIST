@@ -17,6 +17,8 @@
         "title": "SETLIST",
         "width": 1200,
         "height": 800,
+        "minWidth": 1000,
+        "minHeight": 640,
         "resizable": true,
         "fullscreen": false,
         "center": true,

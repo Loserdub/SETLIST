@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import {
   DndContext,
@@ -20,16 +20,13 @@ import type { ExportTarget } from '../../bindings/ExportTarget';
 import type { ExportResult } from '../../bindings/ExportResult';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
 import type { TransitionModalState } from './types';
-import { applyPinsToOrderedIds } from './reorder';
-import {
-  computeEnergyTrajectory,
-  getTargetEnergy,
-  recalculateSetlistTargetEnergy,
-} from './energyCurve';
+import { computeEnergyTrajectory } from './energyCurve';
+
 import { SortableTrackItem } from './SortableTrackItem';
 import { TransitionCostBadge } from './TransitionCostBadge';
 import { EnergyChart } from './EnergyChart';
 import { TransitionAdviceModal } from './TransitionAdviceModal';
+import { IconUndo, IconRedo, IconSliders, IconSparkles } from '../../components/icons';
 
 export const getDefaultExportFileName = (target: ExportTarget): string => {
   switch (target) {
@@ -80,13 +77,27 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     addToast,
     pins,
     setPins,
+    hasLoadedActiveSetlist,
+    loadActiveSetlist,
+    canUndoSetlist,
+    canRedoSetlist,
+    undoSetlist,
+    redoSetlist,
+    suggestOrder,
   } = useAppStore();
 
   const backend = customBackend ?? getBackend(useMockBackend);
 
-  // Suggesting Order State
+  useEffect(() => {
+    if (!hasLoadedActiveSetlist) {
+      void loadActiveSetlist(backend);
+    }
+  }, [hasLoadedActiveSetlist, loadActiveSetlist, backend]);
+
+  // Suggesting Order State & Revert Notice
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showOptimizationBanner, setShowOptimizationBanner] = useState(false);
 
   // Export State
   const [exportTarget, setExportTarget] = useState<ExportTarget>('RekordboxXml');
@@ -141,104 +152,54 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     await reorderSetlist(oldIndex, newIndex, pins, backend);
   };
 
-  // Suggest Order with Pin Preservation
+  // Setlist Undo / Redo Global Keyboard Shortcuts (Ctrl+Z / Ctrl+Y / Cmd+Z / Cmd+Shift+Z)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'SELECT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (canRedoSetlist) redoSetlist(backend);
+        } else {
+          if (canUndoSetlist) undoSetlist(backend);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (canRedoSetlist) redoSetlist(backend);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canUndoSetlist, canRedoSetlist, undoSetlist, redoSetlist, backend]);
+
+  // Suggest Order with Pin Preservation & Undo History
   const handleSuggestOrder = async () => {
     if (setlist.length < 2) return;
-    const capturedVersion = useAppStore.getState().setlistVersion ?? 0;
     setIsSuggesting(true);
     setErrorMessage(null);
 
     try {
-      const originalIds = setlist.map((e) => e.track_id);
-      const firstId = pins.lockFirst && originalIds.length > 0 ? originalIds[0] : undefined;
-      const lastId = pins.lockLast && originalIds.length > 1 ? originalIds[originalIds.length - 1] : undefined;
-
-      // Call backend solver with pinned anchors
-      const solverResult = await backend.suggestOrder(originalIds, energyProfile, costWeights, firstId, lastId);
-
-      // Stale-request protection: Discard if setlist was mutated while solver was running
-      if (useAppStore.getState().setlistVersion !== capturedVersion) {
-        return;
-      }
-
-      const suggestedIds = solverResult.map((e) => e.track_id);
-      const suggestedIdSet = new Set(suggestedIds);
-      const missingIds = originalIds.filter((id) => !suggestedIdSet.has(id));
-      const fullSuggestedIds = missingIds.length > 0 ? [...suggestedIds, ...missingIds] : suggestedIds;
-
-      // Apply pins (anchor first and/or anchor last)
-      const constrainedIds = applyPinsToOrderedIds(originalIds, fullSuggestedIds, pins);
-
-      // Reconstruct SetlistEntries with updated transitions
-      const updatedEntries: SetlistEntry[] = [];
-      for (let i = 0; i < constrainedIds.length; i++) {
-        if (useAppStore.getState().setlistVersion !== capturedVersion) return;
-
-        const id = constrainedIds[i];
-        const existingEntry = setlist.find((e) => e.track_id === id);
-        const solverEntry = solverResult.find((e) => e.track_id === id);
-        const track = existingEntry?.track ?? solverEntry?.track ?? (await backend.getTrack(id));
-
-        if (useAppStore.getState().setlistVersion !== capturedVersion) return;
-
-        let transition = null;
-        if (i > 0) {
-          const prevEntry = updatedEntries[i - 1];
-          // If the solver already computed transition for this adjacent pair, reuse it
-          const solverPairIdx = solverResult.findIndex((e) => e.track_id === id);
-          if (
-            solverPairIdx > 0 &&
-            solverResult[solverPairIdx - 1]?.track_id === prevEntry.track_id &&
-            solverResult[solverPairIdx]?.transition
-          ) {
-            transition = solverResult[solverPairIdx].transition;
-          } else if (prevEntry.track?.analysis && track?.analysis) {
-            try {
-              const de =
-                getTargetEnergy(energyProfile, i, constrainedIds.length) -
-                getTargetEnergy(energyProfile, i - 1, constrainedIds.length);
-              transition = await backend.getAdvice(
-                prevEntry.track_id,
-                id,
-                energyProfile,
-                costWeights,
-                de
-              );
-            } catch {
-              transition = null;
-            }
-          }
-        }
-
-        updatedEntries.push({
-          position: i + 1,
-          track_id: id,
-          track: track ?? null,
-          transition,
-          target_energy: getTargetEnergy(energyProfile, i, constrainedIds.length),
-        });
-      }
-
-      // Re-verify version before committing to store
-      if (useAppStore.getState().setlistVersion !== capturedVersion) return;
-
-      useAppStore.setState((state) => {
-        if ((state.setlistVersion ?? 0) !== capturedVersion) return state;
-        return {
-          setlist: recalculateSetlistTargetEnergy(updatedEntries, energyProfile),
-          setlistVersion: capturedVersion + 1,
-        };
-      });
+      await suggestOrder(backend);
+      setShowOptimizationBanner(true);
     } catch (err: unknown) {
-      if (useAppStore.getState().setlistVersion === capturedVersion) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setErrorMessage(msg);
-        addToast({
-          type: 'error',
-          message: 'Order suggestion failed',
-          details: msg,
-        });
-      }
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(msg);
+      addToast({
+        type: 'error',
+        message: 'Order suggestion failed',
+        details: msg,
+      });
     } finally {
       setIsSuggesting(false);
     }
@@ -396,14 +357,14 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
               type="text"
               value={setlistName}
               onChange={(e) => setSetlistName(e.target.value)}
-              className="text-sm font-mono font-bold tracking-wider text-[#ededed] bg-transparent border-b border-transparent hover:border-[#333333] focus:border-[#555555] focus:outline-none transition-colors uppercase"
+              className="text-sm font-mono font-bold tracking-wider text-[#ededed] bg-transparent border-b border-transparent hover:border-[#333333] focus:border-[#38bdf8] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] transition-colors uppercase"
               title="Click to rename setlist"
             />
-            <span className="text-[10px] font-mono px-2 py-0.5 border border-[#222222] bg-[#111111] text-[#777777]">
+            <span className="text-xs font-mono px-2 py-0.5 border border-[#222222] bg-[#111111] text-[#cfcfcf]">
               {setlist.length} {setlist.length === 1 ? 'track' : 'tracks'}
             </span>
           </div>
-          <p className="text-[11px] font-mono text-[#666666] mt-0.5">
+          <p className="text-xs font-mono text-[#a8a8a8] mt-0.5">
             Sequential ordering co-pilot • Cost model harmonic alignment & energy curve solver
           </p>
         </div>
@@ -412,15 +373,15 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
         <div className="flex flex-wrap items-center gap-2">
           {/* Lock Pins Toolbar */}
           <div className="flex items-center gap-1 bg-[#0e0e0e] border border-[#222222] p-0.5">
-            <span className="text-[10px] font-mono font-semibold text-[#666666] uppercase px-1">PINS:</span>
+            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase px-1">PINS:</span>
             <button
               type="button"
               onClick={() => setPins((prev) => ({ ...prev, lockFirst: !prev.lockFirst }))}
               disabled={setlist.length <= 1}
-              className={`px-2 py-0.5 text-[11px] font-mono transition-colors cursor-pointer border rounded-none ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
                 pins.lockFirst
                   ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
-                  : 'bg-transparent text-[#777777] hover:text-[#cccccc] border-transparent'
+                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
               }`}
               title="Lock opening track in first position"
             >
@@ -431,10 +392,10 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
               type="button"
               onClick={() => setPins((prev) => ({ ...prev, lockLast: !prev.lockLast }))}
               disabled={setlist.length <= 1}
-              className={`px-2 py-0.5 text-[11px] font-mono transition-colors cursor-pointer border rounded-none ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
                 pins.lockLast
                   ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
-                  : 'bg-transparent text-[#777777] hover:text-[#cccccc] border-transparent'
+                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
               }`}
               title="Lock closing track in last position"
             >
@@ -444,14 +405,14 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
 
           {/* Energy Profile Selector */}
           <div className="flex items-center bg-[#0e0e0e] border border-[#222222] p-0.5">
-            <span className="text-[10px] font-mono font-semibold text-[#666666] uppercase px-1.5">ARC:</span>
+            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase px-1.5">ARC:</span>
             <button
               type="button"
               onClick={() => setEnergyProfile('LinearRamp')}
-              className={`px-2 py-0.5 text-[11px] font-mono transition-colors cursor-pointer border rounded-none ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
                 energyProfile === 'LinearRamp'
                   ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#777777] hover:text-[#cccccc] border-transparent'
+                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
               }`}
             >
               Linear Ramp
@@ -459,10 +420,10 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             <button
               type="button"
               onClick={() => setEnergyProfile('Wave')}
-              className={`px-2 py-0.5 text-[11px] font-mono transition-colors cursor-pointer border rounded-none ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
                 energyProfile === 'Wave'
                   ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#777777] hover:text-[#cccccc] border-transparent'
+                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
               }`}
             >
               Wave
@@ -470,10 +431,10 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             <button
               type="button"
               onClick={() => setEnergyProfile('PeakPlateau')}
-              className={`px-2 py-0.5 text-[11px] font-mono transition-colors cursor-pointer border rounded-none ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
                 energyProfile === 'PeakPlateau'
                   ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#777777] hover:text-[#cccccc] border-transparent'
+                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
               }`}
             >
               Plateau
@@ -488,7 +449,10 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             className="px-3 py-1 bg-[#1a1a1a] hover:bg-[#262626] disabled:opacity-30 text-white text-xs font-mono font-medium uppercase tracking-wider border border-[#333333] transition-colors cursor-pointer flex items-center gap-1.5 rounded-none"
             title="Auto-optimize setlist sequence respecting locked pins and energy curve"
           >
-            <span>{isSuggesting ? 'Optimizing...' : 'Suggest Order'}</span>
+            <span className="flex items-center gap-1.5">
+              <IconSparkles size={12} className={isSuggesting ? 'animate-spin' : ''} />
+              {isSuggesting ? 'Optimizing...' : 'Suggest Order'}
+            </span>
           </button>
 
           {/* Export Selector & Button */}
@@ -497,7 +461,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
               aria-label="Export format"
               value={exportTarget}
               onChange={(e) => setExportTarget(e.target.value as ExportTarget)}
-              className="bg-transparent text-xs font-mono text-[#cccccc] px-2 py-0.5 focus:outline-none cursor-pointer border-r border-[#222222] pr-2"
+              className="bg-transparent text-xs font-mono text-[#cccccc] px-2 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] cursor-pointer border-r border-[#222222] pr-2"
             >
               <option value="RekordboxXml" className="bg-[#111111] text-[#ededed]">
                 Rekordbox XML
@@ -516,7 +480,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
               type="button"
               onClick={() => void handleExportSet()}
               disabled={setlist.length === 0 || isExporting}
-              className="px-2.5 py-0.5 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 text-[#ededed] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer rounded-none"
+              className="px-2.5 py-0.5 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 text-[#ededed] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
             >
               <span>{isExporting ? 'Exporting...' : 'Export'}</span>
             </button>
@@ -526,9 +490,36 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
               disabled={setlist.length === 0 || isExporting}
               title="Configure export destination and options"
               aria-label="Export options"
-              className="px-1.5 py-0.5 text-[#666666] hover:text-[#cccccc] disabled:opacity-40 text-xs font-mono transition-colors cursor-pointer border-l border-[#222222]"
+              className="px-2 py-1 text-[#a8a8a8] hover:text-[#ededed] disabled:opacity-40 text-xs font-mono transition-colors cursor-pointer border-l border-[#222222] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] flex items-center justify-center"
             >
-              [OPT]
+              <IconSliders size={12} />
+            </button>
+          </div>
+
+          {/* Undo / Redo Toolbar */}
+          <div className="flex items-center bg-[#0e0e0e] border border-[#222222] p-0.5">
+            <button
+              type="button"
+              onClick={() => undoSetlist(backend)}
+              disabled={!canUndoSetlist}
+              className="px-2 py-0.5 text-xs font-mono uppercase text-[#cccccc] hover:text-white disabled:opacity-30 disabled:hover:text-[#cccccc] transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] flex items-center gap-1"
+              title="Undo last setlist action [Ctrl+Z]"
+              data-testid="setlist-undo-btn"
+            >
+              <IconUndo size={11} className="shrink-0" />
+              <span>Undo</span>
+            </button>
+            <span className="text-[#666666] px-0.5">|</span>
+            <button
+              type="button"
+              onClick={() => redoSetlist(backend)}
+              disabled={!canRedoSetlist}
+              className="px-2 py-0.5 text-xs font-mono uppercase text-[#cccccc] hover:text-white disabled:opacity-30 disabled:hover:text-[#cccccc] transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] flex items-center gap-1"
+              title="Redo setlist action [Ctrl+Y]"
+              data-testid="setlist-redo-btn"
+            >
+              <IconRedo size={11} className="shrink-0" />
+              <span>Redo</span>
             </button>
           </div>
 
@@ -536,7 +527,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             <button
               type="button"
               onClick={clearSetlist}
-              className="px-2 py-1 text-xs font-mono text-[#666666] hover:text-rose-400 transition-colors cursor-pointer"
+              className="px-2 py-1 text-xs font-mono text-[#a8a8a8] hover:text-rose-400 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
             >
               CLEAR
             </button>
@@ -546,6 +537,42 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
 
       {/* Main Scrollable Body */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* Suggest Order Feedback & 1-Click Revert Banner */}
+        {showOptimizationBanner && (
+          <div
+            className="p-3 bg-[#142332] border border-[#1e3a5f] text-white text-xs font-mono flex items-center justify-between gap-3 animate-fade-in"
+            data-testid="solver-revert-banner"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[#38bdf8] font-bold">✨ SEQUENCE OPTIMIZED</span>
+              <span className="text-[#cfcfcf] text-xs">
+                Arranged by DSP solver for optimal harmonic compatibility and energy progression.
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  undoSetlist(backend);
+                  setShowOptimizationBanner(false);
+                }}
+                className="px-2.5 py-1 bg-[#181818] hover:bg-[#222222] text-[#38bdf8] border border-[#38bdf8]/60 text-xs uppercase font-mono transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+                data-testid="revert-suggested-order-btn"
+              >
+                ↶ Revert to Previous Order
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowOptimizationBanner(false)}
+                className="text-[#a8a8a8] hover:text-white px-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+                title="Dismiss notice"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Export Notification */}
         {exportMessage && (
           <div className="p-2.5 bg-[#0e0e0e] border border-[#262626] text-[#ededed] text-xs font-mono flex items-center justify-between">
@@ -553,7 +580,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             <button
               type="button"
               onClick={() => setExportMessage(null)}
-              className="text-[#666666] hover:text-white cursor-pointer"
+              className="text-[#a8a8a8] hover:text-white cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
             >
               ✕
             </button>
@@ -567,7 +594,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             <button
               type="button"
               onClick={() => setErrorMessage(null)}
-              className="text-[#888888] hover:text-white cursor-pointer"
+              className="text-[#a8a8a8] hover:text-white cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
             >
               ✕
             </button>
@@ -691,7 +718,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                   setIsExportModalOpen(false);
                   setErrorMessage(null);
                 }}
-                className="text-[#666666] hover:text-[#ededed] text-xs font-mono cursor-pointer"
+                className="text-[#a8a8a8] hover:text-[#ededed] text-xs font-mono cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
                 aria-label="Close export modal"
               >
                 ✕
@@ -700,14 +727,14 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
 
             <div className="space-y-3">
               <div>
-                <label htmlFor="export-format-select" className="block text-[11px] font-mono text-[#888888] uppercase mb-1">
+                <label htmlFor="export-format-select" className="block text-xs font-mono text-[#a8a8a8] uppercase mb-1">
                   Format
                 </label>
                 <select
                   id="export-format-select"
                   value={exportTarget}
                   onChange={(e) => setExportTarget(e.target.value as ExportTarget)}
-                  className="w-full bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus:border-[#444444]"
+                  className="w-full bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8]"
                 >
                   <option value="RekordboxXml">Rekordbox XML</option>
                   <option value="M3u8">M3U8 Playlist</option>
@@ -717,7 +744,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
               </div>
 
               <div>
-                <label htmlFor="export-destination-input" className="block text-[11px] font-mono text-[#888888] uppercase mb-1">
+                <label htmlFor="export-destination-input" className="block text-xs font-mono text-[#a8a8a8] uppercase mb-1">
                   Custom Destination Path (optional)
                 </label>
                 <div className="flex items-center gap-1.5">
@@ -727,7 +754,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                     value={outputPath}
                     onChange={(e) => setOutputPath(e.target.value)}
                     placeholder="Auto-generated or choose location..."
-                    className="flex-1 bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus:border-[#444444] placeholder-[#555555]"
+                    className="flex-1 bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8] placeholder-[#888888]"
                   />
                   <button
                     type="button"
@@ -746,7 +773,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                         // ignore
                       }
                     }}
-                    className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#333333] bg-[#161616] hover:bg-[#222222] text-[#d4d4d4] transition-colors cursor-pointer shrink-0"
+                    className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#333333] bg-[#161616] hover:bg-[#222222] text-[#d4d4d4] transition-colors cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
                   >
                     Browse...
                   </button>
@@ -759,14 +786,14 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                   id="export-overwrite-checkbox"
                   checked={allowOverwrite}
                   onChange={(e) => setAllowOverwrite(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded-none border border-[#333333] bg-[#0c0c0c] text-[#ededed] cursor-pointer accent-[#222222]"
+                  className="w-3.5 h-3.5 rounded-none border border-[#333333] bg-[#0c0c0c] text-[#ededed] cursor-pointer accent-[#222222] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
                 />
-                <label htmlFor="export-overwrite-checkbox" className="text-xs font-mono text-[#888888] cursor-pointer">
+                <label htmlFor="export-overwrite-checkbox" className="text-xs font-mono text-[#a8a8a8] cursor-pointer">
                   Overwrite destination file if it already exists
                 </label>
               </div>
 
-              <div className="text-[11px] font-mono text-[#666666] bg-[#090909] p-2 border border-[#1a1a1a]">
+              <div className="text-xs font-mono text-[#a8a8a8] bg-[#090909] p-2 border border-[#1a1a1a]">
                 Exporting <span className="font-semibold text-[#ededed]">{setlist.length}</span> tracks with cues and transitions.
               </div>
 
@@ -784,7 +811,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                   setIsExportModalOpen(false);
                   setErrorMessage(null);
                 }}
-                className="px-2.5 py-1 text-xs font-mono text-[#666666] hover:text-[#ededed] transition-colors cursor-pointer"
+                className="px-2.5 py-1 text-xs font-mono text-[#a8a8a8] hover:text-[#ededed] transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               >
                 Cancel
               </button>

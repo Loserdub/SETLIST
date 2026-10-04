@@ -10,6 +10,32 @@ import {
   formatTimeMs,
 } from './waveformMath';
 
+export interface CanvasHoverInfo {
+  timeMs: number;
+  pixelX: number;
+  cue?: {
+    letter: string;
+    label: string;
+    kind: string;
+    colorHex: string;
+    timeMs: number;
+    loopEndMs?: number | null;
+  } | null;
+  segment?: {
+    label: string;
+    colorHex: string;
+    startMs: number;
+    endMs: number;
+    energy: number;
+  } | null;
+  beat?: {
+    index: number;
+    isDownbeat: boolean;
+    timeMs: number;
+  } | null;
+  isLingering?: boolean;
+}
+
 export interface WaveformCanvasProps {
   analysis: TrackAnalysis;
   durationMs: number;
@@ -50,6 +76,10 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
   const [hoverPixelX, setHoverPixelX] = useState<number | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<CanvasHoverInfo | null>(null);
+
+  // 2-second hover linger timer ref (Teenage Engineering hardware style decay)
+  const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Drag interaction tracking refs
   const dragRef = useRef({
@@ -58,6 +88,15 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
     startX: 0,
     startOffsetMs: 0,
   });
+
+  // Cleanup linger timer on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverLeaveTimerRef.current) {
+        clearTimeout(hoverLeaveTimerRef.current);
+      }
+    };
+  }, []);
 
   // Track container dimensions with ResizeObserver
   useEffect(() => {
@@ -368,14 +407,11 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
     isDragging,
   ]);
 
-  // Request Animation Frame loop for smooth 60fps repaints
+  // Repaint canvas via requestAnimationFrame only when render dependencies update
   useEffect(() => {
-    let animId: number;
-    const loop = () => {
+    const animId = requestAnimationFrame(() => {
       renderCanvas();
-      animId = requestAnimationFrame(loop);
-    };
-    animId = requestAnimationFrame(loop);
+    });
     return () => cancelAnimationFrame(animId);
   }, [renderCanvas]);
 
@@ -422,10 +458,77 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
 
+    // Reset any lingering 2-second hover decay
+    if (hoverLeaveTimerRef.current) {
+      clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+
     const mouseX = e.clientX - rect.left;
     const timeAtMouse = pixelToTime(mouseX, startTimeMs, visibleDurationMs, dimensions.width);
+    const clampedTime = Math.max(0, Math.min(durationMs, timeAtMouse));
     setHoverPixelX(mouseX);
-    setHoverTimeMs(timeAtMouse);
+    setHoverTimeMs(clampedTime);
+
+    // Identify active structural segment at cursor
+    const segment = analysis.segments.find(
+      (s) => clampedTime >= s.start_ms && clampedTime <= s.end_ms
+    );
+
+    // Identify nearby Cue point (within 18px horizontal proximity)
+    let matchedCue: CanvasHoverInfo['cue'] = null;
+    let minCueDist = 18;
+    for (const c of analysis.cue_points) {
+      const cx = timeToPixel(c.time_ms, startTimeMs, visibleDurationMs, dimensions.width);
+      const dist = Math.abs(mouseX - cx);
+      if (dist < minCueDist) {
+        minCueDist = dist;
+        matchedCue = {
+          letter: String.fromCharCode(65 + c.index),
+          label: c.label,
+          kind: c.kind,
+          colorHex: c.color_hex,
+          timeMs: c.time_ms,
+          loopEndMs: c.loop_end_ms,
+        };
+      }
+    }
+
+    // Identify nearest beat tick in grid (within 14px proximity)
+    let matchedBeat: CanvasHoverInfo['beat'] = null;
+    const { beats_ms, downbeat_flags } = analysis.rhythm.grid;
+    if (beats_ms && beats_ms.length > 0) {
+      let minBeatDist = 14;
+      for (let i = 0; i < beats_ms.length; i++) {
+        const bx = timeToPixel(beats_ms[i], startTimeMs, visibleDurationMs, dimensions.width);
+        const dist = Math.abs(mouseX - bx);
+        if (dist < minBeatDist) {
+          minBeatDist = dist;
+          matchedBeat = {
+            index: i + 1,
+            isDownbeat: Boolean(downbeat_flags[i]),
+            timeMs: beats_ms[i],
+          };
+        }
+      }
+    }
+
+    setHoverInfo({
+      timeMs: clampedTime,
+      pixelX: mouseX,
+      cue: matchedCue,
+      segment: segment
+        ? {
+            label: segment.label,
+            colorHex: SEGMENT_COLORS[segment.label.toLowerCase()] || '#64748b',
+            startMs: segment.start_ms,
+            endMs: segment.end_ms,
+            energy: segment.energy,
+          }
+        : null,
+      beat: matchedBeat,
+      isLingering: false,
+    });
 
     if (dragRef.current.isDown) {
       const deltaX = e.clientX - dragRef.current.startX;
@@ -461,8 +564,20 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
   const handleMouseLeave = () => {
     dragRef.current.isDown = false;
     setIsDragging(false);
-    setHoverPixelX(null);
-    setHoverTimeMs(null);
+
+    // Keep hover tooltip pinned for 2 seconds (Teenage Engineering hardware style linger)
+    if (hoverLeaveTimerRef.current) {
+      clearTimeout(hoverLeaveTimerRef.current);
+    }
+
+    setHoverInfo((prev) => (prev ? { ...prev, isLingering: true } : null));
+
+    hoverLeaveTimerRef.current = setTimeout(() => {
+      setHoverInfo(null);
+      setHoverPixelX(null);
+      setHoverTimeMs(null);
+      hoverLeaveTimerRef.current = null;
+    }, 2000);
   };
 
   return (
@@ -482,13 +597,74 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
         style={{ width: '100%', height: '100%' }}
       />
 
-      {/* Floating Hover Time Badge */}
-      {hoverPixelX !== null && hoverTimeMs !== null && !isDragging && (
+      {/* Teenage Engineering Style Thin Hover Tooltip (with 2-second linger) */}
+      {hoverInfo && !isDragging && (
         <div
-          className="absolute top-1 pointer-events-none transform -translate-x-1/2 bg-[#0a0a0a] border border-[#27272a] px-1.5 py-0.5 rounded-none text-[10px] font-mono text-[#ededed] shadow-xs"
-          style={{ left: `${Math.max(28, Math.min(dimensions.width - 28, hoverPixelX))}px` }}
+          className={`absolute top-1 pointer-events-none transform -translate-x-1/2 z-20 flex flex-col items-center transition-opacity duration-300 ${
+            hoverInfo.isLingering ? 'opacity-90' : 'opacity-100'
+          }`}
+          style={{
+            left: `${Math.max(130, Math.min(dimensions.width - 130, hoverInfo.pixelX))}px`,
+          }}
+          data-testid="waveform-te-tooltip"
         >
-          {formatTimeMs(hoverTimeMs)}
+          <div className="bg-[#0c0c0c]/95 backdrop-blur-sm border border-[#333333] px-2.5 py-1.5 text-xs font-mono tracking-wide uppercase text-[#ededed] shadow-[0_4px_16px_rgba(0,0,0,0.85)] flex flex-col gap-1 rounded-none">
+            {/* Primary Telemetry Line */}
+            <div className="flex items-center gap-1.5 leading-none">
+              <span className="text-[#38bdf8] font-bold">
+                {formatTimeMs(hoverInfo.timeMs)}
+              </span>
+              <span className="text-[#666666] font-light">//</span>
+              {hoverInfo.cue ? (
+                <span className="flex items-center gap-1 font-bold" style={{ color: hoverInfo.cue.colorHex }}>
+                  <span>CUE {hoverInfo.cue.letter}</span>
+                  <span className="text-[#a8a8a8] font-normal">[{hoverInfo.cue.label}]</span>
+                </span>
+              ) : hoverInfo.segment ? (
+                <span className="flex items-center gap-1">
+                  <span
+                    className="w-1.5 h-1.5 inline-block rounded-none"
+                    style={{ backgroundColor: hoverInfo.segment.colorHex }}
+                  />
+                  <span className="font-bold text-white">{hoverInfo.segment.label}</span>
+                </span>
+              ) : (
+                <span className="text-[#a8a8a8]">TRACK POSITION</span>
+              )}
+
+              {hoverInfo.isLingering && (
+                <span className="ml-1 text-xs text-[#fbbf24] border border-[#fbbf24]/50 px-1.5 py-0.5 tracking-normal bg-[#ca8a04]/20 rounded-none">
+                  HOLD 2S
+                </span>
+              )}
+            </div>
+
+            {/* Secondary Metadata Readout */}
+            <div className="flex items-center gap-2 text-[#a8a8a8] text-xs tracking-wide border-t border-[#2e2e2e] pt-1 leading-normal">
+              {hoverInfo.beat && (
+                <span>
+                  BEAT #{hoverInfo.beat.index}
+                  {hoverInfo.beat.isDownbeat && (
+                    <span className="text-[#38bdf8] ml-1 font-bold">[DB]</span>
+                  )}
+                </span>
+              )}
+              {hoverInfo.segment && (
+                <>
+                  <span className="text-[#555555]">//</span>
+                  <span>ENERGY {hoverInfo.segment.energy}/10</span>
+                </>
+              )}
+              {hoverInfo.cue?.loopEndMs && (
+                <>
+                  <span className="text-[#555555]">//</span>
+                  <span className="text-[#22d3ee]">LOOP +{formatTimeMs(hoverInfo.cue.loopEndMs - hoverInfo.cue.timeMs)}</span>
+                </>
+              )}
+            </div>
+          </div>
+          {/* Hairline guide indicator */}
+          <div className="w-[1px] h-1.5 bg-[#38bdf8]/60" />
         </div>
       )}
     </div>

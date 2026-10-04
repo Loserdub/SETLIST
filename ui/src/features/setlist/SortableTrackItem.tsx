@@ -3,6 +3,8 @@ import { CSS } from '@dnd-kit/utilities';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
 import { camelotColor, camelotTextColor } from '../../utils/camelotColor';
 import { EditedBadge, isFieldOverridden } from '../track/overrides';
+import { useAppStore } from '../../store/useAppStore';
+import { IconGripVertical, IconPlay, IconPause, IconClose } from '../../components/icons';
 
 interface SortableTrackItemProps {
   entry: SetlistEntry;
@@ -27,6 +29,11 @@ export function SortableTrackItem({
   onRemove,
   onInspect,
 }: SortableTrackItemProps) {
+  const auditionTrackId = useAppStore((s) => s.auditionTrackId);
+  const auditionState = useAppStore((s) => s.auditionState);
+  const toggleAudition = useAppStore((s) => s.toggleAudition);
+  const isAuditioning = auditionTrackId === entry.track_id && auditionState === 'playing';
+
   const {
     attributes,
     listeners,
@@ -81,16 +88,16 @@ export function SortableTrackItem({
         <div
           {...attributes}
           {...listeners}
-          className={`flex items-center justify-center p-1 text-[#444444] hover:text-[#888888] transition-colors select-none ${
+          className={`flex items-center justify-center p-1 text-[#a8a8a8] hover:text-white transition-colors select-none ${
             isLocked ? 'cursor-not-allowed opacity-30' : 'cursor-grab active:cursor-grabbing'
           }`}
           title={isLocked ? 'Track is pinned/locked' : 'Drag to reorder track'}
         >
-          <span className="text-xs font-mono leading-none tracking-tighter">⋮⋮</span>
+          <IconGripVertical size={13} className="text-[#a8a8a8] hover:text-white" />
         </div>
 
         {/* Position Number */}
-        <div className="w-5 text-right font-mono text-xs font-semibold text-[#666666] tabular-nums">
+        <div className="w-5 text-right font-mono text-xs font-semibold text-[#a8a8a8] tabular-nums">
           {String(entry.position).padStart(2, '0')}
         </div>
 
@@ -99,10 +106,10 @@ export function SortableTrackItem({
           <button
             type="button"
             onClick={onToggleLockFirst}
-            className={`px-1.5 py-0.5 text-[9px] font-mono tracking-wider uppercase transition-colors cursor-pointer border rounded-none ${
+            className={`px-1.5 py-0.5 text-xs font-mono tracking-wider uppercase transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
               lockFirst
                 ? 'border-amber-500/50 bg-amber-500/10 text-amber-300 font-semibold'
-                : 'border-[#222222] bg-[#111111] text-[#666666] hover:text-[#999999]'
+                : 'border-[#222222] bg-[#111111] text-[#a8a8a8] hover:text-[#ededed]'
             }`}
             title="Lock opening track as fixed setlist anchor"
           >
@@ -114,10 +121,10 @@ export function SortableTrackItem({
           <button
             type="button"
             onClick={onToggleLockLast}
-            className={`px-1.5 py-0.5 text-[9px] font-mono tracking-wider uppercase transition-colors cursor-pointer border rounded-none ${
+            className={`px-1.5 py-0.5 text-xs font-mono tracking-wider uppercase transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
               lockLast
                 ? 'border-amber-500/50 bg-amber-500/10 text-amber-300 font-semibold'
-                : 'border-[#222222] bg-[#111111] text-[#666666] hover:text-[#999999]'
+                : 'border-[#222222] bg-[#111111] text-[#a8a8a8] hover:text-[#ededed]'
             }`}
             title="Lock closing track as fixed setlist anchor"
           >
@@ -133,7 +140,7 @@ export function SortableTrackItem({
           <span className="text-xs font-semibold text-[#f0f0f0] hover:text-white truncate transition-colors">
             {track?.tags.title ?? 'Untitled Track'}
           </span>
-          <span className="text-[11px] text-[#666666] truncate font-normal">
+          <span className="text-xs text-[#a8a8a8] truncate font-normal">
             {track?.tags.artist ?? 'Unknown Artist'}
           </span>
         </div>
@@ -142,7 +149,7 @@ export function SortableTrackItem({
       {/* Right: Key, BPM, Energy, Duration & Remove */}
       <div className="flex items-center gap-4 pl-2 shrink-0">
         {/* BPM */}
-        <span className="font-mono text-xs font-medium text-[#d0d0d0] text-right tabular-nums inline-flex items-center gap-1">
+        <span className="font-mono text-xs font-medium text-[#cfcfcf] text-right tabular-nums inline-flex items-center gap-1">
           <span>{bpm > 0 ? `${bpm} BPM` : '—'}</span>
           {isFieldOverridden(track, 'bpm') && <EditedBadge field="bpm" title="BPM analysis overridden" />}
         </span>
@@ -150,7 +157,7 @@ export function SortableTrackItem({
         {/* Camelot Key Chip */}
         <span className="inline-flex items-center gap-1">
           <span
-            className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded-[2px] tracking-tight w-7 text-center"
+            className="font-mono font-bold text-xs px-1.5 py-0.5 rounded-[2px] tracking-tight w-7 text-center"
             style={{ backgroundColor: bg, color: fg }}
           >
             {keyStr}
@@ -160,7 +167,7 @@ export function SortableTrackItem({
 
         {/* Energy */}
         <div className="flex items-center gap-1.5" title={`Energy Score: ${energy}/10`}>
-          <span className="font-mono text-[10px] text-[#777777] w-3 text-right tabular-nums">
+          <span className="font-mono text-xs text-[#cfcfcf] w-3 text-right tabular-nums">
             {energy}
           </span>
           <div className="w-8 bg-[#181818] h-1 overflow-hidden">
@@ -176,19 +183,36 @@ export function SortableTrackItem({
         </div>
 
         {/* Duration */}
-        <span className="font-mono text-xs text-[#666666] w-10 text-right tabular-nums">
+        <span className="font-mono text-xs text-[#a8a8a8] w-10 text-right tabular-nums">
           {track ? formatDuration(track.duration_ms) : '—'}
         </span>
+
+        {/* Quick Audition Button */}
+        {track && (
+          <button
+            type="button"
+            onClick={() => void toggleAudition(entry.track_id)}
+            className={`p-1 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] flex items-center justify-center w-6 h-6 ${
+              isAuditioning
+                ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
+                : 'border-[#262626] bg-[#121212] hover:bg-[#1e1e1e] text-[#cfcfcf] hover:text-white'
+            }`}
+            title={isAuditioning ? 'Pause audition' : 'Audition track audio'}
+            data-testid={`audition-setlist-btn-${entry.track_id}`}
+          >
+            {isAuditioning ? <IconPause size={10} /> : <IconPlay size={10} />}
+          </button>
+        )}
 
         {/* Remove Button */}
         <button
           type="button"
           onClick={() => onRemove(entry.position)}
-          className="text-[#444444] hover:text-[#d0d0d0] transition-colors p-1 cursor-pointer text-xs font-mono"
+          className="text-[#a8a8a8] hover:text-rose-400 transition-colors p-1 cursor-pointer text-xs font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 flex items-center justify-center"
           title="Remove track from setlist"
           aria-label="Remove track"
         >
-          ✕
+          <IconClose size={12} />
         </button>
       </div>
     </div>

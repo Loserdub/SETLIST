@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { camelotColor, camelotTextColor } from '../../utils/camelotColor';
 import { WaveformContainer, formatTimeMs } from '../../components/waveform';
@@ -6,6 +6,7 @@ import { useTrackState } from './useTrackState';
 import { usePlayback } from './usePlayback';
 import { PlaybackBar, SPEED_OPTIONS } from './PlaybackBar';
 import { handleTrackKeyDown } from './playbackMath';
+import { getTrackDisplayTitle, getTrackDisplayArtist } from '../../utils/trackDisplay';
 
 const SEGMENT_COLORS: Record<string, string> = {
   intro: '#0284c7', // Sky Blue
@@ -17,7 +18,16 @@ const SEGMENT_COLORS: Record<string, string> = {
 };
 
 export const TrackView: React.FC = () => {
-  const { selectedTrack, setRoute, addToSetlist, setlist } = useAppStore();
+  const {
+    selectedTrack,
+    setRoute,
+    addToSetlist,
+    setlist,
+    trackTitleOverrides,
+    trackArtistOverrides,
+    setTrackTitleOverride,
+    setTrackArtistOverride,
+  } = useAppStore();
   const {
     zoomLevel,
     scrollOffsetMs,
@@ -55,6 +65,15 @@ export const TrackView: React.FC = () => {
     [selectedTrack, jumpToTime, playback]
   );
 
+  const playbackRef = useRef(playback);
+  playbackRef.current = playback;
+
+  const handleSeekRef = useRef(handleSeek);
+  handleSeekRef.current = handleSeek;
+
+  const handleJumpAndSeekRef = useRef(handleJumpAndSeek);
+  handleJumpAndSeekRef.current = handleJumpAndSeek;
+
   // ───────────────────────────────────────────────────────────────────────────
   // Keyboard Shortcuts (Track View Only):
   // [Space]: Toggle Play / Pause
@@ -67,6 +86,7 @@ export const TrackView: React.FC = () => {
     if (!selectedTrack) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
+      const currentPos = useTrackState.getState().playheadPositionMs ?? 0;
       const action = handleTrackKeyDown(
         {
           key: e.key,
@@ -79,7 +99,7 @@ export const TrackView: React.FC = () => {
           isContentEditable: (e.target as HTMLElement)?.isContentEditable,
         },
         {
-          currentPositionMs: playheadPositionMs ?? 0,
+          currentPositionMs: currentPos,
           durationMs: selectedTrack.duration_ms,
           grid: selectedTrack.analysis?.rhythm.grid,
         }
@@ -88,18 +108,26 @@ export const TrackView: React.FC = () => {
       if (action) {
         e.preventDefault();
         if (action.type === 'toggle_play_pause') {
-          void playback.togglePlayPause();
+          void playbackRef.current.togglePlayPause();
         } else if (action.type === 'seek') {
-          handleSeek(action.targetMs);
+          handleSeekRef.current(action.targetMs);
+        } else if (action.type === 'jump_cue') {
+          const targetCue = selectedTrack.analysis?.cue_points.find(
+            (c) => c.index === action.cueIndex
+          );
+          if (targetCue) {
+            handleJumpAndSeekRef.current(targetCue.time_ms);
+          }
         } else if (action.type === 'step_speed') {
-          const currentIndex = SPEED_OPTIONS.findIndex((r) => Math.abs(r - playback.speed) < 0.05);
+          const currentSpeed = playbackRef.current.speed;
+          const currentIndex = SPEED_OPTIONS.findIndex((r) => Math.abs(r - currentSpeed) < 0.05);
           if (action.direction === 'up') {
             const nextIndex =
               currentIndex === -1 ? 2 : Math.min(SPEED_OPTIONS.length - 1, currentIndex + 1);
-            void playback.setSpeed(SPEED_OPTIONS[nextIndex]);
+            void playbackRef.current.setSpeed(SPEED_OPTIONS[nextIndex]);
           } else {
             const prevIndex = currentIndex === -1 ? 2 : Math.max(0, currentIndex - 1);
-            void playback.setSpeed(SPEED_OPTIONS[prevIndex]);
+            void playbackRef.current.setSpeed(SPEED_OPTIONS[prevIndex]);
           }
         }
       }
@@ -109,19 +137,52 @@ export const TrackView: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [playheadPositionMs, selectedTrack, playback, handleSeek]);
+  }, [selectedTrack]);
+
+  // Auto-follow playhead viewport during playback when zoomed in
+  useEffect(() => {
+    if (
+      playback.state !== 'playing' ||
+      zoomLevel <= 1.0 ||
+      playheadPositionMs === null ||
+      !selectedTrack
+    ) {
+      return;
+    }
+
+    const visibleDurationMs = selectedTrack.duration_ms / zoomLevel;
+    const currentScrollOffset = useTrackState.getState().scrollOffsetMs;
+    const rightThreshold = currentScrollOffset + visibleDurationMs * 0.85;
+    const leftThreshold = currentScrollOffset;
+
+    if (playheadPositionMs > rightThreshold || playheadPositionMs < leftThreshold) {
+      // Keep playhead comfortably visible at ~20% into the viewport for forward context
+      const targetOffset = playheadPositionMs - visibleDurationMs * 0.2;
+      const clampedOffset = Math.max(
+        0,
+        Math.min(selectedTrack.duration_ms - visibleDurationMs, targetOffset)
+      );
+      setScrollOffsetMs(clampedOffset);
+    }
+  }, [
+    playback.state,
+    playheadPositionMs,
+    zoomLevel,
+    selectedTrack,
+    setScrollOffsetMs,
+  ]);
 
   if (!selectedTrack) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center h-screen bg-[#080808] text-[#ededed] p-8 text-center select-none font-mono">
         <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-[#cccccc]">No Track Selected</h2>
-        <p className="text-xs text-[#666666] max-w-sm mt-1.5 mb-6 font-sans">
+        <p className="text-xs text-[#a8a8a8] max-w-sm mt-1.5 mb-6 font-sans">
           Select a track from your library to inspect its beat grid, 3-band waveform, cue points, and structural segments.
         </p>
         <button
           type="button"
           onClick={() => setRoute('library')}
-          className="px-3.5 py-1.5 bg-[#181818] hover:bg-[#222222] text-[#ededed] text-xs font-mono uppercase tracking-wider border border-[#2b2b2b] transition-colors cursor-pointer rounded-none"
+          className="px-3.5 py-1.5 bg-[#181818] hover:bg-[#222222] text-[#ededed] text-xs font-mono uppercase tracking-wider border border-[#2b2b2b] transition-colors cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
         >
           Browse Library
         </button>
@@ -164,79 +225,197 @@ export const TrackView: React.FC = () => {
     };
   }, [analysis, playheadPositionMs]);
 
-  return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#080808] text-[#ededed] p-5 space-y-4">
-      {/* ── Top Header Card ────────────────────────────────────────────────── */}
-      <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-none">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <span
-              className="px-2 py-0.5 rounded-[2px] font-mono text-xs font-bold border border-black/30"
-              style={{ backgroundColor: bg, color: fg }}
-              data-testid="track-key-badge"
-            >
-              {keyStr}
-            </span>
-            <h2 className="text-lg font-bold tracking-tight text-white truncate max-w-lg">
-              {selectedTrack.tags.title ?? 'Untitled Track'}
-            </h2>
-          </div>
-          <p className="text-xs text-[#888888]">
-            {selectedTrack.tags.artist ?? 'Unknown Artist'} • {selectedTrack.tags.album ?? 'Single / Unassigned'}
-          </p>
-          <p className="text-[10px] font-mono text-[#555555] truncate max-w-xl">
-            {selectedTrack.path}
-          </p>
-        </div>
+  const [isEditingMetadata, setIsEditingMetadata] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editArtist, setEditArtist] = useState('');
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            disabled={inSetlist}
-            onClick={() => void addToSetlist(selectedTrack.id)}
-            className={`px-3 py-1.5 text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer border rounded-none ${
-              inSetlist
-                ? 'bg-[#111111] text-[#666666] border-[#222222] cursor-default'
-                : 'bg-[#181818] hover:bg-[#242424] text-white border-[#2b2b2b]'
-            }`}
-          >
-            {inSetlist ? '✓ In Active Setlist' : '+ Add to Setlist'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setRoute('library')}
-            className="px-3 py-1.5 bg-[#101010] hover:bg-[#1a1a1a] text-[#888888] hover:text-white text-xs font-mono uppercase tracking-wider border border-[#222222] transition-colors cursor-pointer rounded-none"
-          >
-            Back to Library
-          </button>
+  const customTitle = trackTitleOverrides[selectedTrack.id];
+  const customArtist = trackArtistOverrides[selectedTrack.id];
+  const displayTitle = getTrackDisplayTitle(selectedTrack, customTitle);
+  const displayArtist = getTrackDisplayArtist(selectedTrack, customArtist);
+
+  const startEditing = () => {
+    setEditTitle(customTitle ?? displayTitle);
+    setEditArtist(customArtist ?? (selectedTrack.tags.artist ?? ''));
+    setIsEditingMetadata(true);
+  };
+
+  const saveEditing = () => {
+    setTrackTitleOverride(selectedTrack.id, editTitle);
+    setTrackArtistOverride(selectedTrack.id, editArtist);
+    setIsEditingMetadata(false);
+  };
+
+  const resetToOriginal = () => {
+    setTrackTitleOverride(selectedTrack.id, null);
+    setTrackArtistOverride(selectedTrack.id, null);
+    setIsEditingMetadata(false);
+  };
+
+  const cancelEditing = () => {
+    setIsEditingMetadata(false);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#080808] text-[#ededed]">
+      {/* ── Scrollable Track Inspection Area ───────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* ── Top Header Card ────────────────────────────────────────────────── */}
+        <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-none">
+          {isEditingMetadata ? (
+            <div className="space-y-2.5 w-full max-w-xl bg-[#111111] p-3 border border-[#262626]">
+              <div className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8] flex items-center justify-between">
+                <span>Edit In-App Track Metadata (Local Only)</span>
+                <span className="text-[#a8a8a8] text-xs">Original audio file on disk will not be changed</span>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-mono text-[#a8a8a8] block mb-0.5">Track Title:</label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    placeholder="Enter track title..."
+                    className="w-full px-2.5 py-1 bg-[#090909] border border-[#2e2e2e] text-xs font-mono text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+                    data-testid="edit-title-input"
+                    autoFocus
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs font-mono text-[#a8a8a8] block mb-0.5">Artist Name:</label>
+                  <input
+                    type="text"
+                    value={editArtist}
+                    onChange={(e) => setEditArtist(e.target.value)}
+                    placeholder="Enter artist name..."
+                    className="w-full px-2.5 py-1 bg-[#090909] border border-[#2e2e2e] text-xs font-mono text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+                    data-testid="edit-artist-input"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={saveEditing}
+                  className="px-3 py-1 bg-[#38bdf8] text-black font-semibold text-xs font-mono uppercase tracking-wider hover:bg-[#7dd3fc] transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                  data-testid="save-metadata-btn"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditing}
+                  className="px-3 py-1 bg-[#1a1a1a] hover:bg-[#252525] text-[#a8a8a8] hover:text-white border border-[#333333] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                >
+                  Cancel
+                </button>
+                {(customTitle || customArtist) && (
+                  <button
+                    type="button"
+                    onClick={resetToOriginal}
+                    className="px-3 py-1 bg-[#181818] hover:bg-[#222222] text-[#ef4444] border border-[#332222] text-xs font-mono uppercase tracking-wider transition-colors ml-auto cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                    title="Revert back to original tags / filename detection"
+                  >
+                    Reset to Default
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span
+                  className="px-2 py-0.5 rounded-[2px] font-mono text-xs font-bold border border-black/30"
+                  style={{ backgroundColor: bg, color: fg }}
+                  data-testid="track-key-badge"
+                >
+                  {keyStr}
+                </span>
+                <h2 className="text-lg font-bold tracking-tight text-white truncate max-w-lg">
+                  {displayTitle}
+                </h2>
+                {customTitle && (
+                  <span
+                    className="text-xs font-mono px-2 py-0.5 bg-[#1c2e3d] text-[#38bdf8] border border-[#234863]"
+                    title="Custom in-app title override"
+                  >
+                    Custom Title
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={startEditing}
+                  className="px-2.5 py-1 bg-[#141414] hover:bg-[#1f1f1f] text-[#a8a8a8] hover:text-white border border-[#2a2a2a] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                  title="Edit in-app title and artist"
+                  data-testid="edit-track-metadata-btn"
+                >
+                  Edit Info
+                </button>
+              </div>
+              <p className="text-xs text-[#a8a8a8] flex items-center gap-1.5 flex-wrap">
+                <span>{displayArtist}</span>
+                {customArtist && (
+                  <span className="text-xs font-mono px-1.5 py-0.5 bg-[#1c2e3d] text-[#38bdf8] border border-[#234863]">
+                    Custom Artist
+                  </span>
+                )}
+                <span>•</span>
+                <span>{selectedTrack.tags.album ?? 'Single / Unassigned'}</span>
+              </p>
+              <p className="text-xs font-mono text-[#a8a8a8] truncate max-w-xl">
+                {selectedTrack.path}
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={inSetlist}
+              onClick={() => void addToSetlist(selectedTrack.id)}
+              className={`px-3 py-1.5 text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+                inSetlist
+                  ? 'bg-[#111111] text-[#a8a8a8] border-[#222222] cursor-default'
+                  : 'bg-[#181818] hover:bg-[#242424] text-white border-[#2b2b2b]'
+              }`}
+            >
+              {inSetlist ? '✓ In Active Setlist' : '+ Add to Setlist'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoute('library')}
+              className="px-3 py-1.5 bg-[#101010] hover:bg-[#1a1a1a] text-[#a8a8a8] hover:text-white text-xs font-mono uppercase tracking-wider border border-[#222222] transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+            >
+              Back to Library
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* ── Metrics Row (Key, BPM, Energy, Loudness) ────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5" data-testid="track-metrics-row">
         {/* BPM */}
         <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none">
-          <div className="text-[10px] font-mono font-semibold uppercase tracking-wider text-[#666666]">
+          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
             Tempo (BPM)
           </div>
           <div className="text-xl font-mono font-bold text-white mt-0.5 tabular-nums" data-testid="track-bpm-value">
             {analysis?.rhythm.grid.bpm.toFixed(1) ?? '—'}
           </div>
-          <div className="text-[10px] font-mono text-[#71717a] mt-0.5">
+          <div className="text-xs font-mono text-[#a8a8a8] mt-0.5">
             {analysis?.rhythm.grid.steady ? 'Steady grid' : 'Variable tempo'}
           </div>
         </div>
 
         {/* Camelot Key & Tuning */}
         <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none">
-          <div className="text-[10px] font-mono font-semibold uppercase tracking-wider text-[#666666]">
+          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
             Key & Mode
           </div>
           <div className="text-xl font-mono font-bold text-white mt-0.5 flex items-center gap-2">
             <span>{keyStr}</span>
-            <span className="text-xs font-normal text-[#71717a]">({analysis?.key.mode ?? '—'})</span>
+            <span className="text-xs font-normal text-[#a8a8a8]">({analysis?.key.mode ?? '—'})</span>
           </div>
-          <div className="text-[10px] font-mono text-[#71717a] mt-0.5">
+          <div className="text-xs font-mono text-[#a8a8a8] mt-0.5">
             {analysis?.key.tuning_cents !== undefined
               ? `${analysis.key.tuning_cents > 0 ? '+' : ''}${analysis.key.tuning_cents.toFixed(1)} cents`
               : '440.0 Hz'}
@@ -245,11 +424,11 @@ export const TrackView: React.FC = () => {
 
         {/* Energy Rating */}
         <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none">
-          <div className="text-[10px] font-mono font-semibold uppercase tracking-wider text-[#666666]">
+          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
             Energy Rating
           </div>
           <div className="text-xl font-mono font-bold text-[#ededed] mt-0.5" data-testid="track-energy-value">
-            {analysis?.energy_score ?? '—'}<span className="text-xs text-[#555555] font-sans">/10</span>
+            {analysis?.energy_score ?? '—'}<span className="text-xs text-[#a8a8a8] font-sans">/10</span>
           </div>
           <div className="w-full bg-[#181818] h-1 mt-2 overflow-hidden border border-[#222222]">
             <div
@@ -261,14 +440,14 @@ export const TrackView: React.FC = () => {
 
         {/* Integrated Loudness */}
         <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none">
-          <div className="text-[10px] font-mono font-semibold uppercase tracking-wider text-[#666666]">
+          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
             Loudness
           </div>
           <div className="text-xl font-mono font-bold text-white mt-0.5 tabular-nums">
             {analysis?.loudness.integrated_lufs.toFixed(1) ?? '—'}{' '}
-            <span className="text-xs font-normal text-[#71717a]">LUFS</span>
+            <span className="text-xs font-normal text-[#a8a8a8]">LUFS</span>
           </div>
-          <div className="text-[10px] font-mono text-[#71717a] mt-0.5">
+          <div className="text-xs font-mono text-[#a8a8a8] mt-0.5">
             LRA: {analysis?.loudness.loudness_range.toFixed(1) ?? '—'} LU • Peak: {analysis?.loudness.true_peak.toFixed(1) ?? '—'} dBTP
           </div>
         </div>
@@ -282,32 +461,20 @@ export const TrackView: React.FC = () => {
           zoomLevel={zoomLevel}
           scrollOffsetMs={scrollOffsetMs}
           playheadPositionMs={playheadPositionMs}
+          isPlaying={playback.state === 'playing'}
+          onTogglePlayPause={playback.togglePlayPause}
           onZoomChange={setZoomLevel}
           onScrollChange={setScrollOffsetMs}
           onSetPlayhead={handleSeek}
         />
       )}
 
-      {/* ── Audio Playback Control Bar ────────────────────────────────────── */}
-      <PlaybackBar
-        state={playback.state}
-        positionMs={playheadPositionMs ?? playback.positionMs}
-        durationMs={selectedTrack.duration_ms}
-        clickEnabled={playback.clickEnabled}
-        speed={playback.speed}
-        onPlay={playback.play}
-        onPause={playback.pause}
-        onSeek={handleSeek}
-        onToggleClick={playback.toggleClick}
-        onSetSpeed={playback.setSpeed}
-      />
-
       {/* ── Playhead Scrubbing Status Bar ──────────────────────────────────── */}
       <div className="p-2.5 bg-[#0a0a0a] border border-[#1c1c1c] flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 bg-[#38bdf8]" />
-            <span className="text-[#666666]">PLAYHEAD:</span>
+            <span className="text-[#a8a8a8]">PLAYHEAD:</span>
             <span className="font-bold text-[#ededed]">{formatTimeMs(playheadPositionMs ?? 0)}</span>
           </div>
 
@@ -317,17 +484,17 @@ export const TrackView: React.FC = () => {
                 className="w-1.5 h-1.5"
                 style={{ backgroundColor: SEGMENT_COLORS[activeSegment.label.toLowerCase()] }}
               />
-              <span className="text-[#666666]">SECTION:</span>
+              <span className="text-[#a8a8a8]">SECTION:</span>
               <span className="font-bold text-white uppercase">{activeSegment.label}</span>
             </div>
           )}
 
           {activeBeat && (
-            <div className="hidden sm:flex items-center gap-1.5 text-[#666666]">
+            <div className="hidden sm:flex items-center gap-1.5 text-[#a8a8a8]">
               <span>BEAT:</span>
               <span className="text-[#ededed]">#{activeBeat.index}</span>
               {activeBeat.isDownbeat && (
-                <span className="px-1 py-0.5 text-[9px] font-mono font-bold bg-[#142332] text-[#38bdf8] border border-[#1e3a5f]">
+                <span className="px-1.5 py-0.5 text-xs font-mono font-bold bg-[#142332] text-[#38bdf8] border border-[#1e3a5f]">
                   DOWNBEAT
                 </span>
               )}
@@ -339,7 +506,7 @@ export const TrackView: React.FC = () => {
           <button
             type="button"
             onClick={() => handleJumpAndSeek(0)}
-            className="px-2.5 py-1 bg-[#141414] hover:bg-[#1e1e1e] text-[#a1a1aa] hover:text-white border border-[#27272a] text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer"
+            className="px-2.5 py-1 bg-[#141414] hover:bg-[#1e1e1e] text-[#a8a8a8] hover:text-white border border-[#27272a] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
           >
             Jump to Start (0:00)
           </button>
@@ -349,10 +516,10 @@ export const TrackView: React.FC = () => {
       {/* ── Cue Points Registers A to H ────────────────────────────────────── */}
       <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] space-y-3">
         <div className="flex items-center justify-between border-b border-[#181818] pb-2">
-          <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#a1a1aa]">
+          <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
             Cue Points (Registers A – H)
           </h3>
-          <span className="text-[11px] font-mono text-[#555555]">
+          <span className="text-xs font-mono text-[#a8a8a8]">
             Click cue to jump playhead and zoom focus
           </span>
         </div>
@@ -386,15 +553,15 @@ export const TrackView: React.FC = () => {
                   <div className="font-semibold text-xs text-white truncate font-mono">
                     {cue.label}
                   </div>
-                  <div className="font-mono text-[11px] text-[#4ade80] mt-0.5">
+                  <div className="font-mono text-xs text-[#4ade80] mt-0.5">
                     {formatTimeMs(cue.time_ms)}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-[9px] text-[#888888] uppercase font-mono px-1 py-0.5 bg-[#141414] border border-[#222222]">
+                    <span className="text-xs text-[#a8a8a8] uppercase font-mono px-1.5 py-0.5 bg-[#141414] border border-[#222222]">
                       {cue.kind}
                     </span>
                     {cue.loop_end_ms && (
-                      <span className="text-[10px] text-[#22d3ee] font-mono">
+                      <span className="text-xs text-[#22d3ee] font-mono">
                         +{formatTimeMs(cue.loop_end_ms - cue.time_ms)}
                       </span>
                     )}
@@ -408,7 +575,7 @@ export const TrackView: React.FC = () => {
 
       {/* ── Structural Segments Timeline ────────────────────────────────────── */}
       <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] space-y-3">
-        <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#a1a1aa] border-b border-[#181818] pb-2">
+        <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#cfcfcf] border-b border-[#181818] pb-2">
           Structural Segments
         </h3>
 
@@ -423,7 +590,7 @@ export const TrackView: React.FC = () => {
               <div
                 key={idx}
                 onClick={() => handleJumpAndSeek(seg.start_ms)}
-                className="h-full flex items-center justify-center text-[9px] font-mono font-bold text-white uppercase tracking-wider overflow-hidden px-1 border-r border-[#000000]/60 transition-opacity hover:opacity-80 cursor-pointer"
+                className="h-full flex items-center justify-center text-xs font-mono font-bold text-white uppercase tracking-wider overflow-hidden px-1 border-r border-[#000000]/60 transition-opacity hover:opacity-80 cursor-pointer"
                 style={{ width: `${pct}%`, backgroundColor: color }}
                 title={`${seg.label}: ${formatTimeMs(seg.start_ms)} - ${formatTimeMs(seg.end_ms)} (Energy ${seg.energy})`}
               >
@@ -441,19 +608,36 @@ export const TrackView: React.FC = () => {
               onClick={() => handleJumpAndSeek(seg.start_ms)}
               className="p-2 bg-[#0e0e0e] border border-[#1c1c1c] text-xs flex flex-col gap-0.5 hover:border-[#2a2a2a] cursor-pointer transition-colors"
             >
-              <div className="flex items-center gap-1.5 font-mono font-semibold text-[#ededed] uppercase text-[10px]">
+              <div className="flex items-center gap-1.5 font-mono font-semibold text-[#ededed] uppercase text-xs">
                 <span
                   className="w-1.5 h-1.5"
                   style={{ backgroundColor: SEGMENT_COLORS[seg.label.toLowerCase()] }}
                 />
                 {seg.label}
               </div>
-              <div className="font-mono text-[10px] text-[#71717a]">
+              <div className="font-mono text-xs text-[#a8a8a8]">
                 {formatTimeMs(seg.start_ms)}
               </div>
             </div>
           ))}
         </div>
+      </div>
+      </div>
+
+      {/* ── Permanently Docked Bottom Transport Bar ────────────────────────── */}
+      <div className="shrink-0 p-3 bg-[#0a0a0a]/98 backdrop-blur-md border-t border-[#242424] shadow-[0_-8px_24px_rgba(0,0,0,0.9)] z-30">
+        <PlaybackBar
+          state={playback.state}
+          positionMs={playheadPositionMs ?? playback.positionMs}
+          durationMs={selectedTrack.duration_ms}
+          clickEnabled={playback.clickEnabled}
+          speed={playback.speed}
+          onPlay={playback.play}
+          onPause={playback.pause}
+          onSeek={handleSeek}
+          onToggleClick={playback.toggleClick}
+          onSetSpeed={playback.setSpeed}
+        />
       </div>
     </div>
   );

@@ -26,7 +26,7 @@ export function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: 
           {toast.message}
         </p>
         {toast.details && (
-          <p className="text-[10px] text-[#888888] mt-1 break-words leading-relaxed line-clamp-3">
+          <p className="text-xs text-[#a8a8a8] mt-1 break-words leading-relaxed line-clamp-3">
             {toast.details}
           </p>
         )}
@@ -36,7 +36,7 @@ export function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: 
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="shrink-0 text-[#71717a] hover:text-white transition-colors cursor-pointer text-xs p-0.5 rounded-none hover:bg-[#1f1f1f]"
+        className="shrink-0 text-[#a8a8a8] hover:text-white transition-colors cursor-pointer text-xs p-0.5 rounded-none hover:bg-[#1f1f1f] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
       >
         ✕
       </button>

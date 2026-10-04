@@ -7,24 +7,22 @@ interface NavItem {
 }
 
 export function Sidebar() {
-  const {
-    currentRoute,
-    setRoute,
-    tracks,
-    setlist,
-    useMockBackend,
-    setUseMockBackend,
-    isLoadingTracks,
-    isSuggestingOrder,
-    progress,
-    enterStageMode,
-  } = useAppStore();
+  const currentRoute = useAppStore((s) => s.currentRoute);
+  const setRoute = useAppStore((s) => s.setRoute);
+  const tracksLength = useAppStore((s) => s.tracks.length);
+  const setlistLength = useAppStore((s) => s.setlist.length);
+  const useMockBackend = useAppStore((s) => s.useMockBackend);
+  const setUseMockBackend = useAppStore((s) => s.setUseMockBackend);
+  const isLoadingTracks = useAppStore((s) => s.isLoadingTracks);
+  const isSuggestingOrder = useAppStore((s) => s.isSuggestingOrder);
+  const progress = useAppStore((s) => s.progress);
+  const enterStageMode = useAppStore((s) => s.enterStageMode);
 
   const navItems: NavItem[] = [
     {
       route: 'library',
       label: 'Library',
-      badge: tracks.length > 0 ? tracks.length : undefined,
+      badge: tracksLength > 0 ? tracksLength : undefined,
     },
     {
       route: 'discovery',
@@ -37,7 +35,7 @@ export function Sidebar() {
     {
       route: 'setlist',
       label: 'Setlist',
-      badge: setlist.length > 0 ? `${setlist.length}` : undefined,
+      badge: setlistLength > 0 ? `${setlistLength}` : undefined,
     },
     {
       route: 'settings',
@@ -53,11 +51,10 @@ export function Sidebar() {
         {/* App Branding */}
         <div className="px-4 py-3.5 border-b border-[#1a1a1a] flex items-center justify-between">
           <div>
-            <h1 className="text-xs font-mono font-bold tracking-widest text-[#f0f0f0] uppercase flex items-center gap-1.5">
-              <span className="text-[#666666]">LOSERDUB /</span>
-              <span>SETLIST</span>
+            <h1 className="text-sm font-mono font-extrabold tracking-widest text-white uppercase">
+              SETLIST
             </h1>
-            <p className="text-[10px] font-mono text-[#666666] tracking-wider uppercase mt-0.5">
+            <p className="text-xs font-mono text-[#a8a8a8] tracking-normal mt-0.5">
               DJ Set Assistant
             </p>
           </div>
@@ -73,20 +70,20 @@ export function Sidebar() {
                 key={item.route}
                 type="button"
                 onClick={() => setRoute(item.route)}
-                className={`w-full flex items-center justify-between px-4 py-2 text-xs font-mono tracking-wider uppercase transition-colors cursor-pointer border-l-2 text-left ${
+                className={`w-full flex items-center justify-between px-4 py-2 text-xs font-mono tracking-wider uppercase transition-colors cursor-pointer border-l-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
                   isActive
                     ? 'border-l-[#e5e5e5] bg-[#141414] text-[#ffffff] font-semibold'
-                    : 'border-l-transparent text-[#7a7a7a] hover:text-[#d0d0d0] hover:bg-[#0e0e0e]'
+                    : 'border-l-transparent text-[#a8a8a8] hover:text-[#ffffff] hover:bg-[#0e0e0e]'
                 }`}
                 data-testid={`nav-${item.route}`}
               >
                 <span>{item.label}</span>
                 {item.badge !== undefined && (
                   <span
-                    className={`px-1.5 py-0.5 text-[10px] font-mono border ${
+                    className={`px-1.5 py-0.5 text-xs font-mono border ${
                       isActive
-                        ? 'bg-[#1e1e1e] text-[#e0e0e0] border-[#333333]'
-                        : 'bg-[#111111] text-[#666666] border-[#1e1e1e]'
+                        ? 'bg-[#1e1e1e] text-[#ededed] border-[#333333]'
+                        : 'bg-[#111111] text-[#a8a8a8] border-[#1e1e1e]'
                     }`}
                   >
                     {item.badge}
@@ -97,12 +94,12 @@ export function Sidebar() {
           })}
         </nav>
 
-        {setlist.length > 0 && (
+        {setlistLength > 0 && (
           <div className="px-3 pt-3">
             <button
               type="button"
               onClick={enterStageMode}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono font-semibold tracking-wider text-[#e2e2e2] bg-[#141414] hover:bg-[#1a1a1a] hover:text-white border border-[#2b2b2b] uppercase transition-colors cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono font-semibold tracking-wider text-[#ededed] bg-[#141414] hover:bg-[#1a1a1a] hover:text-white border border-[#2b2b2b] uppercase transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
               data-testid="nav-stage-btn"
             >
               <span>[ STAGE MODE ]</span>
@@ -115,12 +112,12 @@ export function Sidebar() {
       <div className="p-3 border-t border-[#1a1a1a] space-y-2.5 bg-[#0a0a0a]">
         {/* Progress Alert */}
         {progress && (
-          <div className="p-2 bg-[#0e0e0e] border border-[#242424] space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="capitalize text-[#cccccc] font-medium">
+          <div className="p-2 bg-[#0e0e0e] border border-[#242424] space-y-1.5" aria-live="polite">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="capitalize text-[#cfcfcf] font-medium">
                 {progress.stage}
               </span>
-              <span className="text-[#777777]">
+              <span className="text-[#a8a8a8]">
                 {progress.current}/{progress.total}
               </span>
             </div>
@@ -133,13 +130,13 @@ export function Sidebar() {
               />
             </div>
             {progress.message && (
-              <p className="text-[10px] font-mono text-[#666666] truncate">{progress.message}</p>
+              <p className="text-xs font-mono text-[#a8a8a8] truncate">{progress.message}</p>
             )}
           </div>
         )}
 
         {/* Backend Selector */}
-        <div className="flex items-center justify-between text-[11px] font-mono text-[#666666] px-1">
+        <div className="flex items-center justify-between text-xs font-mono text-[#a8a8a8] px-1">
           <span className="flex items-center space-x-1.5">
             <span
               className={`w-1.5 h-1.5 ${
@@ -151,7 +148,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => setUseMockBackend(!useMockBackend)}
-            className="text-[10px] text-[#555555] hover:text-[#999999] cursor-pointer"
+            className="text-xs text-[#a8a8a8] hover:text-[#ededed] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
           >
             [Switch]
           </button>
@@ -161,17 +158,17 @@ export function Sidebar() {
         <div className="pt-2.5 border-t border-[#161616] px-1 space-y-1 select-none">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-[#3a3a3a]" />
-              <span className="font-mono text-[10px] font-bold tracking-widest text-[#737373] uppercase hover:text-[#999999] transition-colors">
+              <span className="w-1.5 h-1.5 bg-[#555555]" />
+              <span className="font-mono text-xs font-bold tracking-wider text-[#a8a8a8] uppercase hover:text-white transition-colors">
                 TRUSTNODELOGIC
               </span>
             </div>
-            <span className="text-[8px] font-mono px-1 py-0.5 border border-[#222222] bg-[#111111] text-[#555555] uppercase tracking-wider">
+            <span className="text-xs font-mono px-1.5 py-0.5 border border-[#2e2e2e] bg-[#111111] text-[#a8a8a8] uppercase tracking-wider">
               CORE IP
             </span>
           </div>
           <p
-            className="text-[8px] font-mono text-[#383838] hover:text-[#555555] leading-tight tracking-tight uppercase transition-colors cursor-help select-text"
+            className="text-xs font-mono text-[#a8a8a8] hover:text-[#ededed] leading-relaxed tracking-normal transition-colors cursor-help select-text"
             title="Intellectual Property of TRUSTNODELOGIC. All rights reserved. Proprietary software architecture, audio DSP algorithms, and transition scoring models. Unauthorized reproduction, reverse engineering, or redistribution strictly prohibited."
           >
             © 2026 TRUSTNODELOGIC. Proprietary IP. All rights reserved.

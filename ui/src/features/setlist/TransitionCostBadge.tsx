@@ -38,11 +38,11 @@ export function TransitionCostBadge({
           type="button"
           onClick={onOpenAdvice}
           aria-label={`Transition advice between ${fromTitle} and ${toTitle}`}
-          className="relative z-10 flex items-center gap-2 px-2.5 py-0.5 border border-[#222222] bg-[#0c0c0c] hover:border-[#333333] hover:bg-[#141414] transition-colors cursor-pointer text-xs font-mono rounded-none text-[#777777]"
+          className="relative z-10 flex items-center gap-2 px-2.5 py-0.5 border border-[#222222] bg-[#0c0c0c] hover:border-[#333333] hover:bg-[#141414] transition-colors cursor-pointer text-xs font-mono rounded-none text-[#a8a8a8] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
           title={`Inspect transition between ${fromTitle} and ${toTitle}`}
         >
-          <span className="text-[10px] uppercase tracking-wider text-[#666666]">Transition</span>
-          <span className="text-[10px] text-[#aaaaaa] border border-[#282828] bg-[#141414] px-1 py-0.2 tracking-wider">
+          <span className="text-xs uppercase tracking-wider text-[#a8a8a8]">Transition</span>
+          <span className="text-xs text-[#cfcfcf] border border-[#282828] bg-[#141414] px-1.5 py-0.5 tracking-wider">
             💡 Advice →
           </span>
         </button>
@@ -63,11 +63,11 @@ export function TransitionCostBadge({
         type="button"
         onClick={onOpenAdvice}
         aria-label={`Transition advice between ${fromTitle} and ${toTitle}`}
-        className="relative z-10 flex flex-wrap items-center gap-2.5 px-3 py-1 border border-[#222222] bg-[#0b0b0b] hover:border-[#383838] hover:bg-[#121212] transition-colors cursor-pointer rounded-none text-xs font-mono"
+        className="relative z-10 flex flex-wrap items-center gap-2.5 px-3 py-1 border border-[#222222] bg-[#0b0b0b] hover:border-[#383838] hover:bg-[#121212] transition-colors cursor-pointer rounded-none text-xs font-mono focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
         title={`Click for transition details between ${fromTitle} and ${toTitle}`}
       >
         {/* Transition Category */}
-        <span className="text-[10px] uppercase font-semibold tracking-wider text-[#cccccc]">
+        <span className="text-xs uppercase font-semibold tracking-wider text-[#cfcfcf]">
           {typeLabel}
         </span>
 
@@ -75,27 +75,27 @@ export function TransitionCostBadge({
 
         {/* Cost breakdown components: Total, Tempo, Key, Energy */}
         {breakdown.isAvailable ? (
-          <div className="flex items-center gap-2 text-[10px] text-[#777777] tabular-nums">
+          <div className="flex items-center gap-2 text-xs text-[#a8a8a8] tabular-nums">
             <span title={`Overall Weighted Cost: ${breakdown.total.toFixed(2)}`}>
               Cost: <span className="font-semibold text-[#e0e0e0]">{breakdown.total.toFixed(2)}</span>
             </span>
             <span className="text-[#333333]">•</span>
             <span title={`ΔBPM: ${breakdown.bpmDelta > 0 ? `+${breakdown.bpmDelta}` : breakdown.bpmDelta}`}>
-              ΔBPM: <span className="text-[#b0b0b0]">{breakdown.bpmDelta > 0 ? `+${breakdown.bpmDelta}` : breakdown.bpmDelta}</span>
+              ΔBPM: <span className="text-[#cfcfcf]">{breakdown.bpmDelta > 0 ? `+${breakdown.bpmDelta}` : breakdown.bpmDelta}</span>
             </span>
             <span className="text-[#333333]">•</span>
             <span title={`Key distance: d=${breakdown.keyDistance}${breakdown.modeFlip ? ' (mode flip)' : ''}`}>
-              Key: <span className="text-[#b0b0b0]">d={breakdown.keyDistance}</span>
+              Key: <span className="text-[#cfcfcf]">d={breakdown.keyDistance}</span>
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 text-[10px] text-[#888888]">
+          <div className="flex items-center gap-1.5 text-xs text-[#a8a8a8]">
             <span>Cost: Pending Analysis</span>
           </div>
         )}
 
         {/* Advice Action Tag (retains 💡 Advice for test expectations) */}
-        <span className="text-[9px] uppercase tracking-wider text-[#a0a0a0] border border-[#262626] bg-[#141414] px-1.5 py-0.5">
+        <span className="text-xs uppercase tracking-wider text-[#cfcfcf] border border-[#262626] bg-[#141414] px-1.5 py-0.5">
           💡 Advice →
         </span>
       </button>

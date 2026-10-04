@@ -11,6 +11,7 @@ interface SongRelationshipDrawerProps {
   onClose: () => void;
   onSelectBridgeTarget?: (targetSongId: string) => void;
   onStartPathFromSong?: (songId: string) => void;
+  isDockedRail?: boolean;
 }
 
 export function SongRelationshipDrawer({
@@ -18,6 +19,7 @@ export function SongRelationshipDrawer({
   onClose,
   onSelectBridgeTarget,
   onStartPathFromSong,
+  isDockedRail = false,
 }: SongRelationshipDrawerProps) {
   const { useMockBackend, addToSetlist, addToast, tracks } = useAppStore();
   const [activeTab, setActiveTab] = useState<'outgoing' | 'incoming' | 'unusual'>('outgoing');
@@ -132,38 +134,35 @@ export function SongRelationshipDrawer({
     }
   };
 
-  return (
+  const drawerContent = (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
-      onClick={onClose}
-      data-testid="song-relationship-drawer-overlay"
+      className={`w-full bg-[#0d0d0d] ${
+        isDockedRail ? 'h-full border-none' : 'max-w-2xl border-l border-[#222222] h-full shadow-2xl'
+      } flex flex-col text-[#e2e2e2] overflow-hidden`}
+      onClick={(e) => e.stopPropagation()}
+      data-testid="song-relationship-drawer"
     >
-      <div
-        className="w-full max-w-2xl bg-[#0d0d0d] border-l border-[#222222] h-full flex flex-col shadow-2xl text-[#e2e2e2] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-        data-testid="song-relationship-drawer"
-      >
         {/* Drawer Header */}
         <div className="p-4 border-b border-[#222222] bg-[#111111] flex items-start justify-between">
           <div className="space-y-1 min-w-0 pr-4">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono tracking-widest text-[#777777] uppercase">
+              <span className="text-xs font-mono text-[#a8a8a8] uppercase">
                 SONG RELATIONSHIP PROFILE
               </span>
               {song.energy_rating && (
-                <span className="px-1.5 py-0.5 text-[10px] font-mono border border-[#333333] bg-[#1a1a1a] text-[#aaaaaa]">
+                <span className="px-1.5 py-0.5 text-xs font-mono border border-[#333333] bg-[#1a1a1a] text-[#cfcfcf]">
                   Energy {song.energy_rating}/10
                 </span>
               )}
             </div>
             <h2 className="text-base font-semibold text-[#f0f0f0] truncate">{song.title}</h2>
-            <p className="text-xs text-[#888888] font-normal truncate">{song.artist}</p>
+            <p className="text-xs text-[#a8a8a8] font-normal truncate">{song.artist}</p>
 
             {/* Metadata Pills */}
             <div className="flex flex-wrap items-center gap-2 pt-1.5 text-xs font-mono">
               {song.camelot_code && (
                 <span
-                  className="px-2 py-0.5 font-bold rounded-[2px] text-[11px]"
+                  className="px-2 py-0.5 font-bold rounded-[2px] text-xs"
                   style={{
                     backgroundColor: camelotColor(song.camelot_code),
                     color: camelotTextColor(song.camelot_code),
@@ -173,17 +172,17 @@ export function SongRelationshipDrawer({
                 </span>
               )}
               {song.bpm && (
-                <span className="px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-[#cccccc] text-[11px]">
+                <span className="px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-[#cfcfcf] text-xs">
                   {song.bpm.toFixed(1)} BPM
                 </span>
               )}
               {song.duration_seconds > 0 && (
-                <span className="px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-[#888888] text-[11px]">
+                <span className="px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-[#a8a8a8] text-xs">
                   {formatDuration(song.duration_seconds)}
                 </span>
               )}
               {song.tuning && (
-                <span className="px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-[#888888] text-[11px]">
+                <span className="px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-[#a8a8a8] text-xs">
                   {song.tuning}
                   {song.capo !== undefined && song.capo !== null && song.capo > 0
                     ? ` (Capo ${song.capo})`
@@ -197,7 +196,7 @@ export function SongRelationshipDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close relationship drawer"
-            className="p-1.5 text-[#777777] hover:text-white hover:bg-[#222222] transition-colors rounded-none cursor-pointer"
+            className="p-1.5 text-[#a8a8a8] hover:text-white hover:bg-[#222222] transition-colors rounded-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
           >
             <svg
               className="w-5 h-5"
@@ -216,10 +215,10 @@ export function SongRelationshipDrawer({
           <button
             type="button"
             onClick={() => setActiveTab('outgoing')}
-            className={`pb-2 px-3 border-b-2 font-medium tracking-wide transition-colors cursor-pointer uppercase ${
+            className={`pb-2 px-3 border-b-2 font-medium tracking-wide transition-colors cursor-pointer uppercase focus:outline-none focus:ring-1 focus:ring-sky-400 ${
               activeTab === 'outgoing'
                 ? 'border-[#e0e0e0] text-white font-semibold'
-                : 'border-transparent text-[#777777] hover:text-[#bbbbbb]'
+                : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
             }`}
             data-testid="tab-outgoing"
           >
@@ -228,10 +227,10 @@ export function SongRelationshipDrawer({
           <button
             type="button"
             onClick={() => setActiveTab('incoming')}
-            className={`pb-2 px-3 border-b-2 font-medium tracking-wide transition-colors cursor-pointer uppercase ${
+            className={`pb-2 px-3 border-b-2 font-medium tracking-wide transition-colors cursor-pointer uppercase focus:outline-none focus:ring-1 focus:ring-sky-400 ${
               activeTab === 'incoming'
                 ? 'border-[#e0e0e0] text-white font-semibold'
-                : 'border-transparent text-[#777777] hover:text-[#bbbbbb]'
+                : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
             }`}
             data-testid="tab-incoming"
           >
@@ -240,10 +239,10 @@ export function SongRelationshipDrawer({
           <button
             type="button"
             onClick={() => setActiveTab('unusual')}
-            className={`pb-2 px-3 border-b-2 font-medium tracking-wide transition-colors cursor-pointer uppercase ${
+            className={`pb-2 px-3 border-b-2 font-medium tracking-wide transition-colors cursor-pointer uppercase focus:outline-none focus:ring-1 focus:ring-sky-400 ${
               activeTab === 'unusual'
                 ? 'border-[#e0e0e0] text-white font-semibold'
-                : 'border-transparent text-[#777777] hover:text-[#bbbbbb]'
+                : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
             }`}
             data-testid="tab-unusual"
           >
@@ -252,7 +251,7 @@ export function SongRelationshipDrawer({
         </div>
 
         {/* Tab Subtitle / Purpose Explanation */}
-        <div className="px-4 py-2 bg-[#121212] border-b border-[#1f1f1f] text-[11px] font-mono text-[#888888] flex items-center justify-between">
+        <div className="px-4 py-2 bg-[#121212] border-b border-[#1f1f1f] text-xs font-mono text-[#a8a8a8] flex items-center justify-between">
           <span>
             {activeTab === 'outgoing' &&
               `Outgoing transitions from "${song.title}" → Target Song in sequence.`}
@@ -261,7 +260,7 @@ export function SongRelationshipDrawer({
             {activeTab === 'unusual' &&
               'Creative opportunities: energy resets, half/double time, and harmonic lifts.'}
           </span>
-          <span className="text-[10px] text-[#555555] uppercase">
+          <span className="text-xs text-[#a8a8a8] uppercase">
             {currentList.length} candidate{currentList.length === 1 ? '' : 's'}
           </span>
         </div>
@@ -272,13 +271,13 @@ export function SongRelationshipDrawer({
           data-testid="relationship-cards-container"
         >
           {isLoading && (
-            <div className="py-12 text-center text-xs font-mono text-[#666666]">
+            <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
               Computing multidimensional catalog relationships...
             </div>
           )}
 
           {!isLoading && currentList.length === 0 && (
-            <div className="py-12 text-center text-xs font-mono text-[#666666]">
+            <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
               No relationships found in this category.
             </div>
           )}
@@ -309,7 +308,7 @@ export function SongRelationshipDrawer({
                         </span>
                         {partnerKey && (
                           <span
-                            className="px-1.5 py-0.2 font-mono font-bold text-[10px] rounded-[2px]"
+                            className="px-1.5 py-0.5 font-mono font-bold text-xs rounded-[2px]"
                             style={{
                               backgroundColor: camelotColor(partnerKey),
                               color: camelotTextColor(partnerKey),
@@ -319,19 +318,19 @@ export function SongRelationshipDrawer({
                           </span>
                         )}
                         {partnerBpm && (
-                          <span className="text-[10px] font-mono text-[#888888]">
+                          <span className="text-xs font-mono text-[#a8a8a8]">
                             {partnerBpm.toFixed(1)} BPM
                           </span>
                         )}
                         {partnerEnergy && (
-                          <span className="text-[10px] font-mono text-[#666666]">
+                          <span className="text-xs font-mono text-[#a8a8a8]">
                             E{partnerEnergy}
                           </span>
                         )}
                       </div>
 
                       {/* Musical Delta Metrics */}
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono pt-1 text-[#aaaaaa]">
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-mono pt-1 text-[#a8a8a8]">
                         {rel.explanation.bpm.delta !== null && (
                           <span
                             className={
@@ -346,18 +345,18 @@ export function SongRelationshipDrawer({
                             {rel.explanation.bpm.delta.toFixed(1)} BPM
                           </span>
                         )}
-                        <span className="text-[#444444]">•</span>
+                        <span className="text-[#666666]">•</span>
                         <span>{rel.explanation.harmony.relation}</span>
                         {rel.explanation.energy.delta !== null && (
                           <>
-                            <span className="text-[#444444]">•</span>
+                            <span className="text-[#666666]">•</span>
                             <span
                               className={
                                 rel.explanation.energy.movement === 'Rise'
                                   ? 'text-orange-400'
                                   : rel.explanation.energy.movement === 'Fall'
                                   ? 'text-cyan-400'
-                                  : 'text-[#888888]'
+                                  : 'text-[#a8a8a8]'
                               }
                             >
                               Energy {rel.explanation.energy.delta >= 0 ? '+' : ''}
@@ -371,14 +370,14 @@ export function SongRelationshipDrawer({
                     {/* Compatibility & Classification Badges */}
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       <span
-                        className={`px-2 py-0.5 text-[10px] font-mono font-semibold uppercase border ${getCompatibilityBadge(
+                        className={`px-2 py-0.5 text-xs font-mono font-semibold uppercase border ${getCompatibilityBadge(
                           rel.compatibility
                         )}`}
                       >
                         {rel.compatibility} ({Math.round(rel.overall_score * 100)}%)
                       </span>
                       <span
-                        className={`px-1.5 py-0.2 text-[9px] font-mono uppercase border ${getClassificationBadge(
+                        className={`px-1.5 py-0.5 text-xs font-mono uppercase border ${getClassificationBadge(
                           rel.primary_classification
                         )}`}
                       >
@@ -388,55 +387,55 @@ export function SongRelationshipDrawer({
                   </div>
 
                   {/* Plain Language Summary */}
-                  <p className="text-[11px] text-[#cccccc] font-normal leading-relaxed bg-[#0a0a0a] p-2 border border-[#1a1a1a]">
+                  <p className="text-xs text-[#cfcfcf] font-normal leading-relaxed bg-[#0a0a0a] p-2 border border-[#1a1a1a]">
                     {rel.explanation.summary}
                   </p>
 
                   {/* Detailed Dimensional Breakdown Accordion */}
                   {isExpanded && (
-                    <div className="pt-2 border-t border-[#1e1e1e] space-y-2 text-[11px] font-mono animate-in fade-in duration-100">
+                    <div className="pt-2 border-t border-[#1e1e1e] space-y-2 text-xs font-mono animate-in fade-in duration-100">
                       <div className="grid grid-cols-2 gap-2">
                         {/* BPM Dimension */}
                         <div className="bg-[#0e0e0e] p-2 border border-[#1a1a1a] space-y-1">
-                          <span className="text-[10px] text-[#666666] uppercase font-bold tracking-wider">
+                          <span className="text-xs text-[#a8a8a8] uppercase font-bold">
                             BPM Dimension
                           </span>
-                          <p className="text-[#b0b0b0] text-[10px] leading-tight">
+                          <p className="text-[#cfcfcf] text-xs leading-tight">
                             {rel.explanation.bpm.explanation}
                           </p>
-                          <span className="text-[9px] text-[#666666]">
+                          <span className="text-xs text-[#a8a8a8]">
                             Friction: {Math.round(rel.explanation.bpm.friction * 100)}%
                           </span>
                         </div>
 
                         {/* Harmonic Dimension */}
                         <div className="bg-[#0e0e0e] p-2 border border-[#1a1a1a] space-y-1">
-                          <span className="text-[10px] text-[#666666] uppercase font-bold tracking-wider">
+                          <span className="text-xs text-[#a8a8a8] uppercase font-bold">
                             Harmonic Dimension
                           </span>
-                          <p className="text-[#b0b0b0] text-[10px] leading-tight">
+                          <p className="text-[#cfcfcf] text-xs leading-tight">
                             {rel.explanation.harmony.explanation}
                           </p>
-                          <span className="text-[9px] text-[#666666]">
+                          <span className="text-xs text-[#a8a8a8]">
                             Friction: {Math.round(rel.explanation.harmony.friction * 100)}%
                           </span>
                         </div>
 
                         {/* Energy Dimension */}
                         <div className="bg-[#0e0e0e] p-2 border border-[#1a1a1a] space-y-1">
-                          <span className="text-[10px] text-[#666666] uppercase font-bold tracking-wider">
+                          <span className="text-xs text-[#a8a8a8] uppercase font-bold">
                             Energy Trajectory
                           </span>
-                          <p className="text-[#b0b0b0] text-[10px] leading-tight">
+                          <p className="text-[#cfcfcf] text-xs leading-tight">
                             {rel.explanation.energy.explanation}
                           </p>
                           {rel.explanation.energy.is_reset && (
-                            <span className="text-[9px] text-cyan-400 font-bold block">
+                            <span className="text-xs text-cyan-400 font-bold block">
                               [ENERGY RESET]
                             </span>
                           )}
                           {rel.explanation.energy.is_contrast && (
-                            <span className="text-[9px] text-pink-400 font-bold block">
+                            <span className="text-xs text-pink-400 font-bold block">
                               [INTENTIONAL CONTRAST]
                             </span>
                           )}
@@ -444,10 +443,10 @@ export function SongRelationshipDrawer({
 
                         {/* Tuning & Style Dimension */}
                         <div className="bg-[#0e0e0e] p-2 border border-[#1a1a1a] space-y-1">
-                          <span className="text-[10px] text-[#666666] uppercase font-bold tracking-wider">
+                          <span className="text-xs text-[#a8a8a8] uppercase font-bold">
                             Tuning & Style
                           </span>
-                          <p className="text-[#b0b0b0] text-[10px] leading-tight">
+                          <p className="text-[#cfcfcf] text-xs leading-tight">
                             {rel.explanation.tuning.explanation} {rel.explanation.style.explanation}
                           </p>
                         </div>
@@ -460,7 +459,7 @@ export function SongRelationshipDrawer({
                     <button
                       type="button"
                       onClick={() => setExpandedRelId(isExpanded ? null : partnerId)}
-                      className="text-[10px] text-[#888888] hover:text-[#d0d0d0] cursor-pointer"
+                      className="text-xs text-[#a8a8a8] hover:text-[#e0e0e0] cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
                     >
                       {isExpanded ? '[-] Hide Reasoning' : '[+] Inspect Breakdown'}
                     </button>
@@ -470,7 +469,7 @@ export function SongRelationshipDrawer({
                         <button
                           type="button"
                           onClick={() => onSelectBridgeTarget(partnerId)}
-                          className="px-2 py-1 text-[10px] bg-[#1a1a1a] hover:bg-[#252525] text-[#b0b0b0] hover:text-white border border-[#2e2e2e] uppercase transition-colors cursor-pointer"
+                          className="px-2 py-1 text-xs bg-[#1a1a1a] hover:bg-[#252525] text-[#cfcfcf] hover:text-white border border-[#2e2e2e] uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
                         >
                           Find Bridge
                         </button>
@@ -480,7 +479,7 @@ export function SongRelationshipDrawer({
                         <button
                           type="button"
                           onClick={() => onStartPathFromSong(partnerId)}
-                          className="px-2 py-1 text-[10px] bg-[#1a1a1a] hover:bg-[#252525] text-[#b0b0b0] hover:text-white border border-[#2e2e2e] uppercase transition-colors cursor-pointer"
+                          className="px-2 py-1 text-xs bg-[#1a1a1a] hover:bg-[#252525] text-[#cfcfcf] hover:text-white border border-[#2e2e2e] uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
                         >
                           Path from here
                         </button>
@@ -489,7 +488,7 @@ export function SongRelationshipDrawer({
                       <button
                         type="button"
                         onClick={() => handleAddTrack(partnerId)}
-                        className="px-2.5 py-1 text-[10px] bg-[#1e2a1e] hover:bg-[#283828] text-[#99e099] border border-[#335533] font-semibold uppercase transition-colors cursor-pointer"
+                        className="px-2.5 py-1 text-xs bg-[#1e2a1e] hover:bg-[#283828] text-[#99e099] border border-[#335533] font-semibold uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
                         data-testid={`add-to-setlist-${partnerId}`}
                       >
                         Add to Setlist
@@ -503,7 +502,7 @@ export function SongRelationshipDrawer({
 
         {/* Drawer Footer Quick Action */}
         <div className="p-3 border-t border-[#222222] bg-[#0f0f0f] flex items-center justify-between text-xs font-mono">
-          <span className="text-[10px] text-[#666666]">
+          <span className="text-xs text-[#a8a8a8]">
             Artist maintains full sequencing authority.
           </span>
           <div className="flex gap-2">
@@ -511,7 +510,7 @@ export function SongRelationshipDrawer({
               <button
                 type="button"
                 onClick={() => onStartPathFromSong(song.id)}
-                className="px-3 py-1.5 text-xs bg-[#1a1a1a] hover:bg-[#222222] text-[#e0e0e0] border border-[#333333] uppercase font-medium cursor-pointer"
+                className="px-3 py-1.5 text-xs bg-[#1a1a1a] hover:bg-[#222222] text-[#e0e0e0] border border-[#333333] uppercase font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
               >
                 Explore Paths From &quot;{song.title}&quot;
               </button>
@@ -519,13 +518,26 @@ export function SongRelationshipDrawer({
             <button
               type="button"
               onClick={() => handleAddTrack(song.id)}
-              className="px-3 py-1.5 text-xs bg-[#1a2e1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] uppercase font-semibold cursor-pointer"
+              className="px-3 py-1.5 text-xs bg-[#1a2e1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] uppercase font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
             >
               Add Current Song to Setlist
             </button>
           </div>
         </div>
       </div>
+  );
+
+  if (isDockedRail) {
+    return drawerContent;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
+      onClick={onClose}
+      data-testid="song-relationship-drawer-overlay"
+    >
+      {drawerContent}
     </div>
   );
 }

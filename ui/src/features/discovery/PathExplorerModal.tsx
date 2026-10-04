@@ -132,7 +132,7 @@ export function PathExplorerModal({
         {/* Header */}
         <div className="p-4 border-b border-[#222222] bg-[#121212] flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-mono tracking-widest text-[#777777] uppercase">
+            <span className="text-xs font-mono text-[#a8a8a8] uppercase">
               INTERACTIVE PATH BUILDER
             </span>
             <h2 className="text-base font-semibold text-[#f0f0f0] font-sans">
@@ -143,7 +143,7 @@ export function PathExplorerModal({
             type="button"
             onClick={onClose}
             aria-label="Close path explorer"
-            className="p-1.5 text-[#777777] hover:text-white hover:bg-[#222222] transition-colors rounded-none cursor-pointer"
+            className="p-1.5 text-[#a8a8a8] hover:text-white hover:bg-[#222222] transition-colors rounded-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
           >
             <svg
               className="w-5 h-5"
@@ -160,18 +160,18 @@ export function PathExplorerModal({
         {/* Current Path Trail Summary Bar */}
         <div className="p-4 border-b border-[#202020] bg-[#111111] flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
-            <span className="text-[10px] font-mono text-[#888888] uppercase tracking-wider block">
+            <span className="text-xs font-mono text-[#a8a8a8] uppercase block">
               CURRENT PATH TRAIL ({pathSongs.length} TRACKS • ~{formatDuration(totalDurationSecs)})
             </span>
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
               {pathSongs.map((s, idx) => (
                 <div key={s.id} className="flex items-center gap-1.5">
                   <span className="px-2 py-1 bg-[#1a1a1a] border border-[#2d2d2d] text-xs font-mono text-[#e0e0e0] flex items-center gap-1.5">
-                    <span className="text-[#666666]">{idx + 1}.</span>
+                    <span className="text-[#a8a8a8]">{idx + 1}.</span>
                     <span className="font-semibold">{s.title}</span>
                     {s.camelot_code && (
                       <span
-                        className="px-1 py-0.2 font-bold text-[9px] rounded-[1px]"
+                        className="px-1.5 py-0.5 font-bold text-xs rounded-[1px]"
                         style={{
                           backgroundColor: camelotColor(s.camelot_code),
                           color: camelotTextColor(s.camelot_code),
@@ -180,9 +180,9 @@ export function PathExplorerModal({
                         {s.camelot_code}
                       </span>
                     )}
-                    {s.bpm && <span className="text-[10px] text-[#888888]">{s.bpm.toFixed(0)}</span>}
+                    {s.bpm && <span className="text-xs text-[#a8a8a8]">{s.bpm.toFixed(0)}</span>}
                   </span>
-                  {idx < pathSongs.length - 1 && <span className="text-[#666666] font-mono">→</span>}
+                  {idx < pathSongs.length - 1 && <span className="text-[#a8a8a8] font-mono">→</span>}
                 </div>
               ))}
             </div>
@@ -193,7 +193,7 @@ export function PathExplorerModal({
               <button
                 type="button"
                 onClick={handleStepBack}
-                className="px-2.5 py-1.5 bg-[#1f1f1f] hover:bg-[#2a2a2a] text-[#cccccc] border border-[#333333] cursor-pointer"
+                className="px-2.5 py-1.5 bg-[#1f1f1f] hover:bg-[#2a2a2a] text-[#cfcfcf] border border-[#333333] cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
               >
                 [← Step Back]
               </button>
@@ -202,7 +202,7 @@ export function PathExplorerModal({
               aria-label="Change starting track for path exploration"
               value={pathSongIds[0] ?? ''}
               onChange={(e) => handleReset(e.target.value)}
-              className="bg-[#181818] border border-[#333333] p-1.5 text-xs text-[#b0b0b0] outline-none cursor-pointer"
+              className="bg-[#181818] border border-[#333333] p-1.5 text-xs text-[#cfcfcf] outline-none focus:ring-1 focus:ring-sky-400 cursor-pointer"
             >
               {songs.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -216,22 +216,22 @@ export function PathExplorerModal({
         {/* Next Step Candidate Transitions */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div className="flex items-center justify-between pb-1">
-            <h3 className="text-xs font-mono uppercase tracking-wider text-[#999999] font-bold">
+            <h3 className="text-xs font-mono text-[#cfcfcf] font-bold">
               WHAT CAN FOLLOW &quot;{pathSongs[pathSongs.length - 1]?.title}&quot;?
             </h3>
-            <span className="text-[10px] font-mono text-[#666666]">
+            <span className="text-xs font-mono text-[#a8a8a8]">
               Click a candidate to advance your path trail
             </span>
           </div>
 
           {isLoadingCandidates && (
-            <div className="py-12 text-center text-xs font-mono text-[#666666]">
+            <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
               Finding best follow-up transitions...
             </div>
           )}
 
           {!isLoadingCandidates && candidateTransitions.length === 0 && (
-            <div className="py-12 text-center text-xs font-mono text-[#666666]">
+            <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
               All available catalog songs have been sequenced in this trail.
             </div>
           )}
@@ -241,7 +241,14 @@ export function PathExplorerModal({
               return (
                 <div
                   key={rel.to_song_id}
-                  className="bg-[#121212] border border-[#222222] hover:border-[#3a3a3a] p-3 space-y-2 cursor-pointer transition-all"
+                  tabIndex={0}
+                  role="button"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      handleAdvancePath(rel.to_song_id);
+                    }
+                  }}
+                  className="bg-[#121212] border border-[#222222] hover:border-[#3a3a3a] p-3 space-y-2 cursor-pointer transition-all focus:outline-none focus:ring-1 focus:ring-sky-400"
                   onClick={() => handleAdvancePath(rel.to_song_id)}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -252,7 +259,7 @@ export function PathExplorerModal({
                         </span>
                         {rel.to_key && (
                           <span
-                            className="px-1.5 py-0.2 font-mono font-bold text-[10px] rounded-[2px]"
+                            className="px-1.5 py-0.5 font-mono font-bold text-xs rounded-[2px]"
                             style={{
                               backgroundColor: camelotColor(rel.to_key),
                               color: camelotTextColor(rel.to_key),
@@ -262,16 +269,16 @@ export function PathExplorerModal({
                           </span>
                         )}
                         {rel.to_bpm && (
-                          <span className="text-xs font-mono text-[#888888]">
+                          <span className="text-xs font-mono text-[#a8a8a8]">
                             {rel.to_bpm.toFixed(1)} BPM
                           </span>
                         )}
                         {rel.to_energy && (
-                          <span className="text-xs font-mono text-[#666666]">E{rel.to_energy}</span>
+                          <span className="text-xs font-mono text-[#a8a8a8]">E{rel.to_energy}</span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-[11px] font-mono text-[#aaaaaa]">
+                      <div className="flex items-center gap-2 text-xs font-mono text-[#a8a8a8]">
                         <span>
                           {rel.explanation.bpm.delta !== null
                             ? `${rel.explanation.bpm.delta >= 0 ? '+' : ''}${rel.explanation.bpm.delta.toFixed(1)} BPM`
@@ -290,14 +297,14 @@ export function PathExplorerModal({
                       </span>
                       <button
                         type="button"
-                        className="px-2.5 py-1 text-[10px] font-mono uppercase bg-[#1e1e1e] hover:bg-[#282828] text-white border border-[#333333]"
+                        className="px-2.5 py-1 text-xs font-mono uppercase bg-[#1e1e1e] hover:bg-[#282828] text-white border border-[#333333] focus:outline-none focus:ring-1 focus:ring-sky-400"
                       >
                         [+ Chain Step]
                       </button>
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-[#888888] truncate">{rel.explanation.summary}</p>
+                  <p className="text-xs text-[#a8a8a8] truncate">{rel.explanation.summary}</p>
                 </div>
               );
             })}
@@ -305,7 +312,7 @@ export function PathExplorerModal({
 
         {/* Footer Actions */}
         <div className="p-3 border-t border-[#222222] bg-[#111111] flex items-center justify-between text-xs font-mono">
-          <span className="text-[10px] text-[#666666]">
+          <span className="text-xs text-[#a8a8a8]">
             Total path: {pathSongs.length} track{pathSongs.length === 1 ? '' : 's'} (~
             {formatDuration(totalDurationSecs)})
           </span>
@@ -313,14 +320,14 @@ export function PathExplorerModal({
             <button
               type="button"
               onClick={handleAppendToSetlist}
-              className="px-3 py-1.5 bg-[#1b1b1b] hover:bg-[#252525] text-[#d0d0d0] border border-[#333333] uppercase cursor-pointer"
+              className="px-3 py-1.5 bg-[#1b1b1b] hover:bg-[#252525] text-[#d0d0d0] border border-[#333333] uppercase cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
             >
               Append Path to Setlist
             </button>
             <button
               type="button"
               onClick={handleLoadToSetlist}
-              className="px-3.5 py-1.5 bg-[#1a2d1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase cursor-pointer"
+              className="px-3.5 py-1.5 bg-[#1a2d1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
             >
               Load as Active Setlist
             </button>
