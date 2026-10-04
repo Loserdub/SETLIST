@@ -4,7 +4,7 @@ Read this file before every task. It is the source of truth for the repo.
 
 ## 1. Project
 
-Working title: DJ Set Assistant.
+Product name: SETLIST, by TRUSTNODELOGIC.
 
 A local-first desktop app that prepares DJ sets. It analyzes a user's music library. It then acts as a co-pilot. It suggests track order, transition techniques, and cue points. The user keeps creative control. The app never produces an unchangeable playlist.
 
@@ -16,6 +16,8 @@ Do not change these without a note in `docs/handoffs/`.
 - Local only. Audio and metadata never leave the machine. No network calls with user data.
 - Source audio is read-only. Never write, rename, or retag a user's audio file in v1.
 - Storage: SQLite through `rusqlite` with the `bundled` feature. Migrations are plain `.sql` files.
+- Durable user data lives in SQLite. Never store it in localStorage. localStorage may hold only UI-only preferences such as panel sizes.
+- The desktop app never shows mock data. The mock backend exists for tests and dev builds only.
 - Dev target: Windows 11, CPU only. Assume no GPU. Keep the v1 analysis path in classical DSP, pure Rust.
 - Neural tier (Demucs and All-In-One via ONNX Runtime) is a later phase. It must sit behind a trait so v1 never depends on it.
 - Exports in v1: Rekordbox XML, M3U8, and a set sheet (CSV and Markdown). Traktor NML and Serato come later.
@@ -33,10 +35,22 @@ Do not change these without a note in `docs/handoffs/`.
 | `crates/audio-analysis/src/structure` | Segments, cue placement | B |
 | `crates/audio-analysis/src/waveform` | 3-band waveform | B |
 | `crates/library-db` | SQLite repo, scanner, job queue | C |
+| `crates/playback` | Pure Rust audio player, state machine, clock, beat click generator | K |
 | `crates/sequencer` | Cost model, solvers, transition advisor | D |
 | `crates/exporters` | Rekordbox XML, M3U8, set sheet | E |
-| `ui/` | React frontend | F |
+| `tools/validate` | Ground-truth accuracy validation harness and Rekordbox verification CLI | G |
+| `scripts/` | Desktop run scripts, release automation, and desktop shortcuts | Integration |
+| `src-tauri/src/commands.rs` | Tauri IPC commands for library, scan, setlist, and exports | Integration |
+| `src-tauri/src/overrides.rs` | Track analysis override commands and database bridging | L |
+| `src-tauri/src/playback.rs` | Audio playback IPC commands and position event bridge | K |
+| `src-tauri/src/state.rs` | Application state, SQLite connection pool, and background scanner job queue | Integration |
 | `src-tauri/` | Tauri commands and app state | Integration |
+| `ui/src/features/library` | Virtualized track table, filtering, search, and harmonic sorting | F |
+| `ui/src/features/track` | Track inspection, waveform display, audio transport, and analysis overrides | F |
+| `ui/src/features/setlist` | Setlist builder, drag-and-drop reordering, transition badges, and energy curves | F |
+| `ui/src/features/stage` | Full-screen live performance stage mode, wake lock, and performance timers | F |
+| `ui/src/features/discovery` | Catalog graph explorer, set discovery, pathfinder, and outlier detector | W |
+| `ui/` | React frontend | F |
 | `docs/handoffs/` | One handoff note per finished task | All |
 
 Rule: edit only the paths your workgroup owns. If you need a change elsewhere, write it in your handoff note. Do not make it yourself.
@@ -57,6 +71,14 @@ Rust
 TypeScript
 - `strict` mode on. No `any`.
 - Components stay small. Data access goes through the `Backend` interface in `ui/src/api`.
+
+UI standards
+- Text is never smaller than 12px. Body text is 14px.
+- Text contrast meets WCAG AA (4.5 to 1) on the dark background.
+- Every button, input, and row shows a visible keyboard focus ring.
+- Labels use plain words. Internal names such as w_tempo never appear in the UI.
+- Keep existing data-testid values when you edit a component.
+- Never remove or shorten a legal notice.
 
 Dependencies
 - Add dependencies only to the crate that needs them. List each new one in your handoff note with the reason.
@@ -172,6 +194,15 @@ If a section does not exist, skip that cue. Never invent one.
 8. Write a handoff note to `docs/handoffs/<task-id>.md`.
 9. Commit to your workgroup branch with a clear message.
 
+### Parallel work
+
+- Up to three agents work at the same time. Edit only the paths your prompt says you own.
+- Shared files are src-tauri/src/lib.rs, ui/src/store/useAppStore.ts, ui/src/api/index.ts, and ui/src/App.tsx. Read the file again right before you edit it. Keep your change to one small hunk.
+- Generated files in ui/src/bindings come from ts-rs. Regenerate them. Never edit them by hand.
+- Run all checks from section 5 before you finish. Report Rust and UI test counts. The baseline is 294 Rust tests and 317 UI tests. If a count drops, say why.
+- Commit only the files you changed, and only when the prompt gives a commit message.
+- Write a handoff note to docs/handoffs/ for every task.
+
 ### Handoff note format
 
 ```
@@ -209,3 +240,5 @@ Needs from others: plain list
 ## 9. Definition of done
 
 A task is done when its acceptance list passes, all test commands pass, and the handoff note exists.
+
+Status: Baseline on 2026-10-04: 294 Rust tests, 317 UI tests, clippy, fmt, and typecheck all passing.
