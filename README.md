@@ -48,3 +48,11 @@ pnpm --dir ui build
 # Run the Tauri desktop app in dev mode
 pnpm tauri dev
 ```
+
+## Run SETLIST
+
+- **Rebuild**: `.\scripts\rebuild.ps1`
+- **Desktop icon**: `.\scripts\make-desktop-shortcut.ps1`
+- **Troubleshooting**: If the app will not open or the window is missing: close it, run `.\scripts\cleanup-setlist.ps1`, then start `SETLIST.exe` again.
+- **Note**: The desktop shortcut points to `target\release\SETLIST.exe`. Run `.\scripts\rebuild.ps1` first before creating the shortcut or whenever you want new code changes reflected in the desktop app.
+

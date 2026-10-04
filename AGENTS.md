@@ -185,6 +185,17 @@ Known gaps: plain list
 Needs from others: plain list
 ```
 
+## Command rules
+- Run one simple command per call. No pipes, no ForEach-Object, no inline scripts.
+- Never launch the app or pnpm tauri dev. Ask the user to run it.
+- If a task needs the app launched, the prompt must say so. Launch it once and report. Do not retry in a loop.
+- Never poll or loop on a process. Check once, then report.
+- Never stop processes by name. Stop only a process id you started yourself.
+- Never kill msedgewebview2 processes. Other apps use them.
+- If asked to diagnose, do not edit code or commit. Report and wait.
+- Write long output to a file in share/ and read the file.
+- Do not git commit unless the prompt says so.
+
 ## 8. Out of scope for v1
 
 - Neural source separation and neural segmentation
