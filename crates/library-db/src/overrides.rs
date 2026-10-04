@@ -27,6 +27,12 @@ pub struct TrackOverridePatch {
     /// If provided and `cues_json` is None, this will be serialized to `cues_json`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cues: Option<Vec<CuePoint>>,
+    /// Overridden track title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Overridden track artist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
 }
 
 /// Stored track override record from the database.
@@ -42,6 +48,10 @@ pub struct TrackOverride {
     pub key_camelot: Option<String>,
     /// Overridden cue points as JSON text.
     pub cues_json: Option<String>,
+    /// Overridden track title.
+    pub title: Option<String>,
+    /// Overridden track artist.
+    pub artist: Option<String>,
     /// Timestamp when override was last updated.
     pub updated_at: Option<String>,
 }
@@ -57,6 +67,10 @@ pub struct TrackOverrideFlags {
     pub key_camelot: bool,
     /// Whether cue points are overridden.
     pub cues: bool,
+    /// Whether track title is overridden.
+    pub title: bool,
+    /// Whether track artist is overridden.
+    pub artist: bool,
 }
 
 /// Track model combined with field-level override indicators for UI consumption.
@@ -136,12 +150,20 @@ pub fn rebuild_beat_grid(bpm: f64, first_downbeat_ms: f64, duration_ms: f64) -> 
 /// Applies user overrides onto an analyzed Track.
 ///
 /// Modifies the track in-place with effective values:
+/// - title / artist: updates metadata tags with user corrections.
 /// - BPM / first_downbeat_ms: rebuilds constant beat grid and downbeat flags.
 /// - key_camelot: parses Camelot key, updates mode and pitch class.
 /// - cues_json: replaces cue points.
 ///
 /// Segments and dynamics curves remain as analyzed.
 pub fn apply_overrides_to_track(track: &mut Track, ovr: &TrackOverride) -> Result<(), DbError> {
+    if let Some(ref title) = ovr.title {
+        track.tags.title = Some(title.clone());
+    }
+    if let Some(ref artist) = ovr.artist {
+        track.tags.artist = Some(artist.clone());
+    }
+
     if let Some(ref mut analysis) = track.analysis {
         if ovr.bpm.is_some() || ovr.first_downbeat_ms.is_some() {
             let effective_bpm = ovr.bpm.unwrap_or(analysis.rhythm.grid.bpm);
@@ -238,13 +260,15 @@ pub fn set_override(
     };
 
     conn.execute(
-        "INSERT INTO track_overrides (track_id, bpm, first_downbeat_ms, key_camelot, cues_json, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
+        "INSERT INTO track_overrides (track_id, bpm, first_downbeat_ms, key_camelot, cues_json, title, artist, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
          ON CONFLICT (track_id) DO UPDATE SET
             bpm = coalesce(excluded.bpm, track_overrides.bpm),
             first_downbeat_ms = coalesce(excluded.first_downbeat_ms, track_overrides.first_downbeat_ms),
             key_camelot = coalesce(excluded.key_camelot, track_overrides.key_camelot),
             cues_json = coalesce(excluded.cues_json, track_overrides.cues_json),
+            title = coalesce(excluded.title, track_overrides.title),
+            artist = coalesce(excluded.artist, track_overrides.artist),
             updated_at = datetime('now')",
         rusqlite::params![
             track_id,
@@ -252,18 +276,28 @@ pub fn set_override(
             patch.first_downbeat_ms,
             patch.key_camelot,
             cues_json,
+            patch.title,
+            patch.artist,
         ],
     )?;
 
     // Keep songs table in sync if a song row exists
     let _ = conn.execute(
         "UPDATE songs SET
-            bpm = coalesce(?1, bpm),
-            camelot_code = coalesce(?2, camelot_code),
-            musical_key = coalesce(?2, musical_key),
+            title = coalesce(?1, title),
+            artist = coalesce(?2, artist),
+            bpm = coalesce(?3, bpm),
+            camelot_code = coalesce(?4, camelot_code),
+            musical_key = coalesce(?4, musical_key),
             updated_at = datetime('now')
-         WHERE track_id = ?3 OR id = ?3",
-        rusqlite::params![patch.bpm, patch.key_camelot, track_id],
+         WHERE track_id = ?5 OR id = ?5",
+        rusqlite::params![
+            patch.title,
+            patch.artist,
+            patch.bpm,
+            patch.key_camelot,
+            track_id
+        ],
     );
 
     Ok(())
@@ -277,6 +311,8 @@ pub fn set_override(
 /// - `"first_downbeat_ms"` or `"downbeat"`
 /// - `"key_camelot"` or `"key"` or `"camelot"`
 /// - `"cues_json"` or `"cues"`
+/// - `"title"`
+/// - `"artist"`
 ///
 /// # Errors
 /// Returns `DbError::TrackNotFound` if `track_id` does not exist in `tracks`.
@@ -333,6 +369,18 @@ pub fn clear_override<S: AsRef<str>>(
                         [track_id],
                     )?;
                 }
+                "title" => {
+                    conn.execute(
+                        "UPDATE track_overrides SET title = NULL, updated_at = datetime('now') WHERE track_id = ?1",
+                        [track_id],
+                    )?;
+                }
+                "artist" => {
+                    conn.execute(
+                        "UPDATE track_overrides SET artist = NULL, updated_at = datetime('now') WHERE track_id = ?1",
+                        [track_id],
+                    )?;
+                }
                 _ => {}
             }
         }
@@ -344,20 +392,40 @@ pub fn clear_override<S: AsRef<str>>(
                AND bpm IS NULL
                AND first_downbeat_ms IS NULL
                AND key_camelot IS NULL
-               AND cues_json IS NULL",
+               AND cues_json IS NULL
+               AND title IS NULL
+               AND artist IS NULL",
             [track_id],
         )?;
     }
 
-    // Reset songs table back to analyzed values if overrides row was deleted or cleared
+    // Reset songs table back to analyzed/base values if overrides row was deleted or cleared
     let _ = conn.execute(
         "UPDATE songs SET
-            bpm = (SELECT bpm FROM tracks WHERE id = ?1),
-            camelot_code = (SELECT CASE WHEN camelot_number IS NOT NULL AND camelot_letter IS NOT NULL THEN camelot_number || camelot_letter ELSE NULL END FROM tracks WHERE id = ?1),
-            musical_key = (SELECT CASE WHEN camelot_number IS NOT NULL AND camelot_letter IS NOT NULL THEN camelot_number || camelot_letter ELSE NULL END FROM tracks WHERE id = ?1),
+            title = coalesce(
+                (SELECT title FROM track_overrides WHERE track_id = ?1),
+                (SELECT title FROM tracks WHERE id = ?1),
+                'Unknown Title'
+            ),
+            artist = coalesce(
+                (SELECT artist FROM track_overrides WHERE track_id = ?1),
+                (SELECT artist FROM tracks WHERE id = ?1),
+                'Unknown Artist'
+            ),
+            bpm = coalesce(
+                (SELECT bpm FROM track_overrides WHERE track_id = ?1),
+                (SELECT bpm FROM tracks WHERE id = ?1)
+            ),
+            camelot_code = coalesce(
+                (SELECT key_camelot FROM track_overrides WHERE track_id = ?1),
+                (SELECT CASE WHEN camelot_number IS NOT NULL AND camelot_letter IS NOT NULL THEN camelot_number || camelot_letter ELSE NULL END FROM tracks WHERE id = ?1)
+            ),
+            musical_key = coalesce(
+                (SELECT key_camelot FROM track_overrides WHERE track_id = ?1),
+                (SELECT CASE WHEN camelot_number IS NOT NULL AND camelot_letter IS NOT NULL THEN camelot_number || camelot_letter ELSE NULL END FROM tracks WHERE id = ?1)
+            ),
             updated_at = datetime('now')
-         WHERE (track_id = ?1 OR id = ?1)
-           AND NOT EXISTS (SELECT 1 FROM track_overrides WHERE track_id = ?1)",
+         WHERE track_id = ?1 OR id = ?1",
         [track_id],
     );
 
@@ -372,7 +440,7 @@ pub fn clear_override<S: AsRef<str>>(
 /// Returns `DbError` on database query execution failure.
 pub fn get_override(conn: &Connection, track_id: &str) -> Result<Option<TrackOverride>, DbError> {
     conn.query_row(
-        "SELECT track_id, bpm, first_downbeat_ms, key_camelot, cues_json, updated_at
+        "SELECT track_id, bpm, first_downbeat_ms, key_camelot, cues_json, updated_at, title, artist
          FROM track_overrides
          WHERE track_id = ?1",
         [track_id],
@@ -384,6 +452,8 @@ pub fn get_override(conn: &Connection, track_id: &str) -> Result<Option<TrackOve
                 key_camelot: row.get(3)?,
                 cues_json: row.get(4)?,
                 updated_at: row.get(5)?,
+                title: row.get(6)?,
+                artist: row.get(7)?,
             })
         },
     )
@@ -406,6 +476,8 @@ pub fn get_override_flags(
             first_downbeat_ms: o.first_downbeat_ms.is_some(),
             key_camelot: o.key_camelot.is_some(),
             cues: o.cues_json.is_some(),
+            title: o.title.is_some(),
+            artist: o.artist.is_some(),
         },
         None => TrackOverrideFlags::default(),
     })
@@ -582,6 +654,7 @@ mod tests {
             key_camelot: Some("11B".to_string()),
             cues_json: Some(r##"[{"index":1,"time_ms":500.0,"label":"B","color_hex":"#FF0000","kind":"HotCue","loop_end_ms":null}]"##.to_string()),
             cues: None,
+            ..Default::default()
         };
         set_override(&conn, "track-1", &patch).expect("set override");
 
@@ -644,6 +717,7 @@ mod tests {
                 key_camelot: Some("5A".to_string()),
                 cues_json: None,
                 cues: None,
+                ..Default::default()
             },
         )
         .expect("set override");
@@ -709,6 +783,7 @@ mod tests {
                 key_camelot: Some("9A".to_string()),
                 cues_json: None,
                 cues: None,
+                ..Default::default()
             },
         )
         .expect("set override");
@@ -778,5 +853,162 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_title_and_artist_overrides_round_trip() {
+        let conn = setup_db();
+        let track = sample_track("track-title-artist", 120.0, 100.0, 8, CamelotLetter::A);
+        upsert_track(&conn, &track).expect("upsert track");
+
+        // Initial values from track tags
+        let initial = get_track(&conn, "track-title-artist")
+            .unwrap()
+            .expect("track exists");
+        assert_eq!(
+            initial.tags.title.as_deref(),
+            Some("Title track-title-artist")
+        );
+        assert_eq!(
+            initial.tags.artist.as_deref(),
+            Some("Artist track-title-artist")
+        );
+
+        let initial_flags = get_override_flags(&conn, "track-title-artist").unwrap();
+        assert!(!initial_flags.title);
+        assert!(!initial_flags.artist);
+
+        // Apply title and artist overrides
+        set_override(
+            &conn,
+            "track-title-artist",
+            &TrackOverridePatch {
+                title: Some("My Corrected Song Title".to_string()),
+                artist: Some("My Corrected Artist".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("set override");
+
+        // get_override returns title and artist
+        let ovr = get_override(&conn, "track-title-artist")
+            .unwrap()
+            .expect("override exists");
+        assert_eq!(ovr.title.as_deref(), Some("My Corrected Song Title"));
+        assert_eq!(ovr.artist.as_deref(), Some("My Corrected Artist"));
+
+        // get_override_flags reports title: true and artist: true
+        let flags = get_override_flags(&conn, "track-title-artist").unwrap();
+        assert!(flags.title);
+        assert!(flags.artist);
+
+        // get_track returns effective title and artist
+        let effective = get_track(&conn, "track-title-artist")
+            .unwrap()
+            .expect("track exists");
+        assert_eq!(
+            effective.tags.title.as_deref(),
+            Some("My Corrected Song Title")
+        );
+        assert_eq!(
+            effective.tags.artist.as_deref(),
+            Some("My Corrected Artist")
+        );
+
+        // get_track_with_overrides includes flags
+        let with_ovr = crate::repo::get_track_with_overrides(&conn, "track-title-artist")
+            .unwrap()
+            .expect("exists");
+        assert_eq!(
+            with_ovr.track.tags.title.as_deref(),
+            Some("My Corrected Song Title")
+        );
+        assert_eq!(
+            with_ovr.track.tags.artist.as_deref(),
+            Some("My Corrected Artist")
+        );
+        assert!(with_ovr.overrides.title);
+        assert!(with_ovr.overrides.artist);
+
+        // list_tracks returns effective values and text search matches override
+        let search_match = list_tracks(
+            &conn,
+            &crate::filter::TrackFilter {
+                text_search: Some("Corrected Song".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("list tracks");
+        assert_eq!(search_match.len(), 1);
+        assert_eq!(
+            search_match[0].tags.title.as_deref(),
+            Some("My Corrected Song Title")
+        );
+
+        // Clear only title override
+        clear_override(&conn, "track-title-artist", &["title"]).expect("clear title");
+        let after_title_clear = get_track(&conn, "track-title-artist").unwrap().unwrap();
+        // Title reverts to original tag, artist remains overridden
+        assert_eq!(
+            after_title_clear.tags.title.as_deref(),
+            Some("Title track-title-artist")
+        );
+        assert_eq!(
+            after_title_clear.tags.artist.as_deref(),
+            Some("My Corrected Artist")
+        );
+
+        let flags_after_title = get_override_flags(&conn, "track-title-artist").unwrap();
+        assert!(!flags_after_title.title);
+        assert!(flags_after_title.artist);
+
+        // Clear artist override
+        clear_override(&conn, "track-title-artist", &["artist"]).expect("clear artist");
+        let after_both_clear = get_track(&conn, "track-title-artist").unwrap().unwrap();
+        assert_eq!(
+            after_both_clear.tags.title.as_deref(),
+            Some("Title track-title-artist")
+        );
+        assert_eq!(
+            after_both_clear.tags.artist.as_deref(),
+            Some("Artist track-title-artist")
+        );
+
+        let flags_final = get_override_flags(&conn, "track-title-artist").unwrap();
+        assert!(!flags_final.title);
+        assert!(!flags_final.artist);
+    }
+
+    #[test]
+    fn test_reanalysis_keeps_title_and_artist_edits() {
+        let conn = setup_db();
+        let track = sample_track("track-reanalyze-meta", 120.0, 100.0, 8, CamelotLetter::A);
+        upsert_track(&conn, &track).expect("upsert track");
+
+        set_override(
+            &conn,
+            "track-reanalyze-meta",
+            &TrackOverridePatch {
+                title: Some("Persistent Edited Title".to_string()),
+                artist: Some("Persistent Edited Artist".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("set override");
+
+        // Re-analyze track
+        let reanalyzed = sample_analysis(125.0, 150.0, 9, CamelotLetter::B);
+        save_analysis(&conn, "track-reanalyze-meta", &reanalyzed, "v2").expect("save re-analysis");
+
+        // Effective track still has user-edited title and artist
+        let loaded = get_track(&conn, "track-reanalyze-meta").unwrap().unwrap();
+        assert_eq!(
+            loaded.tags.title.as_deref(),
+            Some("Persistent Edited Title")
+        );
+        assert_eq!(
+            loaded.tags.artist.as_deref(),
+            Some("Persistent Edited Artist")
+        );
     }
 }

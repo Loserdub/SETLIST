@@ -41,12 +41,12 @@ mod tests {
 
         // Verify version tracking
         let version = get_schema_version(&conn).expect("get schema version");
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
 
         // Verify idempotent application
         apply_migrations(&conn).expect("re-apply migrations cleanly");
         let version_after = get_schema_version(&conn).expect("get schema version");
-        assert_eq!(version_after, 5);
+        assert_eq!(version_after, 6);
 
         // Verify tracks insert with constant beat grid fields and optional beats_json
         conn.execute(

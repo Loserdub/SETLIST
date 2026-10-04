@@ -6,6 +6,7 @@ import {
   entryToSetlistItem,
   setlistItemToEntry,
 } from '../api';
+import { getPlaybackClient, type PlayerState } from '../api/playback';
 import type { Track } from '../bindings/Track';
 import type { SetlistEntry } from '../bindings/SetlistEntry';
 import type { Setlist } from '../bindings/Setlist';
@@ -26,6 +27,18 @@ import {
 import type { SetlistPins } from '../features/setlist/types';
 
 export type Route = 'library' | 'discovery' | 'track' | 'setlist' | 'settings' | 'stage';
+
+export interface SetlistSnapshot {
+  setlist: SetlistEntry[];
+  pins: SetlistPins;
+  energyProfile: EnergyProfile;
+  setlistName: string;
+}
+
+export interface SetlistHistory {
+  past: SetlistSnapshot[];
+  future: SetlistSnapshot[];
+}
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   cost_weights: {
@@ -78,6 +91,7 @@ export interface AppState {
   loadTracks: (backend?: Backend) => Promise<void>;
   scanFolder: (path: string, backend?: Backend) => Promise<void>;
   selectTrack: (id: string | null) => void;
+  refreshTrackInSetlist: (freshTrack: Track, backend?: Backend) => Promise<void>;
 
   // Active Setlist State
   activeSetlistId: string | null;
@@ -115,6 +129,39 @@ export interface AppState {
     backend?: Backend
   ) => Promise<ExportResult>;
 
+  // Undo / Redo for setlist operations
+  setlistHistory: SetlistHistory;
+  canUndoSetlist: boolean;
+  canRedoSetlist: boolean;
+  undoSetlist: (backend?: Backend) => void;
+  redoSetlist: (backend?: Backend) => void;
+
+  // Global Audio Audition State & Transport
+  auditionTrackId: string | null;
+  auditionState: PlayerState;
+  auditionPositionMs: number;
+  auditionDurationMs: number;
+  auditionSpeed: number;
+  masterVolume: number;
+  setMasterVolume: (volume: number) => Promise<void>;
+  toggleAudition: (trackId?: string | null) => Promise<void>;
+  seekAudition: (positionMs: number) => Promise<void>;
+  setAuditionSpeed: (speed: number) => Promise<void>;
+  stopAudition: () => Promise<void>;
+  syncAuditionPosition: (payload: {
+    state: PlayerState;
+    position_ms: number;
+    duration_ms: number;
+    speed?: number;
+    volume?: number;
+  }) => void;
+
+  // Track Metadata In-App Overrides
+  trackTitleOverrides: Record<string, string>;
+  trackArtistOverrides: Record<string, string>;
+  setTrackTitleOverride: (trackId: string, title?: string | null) => void;
+  setTrackArtistOverride: (trackId: string, artist?: string | null) => void;
+
   // Background Progress
   progress: ProgressEvent | null;
   setProgress: (progress: ProgressEvent | null) => void;
@@ -148,6 +195,39 @@ export interface AppState {
   isLoading: boolean;
   error: string | null;
   fetchPing: (backend?: Backend) => Promise<void>;
+}
+
+const MAX_SETLIST_HISTORY = 30;
+
+function createSnapshot(state: {
+  setlist: SetlistEntry[];
+  pins: SetlistPins;
+  energyProfile: EnergyProfile;
+  setlistName: string;
+}): SetlistSnapshot {
+  return {
+    setlist: state.setlist,
+    pins: { ...state.pins },
+    energyProfile: state.energyProfile,
+    setlistName: state.setlistName,
+  };
+}
+
+function recordHistory(state: AppState): {
+  setlistHistory: SetlistHistory;
+  canUndoSetlist: boolean;
+  canRedoSetlist: boolean;
+} {
+  const currentSnapshot = createSnapshot(state);
+  const nextPast = [...state.setlistHistory.past, currentSnapshot].slice(-MAX_SETLIST_HISTORY);
+  return {
+    setlistHistory: {
+      past: nextPast,
+      future: [],
+    },
+    canUndoSetlist: true,
+    canRedoSetlist: false,
+  };
 }
 
 let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -211,13 +291,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       const tracks = await backend.listTracks();
       const currentSelectedId = get().selectedTrackId;
       const updatedSelected = tracks.find((t) => t.id === currentSelectedId) ?? (tracks[0] ?? null);
-      set({
+      const tracksMap = new Map<string, Track>(tracks.map((t) => [t.id, t]));
+      set((state) => ({
         tracks,
         isLoadingTracks: false,
         hasLoadedTracks: true,
         selectedTrackId: updatedSelected?.id ?? null,
         selectedTrack: updatedSelected,
-      });
+        setlist: state.setlist.map((entry) => {
+          if (!entry.track && tracksMap.has(entry.track_id)) {
+            return { ...entry, track: tracksMap.get(entry.track_id) ?? null };
+          }
+          return entry;
+        }),
+      }));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       set({ tracksError: msg, isLoadingTracks: false, hasLoadedTracks: true });
@@ -271,6 +358,111 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedTrackId: id, selectedTrack: track });
   },
 
+  refreshTrackInSetlist: async (freshTrack: Track, customBackend?: Backend) => {
+    const backend = customBackend ?? getBackend(get().useMockBackend);
+    let inSetlist = false;
+    const capturedVersion = (get().setlistVersion ?? 0) + 1;
+    let profile = get().energyProfile;
+    let weights = get().costWeights;
+
+    set((state) => {
+      inSetlist = state.setlist.some((e) => e.track_id === freshTrack.id);
+      profile = state.energyProfile;
+      weights = state.costWeights;
+      return {
+        tracks: state.tracks.map((t) => (t.id === freshTrack.id ? freshTrack : t)),
+        selectedTrack:
+          state.selectedTrackId === freshTrack.id ? freshTrack : state.selectedTrack,
+        setlist: inSetlist
+          ? state.setlist.map((e) =>
+              e.track_id === freshTrack.id ? { ...e, track: freshTrack } : e
+            )
+          : state.setlist,
+        setlistVersion: inSetlist ? capturedVersion : state.setlistVersion,
+      };
+    });
+
+    if (!inSetlist) return;
+
+    // Persist updated track representation in active setlist
+    scheduleActiveSetlistPersistence(get, customBackend);
+
+    // Identify all positions of this track in the setlist
+    const currentSetlist = get().setlist;
+    const targetIndices = currentSetlist
+      .map((e, idx) => (e.track_id === freshTrack.id ? idx : -1))
+      .filter((idx) => idx !== -1);
+
+    if (targetIndices.length === 0) return;
+
+    // Recompute incoming and outgoing transition advice
+    try {
+      const updatedSetlist = [...get().setlist];
+      let hasChanges = false;
+
+      for (const idx of targetIndices) {
+        if (get().setlistVersion !== capturedVersion) return;
+
+        // Incoming transition: from idx - 1 to idx
+        if (idx > 0) {
+          const prev = updatedSetlist[idx - 1];
+          const curr = updatedSetlist[idx];
+          if (prev.track && curr.track) {
+            try {
+              const de =
+                getTargetEnergy(profile, idx, updatedSetlist.length) -
+                getTargetEnergy(profile, idx - 1, updatedSetlist.length);
+              const transition = await backend.getAdvice(
+                prev.track_id,
+                curr.track_id,
+                profile,
+                weights,
+                de
+              );
+              if (get().setlistVersion !== capturedVersion) return;
+              updatedSetlist[idx] = { ...updatedSetlist[idx], transition };
+              hasChanges = true;
+            } catch {
+              // ignore advice error
+            }
+          }
+        }
+
+        // Outgoing transition: from idx to idx + 1
+        if (idx < updatedSetlist.length - 1) {
+          const curr = updatedSetlist[idx];
+          const next = updatedSetlist[idx + 1];
+          if (curr.track && next.track) {
+            try {
+              const de =
+                getTargetEnergy(profile, idx + 1, updatedSetlist.length) -
+                getTargetEnergy(profile, idx, updatedSetlist.length);
+              const transition = await backend.getAdvice(
+                curr.track_id,
+                next.track_id,
+                profile,
+                weights,
+                de
+              );
+              if (get().setlistVersion !== capturedVersion) return;
+              updatedSetlist[idx + 1] = { ...updatedSetlist[idx + 1], transition };
+              hasChanges = true;
+            } catch {
+              // ignore advice error
+            }
+          }
+        }
+      }
+
+      if (hasChanges && get().setlistVersion === capturedVersion) {
+        set({ setlist: updatedSetlist });
+        scheduleActiveSetlistPersistence(get, customBackend);
+      }
+    } catch {
+      // ignore
+    }
+  },
+
   // Active Setlist State
   activeSetlistId: null,
   hasLoadedActiveSetlist: false,
@@ -279,10 +471,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   pins: { lockFirst: false, lockLast: false },
   setPins: (pinsOrUpdater) => {
     set((state) => {
+      const historyUpdate = recordHistory(state);
       const nextPins =
         typeof pinsOrUpdater === 'function' ? pinsOrUpdater(state.pins) : pinsOrUpdater;
       return {
         pins: validatePins(state.setlist.length, nextPins),
+        ...historyUpdate,
       };
     });
   },
@@ -298,6 +492,211 @@ export const useAppStore = create<AppState>((set, get) => ({
   setlistError: null,
   exportStatus: null,
 
+  // Setlist Undo / Redo History
+  setlistHistory: { past: [], future: [] },
+  canUndoSetlist: false,
+  canRedoSetlist: false,
+
+  undoSetlist: (customBackend) => {
+    const { setlistHistory, setlist, pins, energyProfile, setlistName } = get();
+    if (setlistHistory.past.length === 0) return;
+
+    const previousSnapshot = setlistHistory.past[setlistHistory.past.length - 1];
+    const newPast = setlistHistory.past.slice(0, -1);
+    const currentSnapshot = createSnapshot({ setlist, pins, energyProfile, setlistName });
+    const newFuture = [currentSnapshot, ...setlistHistory.future].slice(0, MAX_SETLIST_HISTORY);
+
+    set((state) => ({
+      setlist: previousSnapshot.setlist,
+      pins: previousSnapshot.pins,
+      energyProfile: previousSnapshot.energyProfile,
+      setlistName: previousSnapshot.setlistName,
+      setlistVersion: (state.setlistVersion ?? 0) + 1,
+      setlistHistory: {
+        past: newPast,
+        future: newFuture,
+      },
+      canUndoSetlist: newPast.length > 0,
+      canRedoSetlist: true,
+    }));
+
+    scheduleActiveSetlistPersistence(get, customBackend);
+    get().addToast({
+      type: 'info',
+      message: 'Setlist action undone',
+    });
+  },
+
+  redoSetlist: (customBackend) => {
+    const { setlistHistory, setlist, pins, energyProfile, setlistName } = get();
+    if (setlistHistory.future.length === 0) return;
+
+    const nextSnapshot = setlistHistory.future[0];
+    const newFuture = setlistHistory.future.slice(1);
+    const currentSnapshot = createSnapshot({ setlist, pins, energyProfile, setlistName });
+    const newPast = [...setlistHistory.past, currentSnapshot].slice(-MAX_SETLIST_HISTORY);
+
+    set((state) => ({
+      setlist: nextSnapshot.setlist,
+      pins: nextSnapshot.pins,
+      energyProfile: nextSnapshot.energyProfile,
+      setlistName: nextSnapshot.setlistName,
+      setlistVersion: (state.setlistVersion ?? 0) + 1,
+      setlistHistory: {
+        past: newPast,
+        future: newFuture,
+      },
+      canUndoSetlist: true,
+      canRedoSetlist: newFuture.length > 0,
+    }));
+
+    scheduleActiveSetlistPersistence(get, customBackend);
+    get().addToast({
+      type: 'info',
+      message: 'Setlist action redone',
+    });
+  },
+
+  // Global Audio Audition State & Transport
+  auditionTrackId: null,
+  auditionState: 'stopped',
+  auditionPositionMs: 0,
+  auditionDurationMs: 0,
+  auditionSpeed: 1.0,
+  masterVolume: 1.0,
+
+  setMasterVolume: async (volume: number) => {
+    const clamped = Math.max(0.0, Math.min(2.0, volume));
+    set({ masterVolume: clamped });
+    const client = getPlaybackClient();
+    await client.setVolume(clamped);
+  },
+
+  trackTitleOverrides: (() => {
+    let initial: Record<string, string> = {};
+    try {
+      const saved = typeof window !== 'undefined' ? window.localStorage?.getItem('setlist_track_title_overrides') : null;
+      if (saved) initial = JSON.parse(saved);
+    } catch {}
+    void import('../api/overrides').then(({ migrateLocalStorageOverrides }) => {
+      void migrateLocalStorageOverrides(
+        typeof window !== 'undefined' ? window.localStorage : null
+      );
+    }).catch(() => {});
+    return initial;
+  })(),
+  trackArtistOverrides: (() => {
+    let initial: Record<string, string> = {};
+    try {
+      const saved = typeof window !== 'undefined' ? window.localStorage?.getItem('setlist_track_artist_overrides') : null;
+      if (saved) initial = JSON.parse(saved);
+    } catch {}
+    return initial;
+  })(),
+
+  setTrackTitleOverride: (trackId: string, title?: string | null) => {
+    const trimmed = title?.trim() || null;
+    void import('../api/overrides').then(({ setTrackOverride, clearTrackOverride }) => {
+      if (trimmed) {
+        void setTrackOverride(trackId, { title: trimmed }).catch((err) => {
+          console.error('Failed to set track title override in database:', err);
+        });
+      } else {
+        void clearTrackOverride(trackId, ['title']).catch((err) => {
+          console.error('Failed to clear track title override in database:', err);
+        });
+      }
+    }).catch(console.error);
+
+    set((state) => {
+      const updated = { ...state.trackTitleOverrides };
+      if (!trimmed) {
+        delete updated[trackId];
+      } else {
+        updated[trackId] = trimmed;
+      }
+      return { trackTitleOverrides: updated };
+    });
+  },
+
+  setTrackArtistOverride: (trackId: string, artist?: string | null) => {
+    const trimmed = artist?.trim() || null;
+    void import('../api/overrides').then(({ setTrackOverride, clearTrackOverride }) => {
+      if (trimmed) {
+        void setTrackOverride(trackId, { artist: trimmed }).catch((err) => {
+          console.error('Failed to set track artist override in database:', err);
+        });
+      } else {
+        void clearTrackOverride(trackId, ['artist']).catch((err) => {
+          console.error('Failed to clear track artist override in database:', err);
+        });
+      }
+    }).catch(console.error);
+
+    set((state) => {
+      const updated = { ...state.trackArtistOverrides };
+      if (!trimmed) {
+        delete updated[trackId];
+      } else {
+        updated[trackId] = trimmed;
+      }
+      return { trackArtistOverrides: updated };
+    });
+  },
+
+  toggleAudition: async (trackId) => {
+    const { auditionTrackId, auditionState, tracks } = get();
+    const targetId = trackId ?? auditionTrackId;
+    if (!targetId) return;
+
+    const client = getPlaybackClient();
+    if (auditionTrackId === targetId && auditionState === 'playing') {
+      set({ auditionState: 'paused' });
+      await client.pause();
+    } else if (auditionTrackId === targetId && auditionState === 'paused') {
+      set({ auditionState: 'playing' });
+      await client.play();
+    } else {
+      set({ auditionTrackId: targetId, auditionState: 'playing' });
+      const loadRes = await client.load(targetId);
+      const foundTrack = tracks.find((t) => t.id === targetId);
+      const dur = loadRes?.duration_ms || foundTrack?.duration_ms || 180000;
+      set({ auditionDurationMs: dur, auditionPositionMs: 0 });
+      await client.play();
+    }
+  },
+
+  seekAudition: async (positionMs) => {
+    const client = getPlaybackClient();
+    await client.seek(positionMs);
+    set({ auditionPositionMs: positionMs });
+  },
+
+  setAuditionSpeed: async (speed) => {
+    const client = getPlaybackClient();
+    await client.setSpeed(speed);
+    set({ auditionSpeed: speed });
+  },
+
+  stopAudition: async () => {
+    set({
+      auditionTrackId: null,
+      auditionState: 'stopped',
+      auditionPositionMs: 0,
+    });
+    const client = getPlaybackClient();
+    await client.stop();
+  },
+
+  syncAuditionPosition: (payload) => {
+    set({
+      auditionState: payload.state,
+      auditionPositionMs: payload.position_ms,
+      auditionDurationMs: payload.duration_ms,
+      auditionSpeed: payload.speed && payload.speed > 0 ? payload.speed : get().auditionSpeed,
+    });
+  },
+
   loadActiveSetlist: async (customBackend) => {
     const backend = customBackend ?? getBackend(get().useMockBackend);
     if (!backend || typeof backend.getActiveSetlist !== 'function') {
@@ -312,7 +711,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         return;
       }
 
-      const tracks = get().tracks;
+      let tracks = get().tracks;
+      if (
+        active.items.length > 0 &&
+        tracks.length === 0 &&
+        !get().hasLoadedTracks &&
+        !get().isLoadingTracks &&
+        typeof backend.listTracks === 'function'
+      ) {
+        try {
+          await get().loadTracks(backend);
+          tracks = get().tracks;
+        } catch {
+          // Proceed with current state if track loading fails
+        }
+      }
+
       const tracksMap = new Map<string, Track>(tracks.map((t) => [t.id, t]));
       const entries = active.items.map((item) => setlistItemToEntry(item, tracksMap));
 
@@ -370,6 +784,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const trackToAdd = state.tracks.find((t) => t.id === trackId);
       if (!trackToAdd) return state;
 
+      const historyUpdate = recordHistory(state);
       const prev = state.setlist.length > 0 ? state.setlist[state.setlist.length - 1] : null;
       prevTrackId = prev?.track_id ?? null;
       profile = state.energyProfile;
@@ -389,6 +804,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         setlist: nextList,
         setlistVersion: capturedVersion,
+        ...historyUpdate,
       };
     });
 
@@ -436,6 +852,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const idx = state.setlist.findIndex((e) => e.position === position);
       if (idx === -1) return state;
 
+      const historyUpdate = recordHistory(state);
       const filtered = state.setlist.filter((_, i) => i !== idx);
       if (idx > 0 && idx < state.setlist.length - 1) {
         affectedPair = {
@@ -472,6 +889,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         setlist: nextList,
         pins: nextPins,
         setlistVersion: nextVersion,
+        ...historyUpdate,
       };
     });
 
@@ -519,6 +937,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const reordered = reorderSetlistEntries(state.setlist, fromIndex, toIndex, activePins);
       if (reordered === state.setlist) return state; // Move prohibited
 
+      const historyUpdate = recordHistory(state);
       profile = state.energyProfile;
       weights = state.costWeights;
       capturedVersion = (state.setlistVersion ?? 0) + 1;
@@ -543,7 +962,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       reorderedList = nextList;
       return {
         setlist: nextList,
+        pins: activePins,
         setlistVersion: capturedVersion,
+        ...historyUpdate,
       };
     });
 
@@ -586,6 +1007,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (hasNewTransitions && get().setlistVersion === capturedVersion) {
         set({ setlist: withTransitions });
+        scheduleActiveSetlistPersistence(get, customBackend);
       }
     } catch {
       // ignore
@@ -593,13 +1015,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearSetlist: () => {
-    set((state) => ({
-      setlist: [],
-      pins: { lockFirst: false, lockLast: false },
-      setlistError: null,
-      exportStatus: null,
-      setlistVersion: (state.setlistVersion ?? 0) + 1,
-    }));
+    set((state) => {
+      if (state.setlist.length === 0) return state;
+      const historyUpdate = recordHistory(state);
+      return {
+        setlist: [],
+        pins: { lockFirst: false, lockLast: false },
+        setlistError: null,
+        exportStatus: null,
+        setlistVersion: (state.setlistVersion ?? 0) + 1,
+        ...historyUpdate,
+      };
+    });
     scheduleActiveSetlistPersistence(get);
   },
 
@@ -672,17 +1099,50 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
 
-      if (get().setlistVersion !== capturedVersion) {
-        set({ isSuggestingOrder: false });
-        return;
-      }
-
-      set({
+      const finalVersion = capturedVersion + 1;
+      set((state) => ({
         setlist: recalculateSetlistTargetEnergy(updatedEntries, energyProfile),
-        setlistVersion: capturedVersion + 1,
+        setlistVersion: finalVersion,
         isSuggestingOrder: false,
-      });
+        ...recordHistory(state),
+      }));
       scheduleActiveSetlistPersistence(get, customBackend);
+
+      // Asynchronously fetch transition advice for any adjacent pair that lacks advice
+      (async () => {
+        const withTransitions = [...updatedEntries];
+        let hasNewTransitions = false;
+        for (let i = 1; i < withTransitions.length; i++) {
+          if (get().setlistVersion !== finalVersion) return;
+          const prev = withTransitions[i - 1];
+          const curr = withTransitions[i];
+          if (!curr.transition && prev.track && curr.track) {
+            try {
+              const de =
+                getTargetEnergy(energyProfile, i, withTransitions.length) -
+                getTargetEnergy(energyProfile, i - 1, withTransitions.length);
+              const transition = await backend.getAdvice(
+                prev.track_id,
+                curr.track_id,
+                energyProfile,
+                costWeights,
+                de
+              );
+              if (get().setlistVersion !== finalVersion) return;
+              withTransitions[i] = { ...curr, transition };
+              hasNewTransitions = true;
+            } catch {
+              // ignore
+            }
+          }
+        }
+        if (hasNewTransitions && get().setlistVersion === finalVersion) {
+          set({
+            setlist: recalculateSetlistTargetEnergy(withTransitions, energyProfile),
+          });
+          scheduleActiveSetlistPersistence(get, customBackend);
+        }
+      })();
       get().addToast({
         type: 'success',
         message: 'Sequence optimized',
@@ -905,3 +1365,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 }));
+
+// Wire playback client position broadcasts into store for global transport continuity
+if (typeof window !== 'undefined') {
+  try {
+    const client = getPlaybackClient();
+    client.onPosition((payload) => {
+      useAppStore.getState().syncAuditionPosition(payload);
+    });
+  } catch {
+    // Ignore in non-browser or early-load test runs
+  }
+}
+

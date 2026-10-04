@@ -157,7 +157,10 @@ mod tests {
         EnergyProfile, Key, LoudnessInfo, Mode, RhythmAnalysis, Segment, SegmentLabel,
         SetlistEntry, Track, TrackAnalysis, TrackTags, Waveform3Band, WaveformBand,
     };
-    use exporters::{generate_rekordbox_xml, RekordboxExportOptions};
+    use exporters::{
+        generate_m3u8, generate_rekordbox_xml, generate_set_sheet_csv, generate_set_sheet_markdown,
+        RekordboxExportOptions,
+    };
     use library_db::{rebuild_beat_grid, upsert_track};
     use sequencer::matrix::CostMatrix;
 
@@ -416,5 +419,109 @@ mod tests {
         assert_eq!(cleared.analysis.as_ref().unwrap().rhythm.grid.bpm, 120.0); // reverted to analyzed
         assert!(!cleared.overrides.bpm);
         assert!(cleared.overrides.key_camelot); // key still active
+    }
+
+    #[test]
+    fn test_overridden_title_and_artist_changes_all_exports() {
+        let state = AppState::in_memory().expect("in-memory state");
+        let conn = state.db.lock().expect("lock db");
+
+        let t1 = sample_track("track-export-meta", 120.0, 100.0, 8, CamelotLetter::A);
+        upsert_track(&conn, &t1).expect("upsert t1");
+        drop(conn);
+
+        // Before override: export has original tags
+        let before_track = get_track_core(&state, "track-export-meta")
+            .unwrap()
+            .unwrap();
+        let entry_before = SetlistEntry {
+            position: 1,
+            track_id: "track-export-meta".to_string(),
+            track: Some(before_track.track),
+            transition: None,
+            target_energy: Some(7.0),
+        };
+        let options = RekordboxExportOptions::default();
+
+        let xml_before =
+            generate_rekordbox_xml(&[entry_before.clone()], &options).expect("generate xml");
+        assert!(xml_before.contains("Name=\"Title track-export-meta\""));
+        assert!(xml_before.contains("Artist=\"Artist track-export-meta\""));
+
+        let m3u8_before = generate_m3u8(&[entry_before.clone()]);
+        assert!(m3u8_before.contains("Artist track-export-meta - Title track-export-meta"));
+
+        let csv_before = generate_set_sheet_csv(&[entry_before.clone()]);
+        assert!(csv_before.contains("Title track-export-meta"));
+        assert!(csv_before.contains("Artist track-export-meta"));
+
+        let md_before = generate_set_sheet_markdown(&[entry_before], None);
+        assert!(md_before.contains("Title track-export-meta"));
+        assert!(md_before.contains("Artist track-export-meta"));
+
+        // User overrides title and artist
+        set_track_override_core(
+            &state,
+            "track-export-meta",
+            &TrackOverridePatch {
+                title: Some("Headline Banger".to_string()),
+                artist: Some("DJ Resident".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("set override");
+
+        // After override: all exports must see effective values
+        let after_track = get_track_core(&state, "track-export-meta")
+            .unwrap()
+            .unwrap();
+        assert!(after_track.overrides.title);
+        assert!(after_track.overrides.artist);
+
+        let entry_after = SetlistEntry {
+            position: 1,
+            track_id: "track-export-meta".to_string(),
+            track: Some(after_track.track),
+            transition: None,
+            target_energy: Some(7.0),
+        };
+
+        let xml_after =
+            generate_rekordbox_xml(&[entry_after.clone()], &options).expect("generate xml");
+        assert!(xml_after.contains("Name=\"Headline Banger\""));
+        assert!(xml_after.contains("Artist=\"DJ Resident\""));
+        assert!(!xml_after.contains("Name=\"Title track-export-meta\""));
+
+        let m3u8_after = generate_m3u8(&[entry_after.clone()]);
+        assert!(m3u8_after.contains("DJ Resident - Headline Banger"));
+
+        let csv_after = generate_set_sheet_csv(&[entry_after.clone()]);
+        assert!(csv_after.contains("Headline Banger"));
+        assert!(csv_after.contains("DJ Resident"));
+
+        let md_after = generate_set_sheet_markdown(&[entry_after], None);
+        assert!(md_after.contains("Headline Banger"));
+        assert!(md_after.contains("DJ Resident"));
+
+        // Clear overrides: exports revert to original tags
+        clear_track_override_core(&state, "track-export-meta", &["title", "artist"])
+            .expect("clear");
+        let cleared_track = get_track_core(&state, "track-export-meta")
+            .unwrap()
+            .unwrap();
+        assert!(!cleared_track.overrides.title);
+        assert!(!cleared_track.overrides.artist);
+
+        let entry_cleared = SetlistEntry {
+            position: 1,
+            track_id: "track-export-meta".to_string(),
+            track: Some(cleared_track.track),
+            transition: None,
+            target_energy: Some(7.0),
+        };
+        let xml_reverted =
+            generate_rekordbox_xml(&[entry_cleared], &options).expect("generate xml");
+        assert!(xml_reverted.contains("Name=\"Title track-export-meta\""));
+        assert!(xml_reverted.contains("Artist=\"Artist track-export-meta\""));
     }
 }

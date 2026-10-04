@@ -5,7 +5,7 @@ import type { Mode } from '../bindings/Mode';
 import type { Camelot } from '../bindings/Camelot';
 import type { CamelotLetter } from '../bindings/CamelotLetter';
 import type { BeatGrid } from '../bindings/BeatGrid';
-import { isTauriEnvironment, USE_MOCK_BACKEND, mockBackend } from './index';
+import { isTauriEnvironment, USE_MOCK_BACKEND, mockBackend, updateMockTrack } from './index';
 
 /**
  * Patch payload for setting or updating user analysis overrides on a track.
@@ -16,6 +16,8 @@ export interface TrackOverridePatch {
   key_camelot?: string;
   cues_json?: string;
   cues?: CuePoint[];
+  title?: string;
+  artist?: string;
 }
 
 /**
@@ -26,6 +28,8 @@ export interface TrackOverrideFlags {
   first_downbeat_ms: boolean;
   key_camelot: boolean;
   cues: boolean;
+  title?: boolean;
+  artist?: boolean;
 }
 
 /**
@@ -37,6 +41,8 @@ export interface TrackOverride {
   first_downbeat_ms?: number | null;
   key_camelot?: string | null;
   cues_json?: string | null;
+  title?: string | null;
+  artist?: string | null;
   updated_at?: string | null;
 }
 
@@ -142,6 +148,8 @@ interface AnalyzedBackup {
     tuning_cents: number;
   };
   cues: CuePoint[];
+  title?: string | null;
+  artist?: string | null;
 }
 
 /**
@@ -156,6 +164,9 @@ export class MockOverridesClient implements OverridesClient {
    * Resets mock state (useful for tests).
    */
   public reset(): void {
+    for (const id of Array.from(this.backups.keys())) {
+      this.revertCachedTrack(id, ['all']);
+    }
     this.overrides.clear();
     this.backups.clear();
     this.mockTrackCache.clear();
@@ -176,12 +187,16 @@ export class MockOverridesClient implements OverridesClient {
     }
 
     // Save initial backup if not already present
-    if (!this.backups.has(trackId) && track.analysis) {
+    if (!this.backups.has(trackId)) {
       this.backups.set(trackId, {
-        bpm: track.analysis.rhythm.grid.bpm,
-        first_downbeat_ms: track.analysis.rhythm.grid.first_downbeat_ms,
-        key: JSON.parse(JSON.stringify(track.analysis.key)),
-        cues: JSON.parse(JSON.stringify(track.analysis.cue_points)),
+        bpm: track.analysis?.rhythm.grid.bpm ?? 120,
+        first_downbeat_ms: track.analysis?.rhythm.grid.first_downbeat_ms ?? 0,
+        key: track.analysis
+          ? JSON.parse(JSON.stringify(track.analysis.key))
+          : { pitch_class: 0, mode: 'Minor', camelot: { number: 8, letter: 'A' }, tuning_cents: 0 },
+        cues: track.analysis ? JSON.parse(JSON.stringify(track.analysis.cue_points)) : [],
+        title: track.tags?.title ?? null,
+        artist: track.tags?.artist ?? null,
       });
     }
 
@@ -199,6 +214,8 @@ export class MockOverridesClient implements OverridesClient {
           : patch.cues
           ? JSON.stringify(patch.cues)
           : existing.cues_json,
+      title: patch.title !== undefined ? patch.title : existing.title,
+      artist: patch.artist !== undefined ? patch.artist : existing.artist,
       updated_at: new Date().toISOString(),
     };
 
@@ -213,7 +230,7 @@ export class MockOverridesClient implements OverridesClient {
     const clearAll = !fields || fields.length === 0 || fields.some((f) => f.toLowerCase() === 'all');
     if (clearAll) {
       this.overrides.delete(trackId);
-      this.revertCachedTrack(trackId, ['bpm', 'first_downbeat_ms', 'key_camelot', 'cues_json']);
+      this.revertCachedTrack(trackId, ['bpm', 'first_downbeat_ms', 'key_camelot', 'cues_json', 'title', 'artist']);
     } else {
       for (const field of fields) {
         const lower = field.toLowerCase();
@@ -221,9 +238,18 @@ export class MockOverridesClient implements OverridesClient {
         if (lower === 'first_downbeat_ms' || lower === 'downbeat') existing.first_downbeat_ms = null;
         if (lower === 'key_camelot' || lower === 'key' || lower === 'camelot') existing.key_camelot = null;
         if (lower === 'cues_json' || lower === 'cues') existing.cues_json = null;
+        if (lower === 'title') existing.title = null;
+        if (lower === 'artist') existing.artist = null;
       }
 
-      if (!existing.bpm && !existing.first_downbeat_ms && !existing.key_camelot && !existing.cues_json) {
+      if (
+        !existing.bpm &&
+        !existing.first_downbeat_ms &&
+        !existing.key_camelot &&
+        !existing.cues_json &&
+        !existing.title &&
+        !existing.artist
+      ) {
         this.overrides.delete(trackId);
       } else {
         existing.updated_at = new Date().toISOString();
@@ -244,6 +270,8 @@ export class MockOverridesClient implements OverridesClient {
       first_downbeat_ms: Boolean(ov?.first_downbeat_ms != null),
       key_camelot: Boolean(ov?.key_camelot != null),
       cues: Boolean(ov?.cues_json != null),
+      title: Boolean(ov?.title != null),
+      artist: Boolean(ov?.artist != null),
     };
   }
 
@@ -266,6 +294,13 @@ export class MockOverridesClient implements OverridesClient {
   }
 
   private applyOverridesToTrackObj(track: Track, ov: TrackOverride): void {
+    if (ov.title !== undefined && ov.title !== null) {
+      track.tags.title = ov.title;
+    }
+    if (ov.artist !== undefined && ov.artist !== null) {
+      track.tags.artist = ov.artist;
+    }
+
     if (!track.analysis) return;
 
     const backup = this.backups.get(track.id);
@@ -309,55 +344,68 @@ export class MockOverridesClient implements OverridesClient {
         first_downbeat_ms: Boolean(ov.first_downbeat_ms != null),
         key_camelot: Boolean(ov.key_camelot != null),
         cues: Boolean(ov.cues_json != null),
+        title: Boolean(ov.title != null),
+        artist: Boolean(ov.artist != null),
       };
+      updateMockTrack(cached);
     }
   }
 
   private revertCachedTrack(trackId: string, fields: string[]): void {
     const cached = this.mockTrackCache.get(trackId);
     const backup = this.backups.get(trackId);
-    if (!cached || !cached.analysis || !backup) return;
+    if (!cached || !backup) return;
 
     const ov = this.overrides.get(trackId);
     const clearAll = fields.some((f) => f.toLowerCase() === 'all') || fields.length === 0;
 
-    if (clearAll || fields.some((f) => f.toLowerCase() === 'bpm')) {
-      const effBpm = ov?.bpm != null ? ov.bpm : backup.bpm;
-      const effDownbeat = ov?.first_downbeat_ms != null ? ov.first_downbeat_ms : backup.first_downbeat_ms;
-      cached.analysis.rhythm.grid = rebuildBeatGrid(effBpm, effDownbeat, cached.duration_ms);
+    if (clearAll || fields.some((f) => f.toLowerCase() === 'title')) {
+      cached.tags.title = ov?.title != null ? ov.title : (backup.title ?? null);
     }
 
-    if (clearAll || fields.some((f) => ['first_downbeat_ms', 'downbeat'].includes(f.toLowerCase()))) {
-      const effBpm = ov?.bpm != null ? ov.bpm : backup.bpm;
-      const effDownbeat = ov?.first_downbeat_ms != null ? ov.first_downbeat_ms : backup.first_downbeat_ms;
-      cached.analysis.rhythm.grid = rebuildBeatGrid(effBpm, effDownbeat, cached.duration_ms);
+    if (clearAll || fields.some((f) => f.toLowerCase() === 'artist')) {
+      cached.tags.artist = ov?.artist != null ? ov.artist : (backup.artist ?? null);
     }
 
-    if (clearAll || fields.some((f) => ['key_camelot', 'key', 'camelot'].includes(f.toLowerCase()))) {
-      if (ov?.key_camelot) {
-        const parsed = parseCamelotKey(ov.key_camelot);
-        if (parsed) {
-          cached.analysis.key = {
-            pitch_class: parsed.pitch_class,
-            mode: parsed.mode,
-            camelot: parsed.camelot,
-            tuning_cents: backup.key.tuning_cents,
-          };
-        }
-      } else {
-        cached.analysis.key = JSON.parse(JSON.stringify(backup.key));
+    if (cached.analysis) {
+      if (clearAll || fields.some((f) => f.toLowerCase() === 'bpm')) {
+        const effBpm = ov?.bpm != null ? ov.bpm : backup.bpm;
+        const effDownbeat = ov?.first_downbeat_ms != null ? ov.first_downbeat_ms : backup.first_downbeat_ms;
+        cached.analysis.rhythm.grid = rebuildBeatGrid(effBpm, effDownbeat, cached.duration_ms);
       }
-    }
 
-    if (clearAll || fields.some((f) => ['cues_json', 'cues'].includes(f.toLowerCase()))) {
-      if (ov?.cues_json) {
-        try {
-          cached.analysis.cue_points = JSON.parse(ov.cues_json);
-        } catch {
-          // ignore
+      if (clearAll || fields.some((f) => ['first_downbeat_ms', 'downbeat'].includes(f.toLowerCase()))) {
+        const effBpm = ov?.bpm != null ? ov.bpm : backup.bpm;
+        const effDownbeat = ov?.first_downbeat_ms != null ? ov.first_downbeat_ms : backup.first_downbeat_ms;
+        cached.analysis.rhythm.grid = rebuildBeatGrid(effBpm, effDownbeat, cached.duration_ms);
+      }
+
+      if (clearAll || fields.some((f) => ['key_camelot', 'key', 'camelot'].includes(f.toLowerCase()))) {
+        if (ov?.key_camelot) {
+          const parsed = parseCamelotKey(ov.key_camelot);
+          if (parsed) {
+            cached.analysis.key = {
+              pitch_class: parsed.pitch_class,
+              mode: parsed.mode,
+              camelot: parsed.camelot,
+              tuning_cents: backup.key.tuning_cents,
+            };
+          }
+        } else {
+          cached.analysis.key = JSON.parse(JSON.stringify(backup.key));
         }
-      } else {
-        cached.analysis.cue_points = JSON.parse(JSON.stringify(backup.cues));
+      }
+
+      if (clearAll || fields.some((f) => ['cues_json', 'cues'].includes(f.toLowerCase()))) {
+        if (ov?.cues_json) {
+          try {
+            cached.analysis.cue_points = JSON.parse(ov.cues_json);
+          } catch {
+            // ignore
+          }
+        } else {
+          cached.analysis.cue_points = JSON.parse(JSON.stringify(backup.cues));
+        }
       }
     }
 
@@ -366,7 +414,10 @@ export class MockOverridesClient implements OverridesClient {
       first_downbeat_ms: Boolean(ov?.first_downbeat_ms != null),
       key_camelot: Boolean(ov?.key_camelot != null),
       cues: Boolean(ov?.cues_json != null),
+      title: Boolean(ov?.title != null),
+      artist: Boolean(ov?.artist != null),
     };
+    updateMockTrack(cached);
   }
 }
 
@@ -422,3 +473,119 @@ export const getTrackOverrideFlags = (trackId: string): Promise<TrackOverrideFla
 
 export const getTrackWithOverrides = (trackId: string): Promise<TrackWithOverrides | null> =>
   getOverridesClient().getTrackWithOverrides(trackId);
+
+export interface MigrationResult {
+  migratedTitles: number;
+  migratedArtists: number;
+  failedTitles: number;
+  failedArtists: number;
+}
+
+/**
+ * Performs a one-time migration of custom title and artist overrides from browser localStorage
+ * to the SQLite database via the overrides client.
+ *
+ * Guaranteed safe to run multiple times. Successfully migrated entries are removed from
+ * localStorage, while any failed entries are preserved and logged.
+ */
+export async function migrateLocalStorageOverrides(
+  storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null = typeof window !== 'undefined'
+    ? window.localStorage
+    : null,
+  client: OverridesClient = getOverridesClient()
+): Promise<MigrationResult> {
+  const result: MigrationResult = {
+    migratedTitles: 0,
+    migratedArtists: 0,
+    failedTitles: 0,
+    failedArtists: 0,
+  };
+
+  if (!storage) {
+    return result;
+  }
+
+  // 1. Process Title Overrides
+  const rawTitle = storage.getItem('setlist_track_title_overrides');
+  if (rawTitle) {
+    let titleRecord: Record<string, string> = {};
+    try {
+      titleRecord = JSON.parse(rawTitle);
+    } catch (e) {
+      console.error('Failed to parse setlist_track_title_overrides JSON:', e);
+    }
+
+    const failedTitleEntries: Record<string, string> = {};
+    const titleEntries = Object.entries(titleRecord);
+
+    for (const [trackId, title] of titleEntries) {
+      if (typeof title === 'string' && title.trim().length > 0) {
+        try {
+          await client.setTrackOverride(trackId, { title: title.trim() });
+          result.migratedTitles += 1;
+        } catch (err) {
+          console.error(`Failed to migrate title override for track ${trackId}:`, err);
+          failedTitleEntries[trackId] = title;
+          result.failedTitles += 1;
+        }
+      }
+    }
+
+    if (Object.keys(failedTitleEntries).length > 0) {
+      try {
+        storage.setItem('setlist_track_title_overrides', JSON.stringify(failedTitleEntries));
+      } catch (err) {
+        console.error('Failed to update localStorage with remaining failed title overrides:', err);
+      }
+    } else {
+      try {
+        storage.removeItem('setlist_track_title_overrides');
+      } catch (err) {
+        console.error('Failed to remove setlist_track_title_overrides key:', err);
+      }
+    }
+  }
+
+  // 2. Process Artist Overrides
+  const rawArtist = storage.getItem('setlist_track_artist_overrides');
+  if (rawArtist) {
+    let artistRecord: Record<string, string> = {};
+    try {
+      artistRecord = JSON.parse(rawArtist);
+    } catch (e) {
+      console.error('Failed to parse setlist_track_artist_overrides JSON:', e);
+    }
+
+    const failedArtistEntries: Record<string, string> = {};
+    const artistEntries = Object.entries(artistRecord);
+
+    for (const [trackId, artist] of artistEntries) {
+      if (typeof artist === 'string' && artist.trim().length > 0) {
+        try {
+          await client.setTrackOverride(trackId, { artist: artist.trim() });
+          result.migratedArtists += 1;
+        } catch (err) {
+          console.error(`Failed to migrate artist override for track ${trackId}:`, err);
+          failedArtistEntries[trackId] = artist;
+          result.failedArtists += 1;
+        }
+      }
+    }
+
+    if (Object.keys(failedArtistEntries).length > 0) {
+      try {
+        storage.setItem('setlist_track_artist_overrides', JSON.stringify(failedArtistEntries));
+      } catch (err) {
+        console.error('Failed to update localStorage with remaining failed artist overrides:', err);
+      }
+    } else {
+      try {
+        storage.removeItem('setlist_track_artist_overrides');
+      } catch (err) {
+        console.error('Failed to remove setlist_track_artist_overrides key:', err);
+      }
+    }
+  }
+
+  return result;
+}

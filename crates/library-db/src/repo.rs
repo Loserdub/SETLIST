@@ -738,7 +738,7 @@ pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>
     if let Some(ref search) = filter.text_search {
         let trimmed = search.trim();
         if !trimmed.is_empty() {
-            sql.push_str(" AND (t.title LIKE ? OR t.artist LIKE ? OR t.album LIKE ?)");
+            sql.push_str(" AND (coalesce(o.title, t.title) LIKE ? OR coalesce(o.artist, t.artist) LIKE ? OR t.album LIKE ?)");
             let pattern = format!("%{trimmed}%");
             params.push(Box::new(pattern.clone()));
             params.push(Box::new(pattern.clone()));
@@ -746,7 +746,9 @@ pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>
         }
     }
 
-    sql.push_str(" ORDER BY t.artist ASC, t.title ASC, t.id ASC");
+    sql.push_str(
+        " ORDER BY coalesce(o.artist, t.artist) ASC, coalesce(o.title, t.title) ASC, t.id ASC",
+    );
 
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
