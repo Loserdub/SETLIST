@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   getBackend,
+  isTauriEnvironment,
   type Backend,
   type ProgressEvent,
   entryToSetlistItem,
@@ -262,11 +263,26 @@ export function scheduleActiveSetlistPersistence(get: () => AppState, backendArg
 export const useAppStore = create<AppState>((set, get) => ({
   // Navigation
   currentRoute: 'library',
-  setRoute: (currentRoute) => set({ currentRoute }),
+  setRoute: (currentRoute) => {
+    if (currentRoute === 'track' && !get().selectedTrackId && !get().selectedTrack) {
+      return;
+    }
+    set({ currentRoute });
+  },
 
-  // Backend selection (default: native Tauri backend)
+  // Backend selection (default: native Tauri backend; forced to false inside desktop app)
   useMockBackend: false,
   setUseMockBackend: (useMockBackend) => {
+    const showDevTools =
+      typeof import.meta !== 'undefined' &&
+      Boolean(
+        import.meta.env?.VITE_SHOW_DEV_TOOLS &&
+          import.meta.env.VITE_SHOW_DEV_TOOLS !== 'false' &&
+          import.meta.env.VITE_SHOW_DEV_TOOLS !== '0'
+      );
+    if (isTauriEnvironment() && !showDevTools && useMockBackend) {
+      return;
+    }
     set({ useMockBackend, hasLoadedTracks: false });
     get().addToast({
       type: 'info',

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { isTauriEnvironment } from './api';
 import { Sidebar } from './components/Sidebar';
 import { LibraryRoute } from './components/routes/LibraryRoute';
 import { DiscoveryRoute } from './components/routes/DiscoveryRoute';
@@ -17,6 +18,13 @@ export function App() {
   const loadTracks = useAppStore((state) => state.loadTracks);
   const hasLoadedActiveSetlist = useAppStore((state) => state.hasLoadedActiveSetlist);
   const loadActiveSetlist = useAppStore((state) => state.loadActiveSetlist);
+
+  useEffect(() => {
+    // Inside the desktop app, force useMockBackend to false at startup
+    if (isTauriEnvironment()) {
+      useAppStore.setState({ useMockBackend: false });
+    }
+  }, []);
 
   useEffect(() => {
     if (!hasLoadedTracks) {

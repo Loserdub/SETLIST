@@ -1,8 +1,10 @@
+import { isTauriEnvironment } from '../api';
 import { useAppStore, type Route } from '../store/useAppStore';
 
 interface NavItem {
   route: Route;
   label: string;
+  description: string;
   badge?: string | number;
 }
 
@@ -17,33 +19,52 @@ export function Sidebar() {
   const isSuggestingOrder = useAppStore((s) => s.isSuggestingOrder);
   const progress = useAppStore((s) => s.progress);
   const enterStageMode = useAppStore((s) => s.enterStageMode);
+  const selectedTrackId = useAppStore((s) => s.selectedTrackId);
+  const selectedTrack = useAppStore((s) => s.selectedTrack);
+
+  const hasSelectedTrack = Boolean(selectedTrackId || selectedTrack);
 
   const navItems: NavItem[] = [
     {
       route: 'library',
-      label: 'Library',
+      label: 'My Music',
+      description: 'Browse and search your music library',
       badge: tracksLength > 0 ? tracksLength : undefined,
     },
     {
       route: 'discovery',
-      label: 'Discovery',
+      label: 'Find Transitions',
+      description: 'Discover harmonic transitions, bridges, and mix paths',
     },
     {
       route: 'track',
-      label: 'Track',
+      label: 'Track Detail',
+      description: 'Inspect beat grid, cues, and waveform for the selected track',
     },
     {
       route: 'setlist',
-      label: 'Setlist',
+      label: 'My Set',
+      description: 'Build, reorder, and optimize your active setlist',
       badge: setlistLength > 0 ? `${setlistLength}` : undefined,
     },
     {
       route: 'settings',
       label: 'Settings',
+      description: 'Configure transition scoring weights and app preferences',
     },
   ];
 
   const isBusy = isLoadingTracks || isSuggestingOrder || progress !== null;
+
+  // Show mock backend switch only outside Tauri or when VITE_SHOW_DEV_TOOLS is set
+  const showDevTools =
+    typeof import.meta !== 'undefined' &&
+    Boolean(
+      import.meta.env?.VITE_SHOW_DEV_TOOLS &&
+        import.meta.env.VITE_SHOW_DEV_TOOLS !== 'false' &&
+        import.meta.env.VITE_SHOW_DEV_TOOLS !== '0'
+    );
+  const showMockSwitch = !isTauriEnvironment() || showDevTools;
 
   return (
     <aside className="w-56 bg-[#0a0a0a] border-r border-[#1a1a1a] flex flex-col justify-between select-none shrink-0 z-20">
@@ -55,7 +76,7 @@ export function Sidebar() {
               SETLIST
             </h1>
             <p className="text-xs font-mono text-[#a8a8a8] tracking-normal mt-0.5">
-              DJ Set Assistant
+              DJ set prep
             </p>
           </div>
           <span className="w-1.5 h-1.5 bg-[#2a2a2a]" />
@@ -65,15 +86,28 @@ export function Sidebar() {
         <nav className="py-2" aria-label="Main Navigation">
           {navItems.map((item) => {
             const isActive = currentRoute === item.route;
+            const isTrackDisabled = item.route === 'track' && !hasSelectedTrack;
+            const tooltip = isTrackDisabled
+              ? 'Open a track from My Music'
+              : item.description;
+            const ariaLabel = isTrackDisabled
+              ? `${item.label} - Open a track from My Music`
+              : `${item.label} - ${item.description}`;
+
             return (
               <button
                 key={item.route}
                 type="button"
+                disabled={isTrackDisabled}
+                title={tooltip}
+                aria-label={ariaLabel}
                 onClick={() => setRoute(item.route)}
-                className={`w-full flex items-center justify-between px-4 py-2 text-xs font-mono tracking-wider uppercase transition-colors cursor-pointer border-l-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                  isActive
-                    ? 'border-l-[#e5e5e5] bg-[#141414] text-[#ffffff] font-semibold'
-                    : 'border-l-transparent text-[#a8a8a8] hover:text-[#ffffff] hover:bg-[#0e0e0e]'
+                className={`w-full flex items-center justify-between px-4 py-2 text-xs font-mono tracking-wider uppercase transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+                  isTrackDisabled
+                    ? 'border-l-2 border-l-transparent text-[#666666] opacity-40 cursor-not-allowed'
+                    : isActive
+                    ? 'border-l-2 border-l-[#e5e5e5] bg-[#141414] text-[#ffffff] font-semibold cursor-pointer'
+                    : 'border-l-2 border-l-transparent text-[#a8a8a8] hover:text-[#ffffff] hover:bg-[#0e0e0e] cursor-pointer'
                 }`}
                 data-testid={`nav-${item.route}`}
               >
@@ -99,6 +133,8 @@ export function Sidebar() {
             <button
               type="button"
               onClick={enterStageMode}
+              title="Enter full-screen live performance mode"
+              aria-label="Stage Mode - Enter full-screen live performance mode"
               className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono font-semibold tracking-wider text-[#ededed] bg-[#141414] hover:bg-[#1a1a1a] hover:text-white border border-[#2b2b2b] uppercase transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
               data-testid="nav-stage-btn"
             >
@@ -135,24 +171,26 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Backend Selector */}
-        <div className="flex items-center justify-between text-xs font-mono text-[#a8a8a8] px-1">
-          <span className="flex items-center space-x-1.5">
-            <span
-              className={`w-1.5 h-1.5 ${
-                isBusy ? 'bg-amber-400' : 'bg-emerald-500'
-              }`}
-            />
-            <span className="tracking-tight">{useMockBackend ? 'Mock Engine' : 'Tauri Native'}</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setUseMockBackend(!useMockBackend)}
-            className="text-xs text-[#a8a8a8] hover:text-[#ededed] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
-          >
-            [Switch]
-          </button>
-        </div>
+        {/* Backend Selector (Visible only outside Tauri or when VITE_SHOW_DEV_TOOLS is set) */}
+        {showMockSwitch && (
+          <div className="flex items-center justify-between text-xs font-mono text-[#a8a8a8] px-1">
+            <span className="flex items-center space-x-1.5">
+              <span
+                className={`w-1.5 h-1.5 ${
+                  isBusy ? 'bg-amber-400' : 'bg-emerald-500'
+                }`}
+              />
+              <span className="tracking-tight">{useMockBackend ? 'Mock Engine' : 'Tauri Native'}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setUseMockBackend(!useMockBackend)}
+              className="text-xs text-[#a8a8a8] hover:text-[#ededed] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+            >
+              [Switch]
+            </button>
+          </div>
+        )}
 
         {/* Professional Software Label & Intellectual Property Notice */}
         <div className="pt-2.5 border-t border-[#161616] px-1 space-y-1 select-none">
