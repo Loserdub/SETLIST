@@ -1,4 +1,5 @@
 import type { Track } from '../../bindings/Track';
+import type { TrackWithOverrides } from '../../api/overrides';
 import type { LibraryFilters } from './types';
 import { isHarmonicallyCompatible } from './harmonic';
 
@@ -12,6 +13,49 @@ export function getTrackCamelotKey(track: Track): string | null {
 }
 
 /**
+ * Checks whether a track requires user review.
+ * A track needs review when:
+ * 1. Analysis failed completely (track.analysis is missing/null)
+ * 2. BPM is missing or non-positive (bpm <= 0)
+ * 3. Camelot musical key is missing
+ * Note: Key has no confidence field in core-types/ts-rs bindings.
+ */
+export function isTrackNeedsReview(track: Track): boolean {
+  if (!track.analysis) return true;
+  const bpm = track.analysis.rhythm?.grid?.bpm;
+  if (bpm === undefined || bpm === null || bpm <= 0) return true;
+  const camelot = track.analysis.key?.camelot;
+  if (!camelot || !camelot.number || !camelot.letter) return true;
+  return false;
+}
+
+/**
+ * Checks whether any metadata or analysis field on this track has been edited/overridden by the user.
+ */
+export function isTrackEdited(
+  track: Track,
+  titleOverrides?: Record<string, string>,
+  artistOverrides?: Record<string, string>
+): boolean {
+  if (titleOverrides && titleOverrides[track.id]) return true;
+  if (artistOverrides && artistOverrides[track.id]) return true;
+  const flags = (track as TrackWithOverrides).overrides;
+  if (flags) {
+    if (
+      flags.bpm ||
+      flags.first_downbeat_ms ||
+      flags.key_camelot ||
+      flags.cues ||
+      flags.title ||
+      flags.artist
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Filter tracks using the provided library filters.
  * Pure function with no side-effects.
  */
@@ -20,11 +64,17 @@ export function filterTracks(tracks: Track[], filters: LibraryFilters): Track[] 
   const selectedKeyNormalized = filters.selectedKey ? filters.selectedKey.trim().toUpperCase() : null;
 
   return tracks.filter((track) => {
+    // 0. Needs Review Filter
+    if (filters.needsReviewOnly && !isTrackNeedsReview(track)) {
+      return false;
+    }
+
     // 1. Text Search Filter
     if (query) {
       const title = track.tags.title?.toLowerCase() ?? '';
       const artist = track.tags.artist?.toLowerCase() ?? '';
       const album = track.tags.album?.toLowerCase() ?? '';
+      const filename = track.path.split(/[/\\]/).pop()?.toLowerCase() ?? '';
       const keyStr = getTrackCamelotKey(track)?.toLowerCase() ?? '';
       const bpm = track.analysis?.rhythm?.grid?.bpm;
       const bpmStr = bpm ? Math.round(bpm).toString() : '';
@@ -33,6 +83,7 @@ export function filterTracks(tracks: Track[], filters: LibraryFilters): Track[] 
         title.includes(query) ||
         artist.includes(query) ||
         album.includes(query) ||
+        filename.includes(query) ||
         keyStr.includes(query) ||
         bpmStr.includes(query);
 

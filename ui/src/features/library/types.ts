@@ -14,6 +14,7 @@ export interface LibraryFilters {
   includeCompatibleKeys: boolean;
   minEnergy: number | null; // 1 - 10
   maxEnergy: number | null; // 1 - 10
+  needsReviewOnly?: boolean;
 }
 
 export const DEFAULT_FILTERS: LibraryFilters = {
@@ -24,4 +25,5 @@ export const DEFAULT_FILTERS: LibraryFilters = {
   includeCompatibleKeys: true,
   minEnergy: null,
   maxEnergy: null,
+  needsReviewOnly: false,
 };

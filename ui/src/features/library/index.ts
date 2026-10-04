@@ -1,5 +1,10 @@
 export { LibraryView } from './LibraryView';
-export { filterTracks, getTrackCamelotKey } from './filters';
+export {
+  filterTracks,
+  getTrackCamelotKey,
+  isTrackNeedsReview,
+  isTrackEdited,
+} from './filters';
 export { sortTracks } from './sorting';
 export {
   getCompatibleCamelotKeys,
@@ -8,6 +13,7 @@ export {
   getCamelotDistance,
 } from './harmonic';
 export { generateMockTracks } from './mock5000';
+export { openLibraryWithReviewFilter } from './navigation';
 export type {
   LibraryFilters,
   LibrarySort,

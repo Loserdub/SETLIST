@@ -15,7 +15,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../store/useAppStore';
 import { camelotColor, camelotTextColor, ALL_CAMELOT_KEYS } from '../../utils/camelotColor';
 import type { Track } from '../../bindings/Track';
-import { filterTracks, getTrackCamelotKey } from './filters';
+import { filterTracks, getTrackCamelotKey, isTrackNeedsReview, isTrackEdited } from './filters';
+import { subscribeToReviewFilter, consumeInitialNeedsReview } from './navigation';
 import { sortTracks } from './sorting';
 import { generateMockTracks } from './mock5000';
 import { DEFAULT_FILTERS, type LibraryFilters, type SortField } from './types';
@@ -64,6 +65,10 @@ export function LibraryView() {
   const [folderPathInput, setFolderPathInput] = useState('');
   const [isAddingBatch, setIsAddingBatch] = useState(false);
 
+  // Legend Popover state
+  const [isLegendOpen, setIsLegendOpen] = useState(false);
+  const legendRef = useRef<HTMLDivElement>(null);
+
   // Sorting state (single column sort for high-performance virtualizer)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -77,6 +82,65 @@ export function LibraryView() {
   const handleToggleAudition = async (trackId: string) => {
     await toggleAudition(trackId);
   };
+
+  // Row click handler to open Track route
+  const handleRowClick = (trackId: string) => {
+    selectTrack(trackId);
+    setRoute('track');
+  };
+
+  // Native folder picker
+  const handleChooseFolder = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Choose Music Folder',
+      });
+      if (selected && typeof selected === 'string') {
+        setFolderPathInput(selected);
+      }
+    } catch (err) {
+      console.warn('Native folder picker not available:', err);
+    }
+  };
+
+  // Close legend popover on outside click or Escape key
+  useEffect(() => {
+    if (!isLegendOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsLegendOpen(false);
+      }
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (legendRef.current && !legendRef.current.contains(e.target as Node)) {
+        setIsLegendOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isLegendOpen]);
+
+  // Handle external review filter triggers (e.g. from Start screen)
+  useEffect(() => {
+    if (consumeInitialNeedsReview()) {
+      setFilters((prev) => ({ ...prev, needsReviewOnly: true }));
+    }
+    const unsubscribe = subscribeToReviewFilter((active) => {
+      setFilters((prev) => ({ ...prev, needsReviewOnly: active }));
+    });
+    return unsubscribe;
+  }, []);
+
+  // Tracks needing review count
+  const needsReviewCount = useMemo(() => {
+    return activeDataset.filter(isTrackNeedsReview).length;
+  }, [activeDataset]);
 
   // Auto-load store tracks once on mount if not yet attempted
   useEffect(() => {
@@ -158,16 +222,33 @@ export function LibraryView() {
             const track = info.row.original;
             const displayTitle = getTrackDisplayTitle(track, trackTitleOverrides[track.id]);
             const isCustom = Boolean(trackTitleOverrides[track.id]);
+            const isEdited = isTrackEdited(track, trackTitleOverrides, trackArtistOverrides);
+            const needsReview = isTrackNeedsReview(track);
             const filename = track.path.split(/[/\\]/).pop();
             const subtext = track.tags.album ?? (track.tags.title ? filename : track.tags.artist ?? filename);
 
             return (
               <div className="flex flex-col min-w-0 pr-2">
-                <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                   <span className="font-medium text-[#ececec] truncate text-xs leading-tight">
                     {displayTitle}
                   </span>
-                  {isCustom && (
+                  {isEdited && (
+                    <EditedBadge
+                      title="Track metadata or analysis has been edited"
+                      className="shrink-0"
+                    />
+                  )}
+                  {needsReview && (
+                    <span
+                      className="inline-flex items-center px-1.5 py-0.5 text-xs font-mono font-bold uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/40 rounded-[2px] select-none shrink-0"
+                      title="Needs review: analysis failed or BPM/Key missing"
+                      data-testid={`needs-review-badge-${track.id}`}
+                    >
+                      NEEDS REVIEW
+                    </span>
+                  )}
+                  {isCustom && !isEdited && (
                     <span
                       className="text-xs font-mono px-1.5 py-0.5 bg-[#1c2e3d] text-[#38bdf8] border border-[#234863] shrink-0"
                       title="Custom in-app title"
@@ -325,9 +406,14 @@ export function LibraryView() {
 
           return (
             <div
-              className="flex items-center justify-end gap-1.5 pr-2"
+              className={`flex items-center justify-end gap-1.5 pr-2 transition-opacity ${
+                isAuditioning
+                  ? 'opacity-100'
+                  : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100'
+              }`}
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Play preview */}
               <button
                 type="button"
                 onClick={() => void handleToggleAudition(track.id)}
@@ -336,12 +422,27 @@ export function LibraryView() {
                     ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
                     : 'border-[#2b2b2b] bg-[#141414] hover:bg-[#202020] text-[#cfcfcf] hover:text-white'
                 }`}
-                title={isAuditioning ? 'Pause audition' : 'Audition track audio'}
-                data-testid={`audition-btn-${track.id}`}
+                title={isAuditioning ? 'Pause preview' : 'Play preview'}
+                aria-label={isAuditioning ? 'Pause preview' : 'Play preview'}
+                data-testid={`preview-btn-${track.id}`}
               >
                 <span>{isAuditioning ? '⏸' : '▶'}</span>
-                <span>{isAuditioning ? 'AUDITIONING' : 'AUDITION'}</span>
+                <span>{isAuditioning ? 'AUDITIONING' : 'PREVIEW'}</span>
               </button>
+
+              {/* Open detail */}
+              <button
+                type="button"
+                onClick={() => handleRowClick(track.id)}
+                className="px-2 py-0.5 text-xs font-mono tracking-wider uppercase border border-[#2b2b2b] bg-[#141414] hover:bg-[#202020] text-[#cfcfcf] hover:text-white transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                title="Open track detail"
+                aria-label="Open track detail"
+                data-testid={`detail-btn-${track.id}`}
+              >
+                DETAIL
+              </button>
+
+              {/* Add to set */}
               <button
                 type="button"
                 onClick={() => void addToSetlist(track.id)}
@@ -351,14 +452,16 @@ export function LibraryView() {
                     ? 'border-[#222222] bg-[#111111] text-[#888888] cursor-default'
                     : 'border-[#333333] bg-[#161616] hover:bg-[#222222] text-[#cfcfcf]'
                 }`}
-                title={isInSetlist ? 'Already in active setlist' : 'Add track to setlist'}
+                title={isInSetlist ? 'Already in set' : 'Add to set'}
+                aria-label={isInSetlist ? 'Already in set' : 'Add to set'}
+                data-testid={`add-to-set-btn-${track.id}`}
               >
-                {isInSetlist ? 'Queued' : '+ Setlist'}
+                {isInSetlist ? 'QUEUED' : '+ SET'}
               </button>
             </div>
           );
         },
-        size: 165,
+        size: 220,
       }),
     ],
     [
@@ -451,28 +554,6 @@ export function LibraryView() {
   // Reset filters
   const resetFilters = () => {
     setFilters(DEFAULT_FILTERS);
-  };
-
-  // Native folder picker
-  const handleChooseFolder = async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: 'Choose Music Folder',
-      });
-      if (selected && typeof selected === 'string') {
-        setFolderPathInput(selected);
-      }
-    } catch (err) {
-      console.warn('Native folder picker not available:', err);
-    }
-  };
-
-  // Row click handler to open Track route
-  const handleRowClick = (trackId: string) => {
-    selectTrack(trackId);
-    setRoute('track');
   };
 
   // Keyboard navigation handler for rapid DJ curation
@@ -735,13 +816,44 @@ export function LibraryView() {
             />
           </div>
 
+          {/* Needs Review Filter Chip */}
+          <button
+            type="button"
+            onClick={() =>
+              setFilters((prev) => ({
+                ...prev,
+                needsReviewOnly: !prev.needsReviewOnly,
+              }))
+            }
+            aria-pressed={Boolean(filters.needsReviewOnly)}
+            data-testid="needs-review-toggle"
+            className={`px-2.5 py-1 text-xs font-mono tracking-wider border transition-colors cursor-pointer rounded-none flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+              filters.needsReviewOnly
+                ? 'border-amber-500/80 bg-amber-500/20 text-amber-300 font-bold'
+                : 'border-[#262626] bg-[#0e0e0e] hover:bg-[#1a1a1a] text-[#a8a8a8] hover:text-[#d0d0d0]'
+            }`}
+            title={
+              filters.needsReviewOnly
+                ? 'Showing tracks that need review'
+                : 'Filter to tracks needing review'
+            }
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                needsReviewCount > 0 ? 'bg-amber-400' : 'bg-[#555555]'
+              }`}
+            />
+            <span>Needs review ({needsReviewCount})</span>
+          </button>
+
           {/* Reset Filters Button */}
           {(filters.searchQuery ||
             filters.minBpm !== null ||
             filters.maxBpm !== null ||
             filters.selectedKey !== null ||
             filters.minEnergy !== null ||
-            filters.maxEnergy !== null) && (
+            filters.maxEnergy !== null ||
+            filters.needsReviewOnly) && (
             <button
               type="button"
               onClick={resetFilters}
@@ -769,6 +881,63 @@ export function LibraryView() {
           )}
         </div>
       </header>
+
+      {/* ── Count Line & Analysis Legend Bar ── */}
+      <div className="px-5 py-2 border-b border-[#1a1a1a] bg-[#0c0c0c] flex items-center justify-between text-xs font-mono">
+        <div data-testid="library-count-line" className="text-xs font-mono text-[#a8a8a8]">
+          <span>{rows.length} {rows.length === 1 ? 'track' : 'tracks'}, {setlist.length} in your set</span>
+        </div>
+        <div className="relative flex items-center gap-2">
+          <span className="text-xs text-[#71717a] hidden sm:inline">Guide:</span>
+          <button
+            type="button"
+            onClick={() => setIsLegendOpen((prev) => !prev)}
+            className="w-5 h-5 flex items-center justify-center rounded-full border border-[#333333] hover:border-[#666666] bg-[#141414] hover:bg-[#202020] text-[#a8a8a8] hover:text-white font-mono text-xs font-bold transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+            title="Audio analysis legend (?)"
+            aria-label="Metadata Legend"
+            aria-expanded={isLegendOpen}
+            data-testid="legend-button"
+          >
+            ?
+          </button>
+          {isLegendOpen && (
+            <div
+              ref={legendRef}
+              role="tooltip"
+              data-testid="legend-popover"
+              className="absolute right-0 top-7 z-30 w-80 sm:w-96 p-3 bg-[#111111] border border-[#2b2b2b] shadow-2xl text-xs font-mono space-y-2 select-text"
+            >
+              <div className="flex items-center justify-between pb-1.5 border-b border-[#222222]">
+                <span className="font-bold text-[#f0f0f0] uppercase tracking-wider text-xs">
+                  Audio Analysis Legend
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsLegendOpen(false)}
+                  className="text-[#888888] hover:text-white cursor-pointer px-1 text-xs"
+                  aria-label="Close legend"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="space-y-1.5 text-xs leading-snug">
+                <p className="text-[#cfcfcf]">
+                  <strong className="text-white">BPM:</strong> Track tempo in beats per minute, determining playback speed and beatmatching compatibility.
+                </p>
+                <p className="text-[#cfcfcf]">
+                  <strong className="text-white">Key (Camelot):</strong> Harmonic code (1A–12B) on the Camelot wheel; adjacent numbers or mode switches (A↔B) mix harmoniously.
+                </p>
+                <p className="text-[#cfcfcf]">
+                  <strong className="text-white">Energy (1 to 10):</strong> Perceived dancefloor energy rating computed from dynamics, spectral density, and loudness.
+                </p>
+                <p className="text-[#cfcfcf]">
+                  <strong className="text-white">LUFS:</strong> Integrated loudness in LUFS standardizing perceived volume to prevent volume jumps during mixing.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* ── Virtualized Table Container ── */}
       <div
@@ -800,12 +969,26 @@ export function LibraryView() {
             <h3 className="text-sm font-mono font-bold tracking-widest text-[#f0f0f0] uppercase">
               Your library is empty
             </h3>
-            <p className="text-xs font-mono text-[#a8a8a8] max-w-md mt-2 leading-relaxed">
-              DJ Set Assistant is a local-first desktop co-pilot. Your audio files are strictly read-only and never modified. Scan a music folder to extract tempo, Camelot keys, energy ratings, and cue points using pure CPU Rust DSP.
-            </p>
+            <div className="text-xs font-mono text-[#a8a8a8] max-w-md mt-3 space-y-1 leading-relaxed">
+              <p>SETLIST is your local-first DJ set preparation co-pilot.</p>
+              <p>Your audio files are strictly read-only and never modified.</p>
+              <p>Scan a music folder to analyze tempo, Camelot keys, and energy.</p>
+            </div>
+
+            {/* Large Choose Folder Action */}
+            <button
+              type="button"
+              onClick={() => void handleChooseFolder()}
+              className="mt-6 px-6 py-3 bg-[#162736] hover:bg-[#1f374d] border border-[#38bdf8] text-[#38bdf8] hover:text-white text-sm font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer rounded-none flex items-center gap-2.5 shadow-lg focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+              data-testid="empty-choose-folder-btn"
+              aria-label="Choose Music Folder"
+            >
+              <span className="text-base" aria-hidden="true">📁</span>
+              <span>Choose Folder</span>
+            </button>
 
             {/* Folder Input & Scan Action */}
-            <div className="w-full max-w-md mt-6 flex flex-col sm:flex-row items-center gap-1.5">
+            <div className="w-full max-w-md mt-4 flex flex-col sm:flex-row items-center gap-1.5">
               <input
                 type="text"
                 value={folderPathInput}
@@ -817,7 +1000,7 @@ export function LibraryView() {
               <button
                 type="button"
                 onClick={() => void scanFolder(folderPathInput)}
-                disabled={isLoadingTracks}
+                disabled={isLoadingTracks || !folderPathInput.trim()}
                 aria-label="Scan Folder"
                 className="w-full sm:w-auto px-4 py-1.5 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 border border-[#333333] text-[#e0e0e0] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
               >
@@ -953,7 +1136,7 @@ export function LibraryView() {
                       handleRowClick(row.original.id);
                     }}
                     onFocus={() => setFocusedRowIndex(index)}
-                    className={`h-[52px] border-b border-[#141414] transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-inset ${
+                    className={`group h-[52px] border-b border-[#141414] transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-inset ${
                       isFocused
                         ? 'bg-[#181818] border-l-2 border-l-[#38bdf8] ring-1 ring-inset ring-[#38bdf8]/30'
                         : isSelected
