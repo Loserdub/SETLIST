@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAppStore, DEFAULT_APP_SETTINGS } from '../../store/useAppStore';
 import type { AppSettings } from '../../bindings/AppSettings';
+import { DiagnosticsHelpPanel } from '../../features/diagnostics/DiagnosticsHelpPanel';
 
 const KEY_RELATION_DESCRIPTIONS: Record<number, { same: string; flip: string }> = {
   0: { same: 'Exact match (perfect consonance)', flip: 'Relative switch (high consonance)' },
@@ -456,6 +457,9 @@ export function SettingsRoute() {
           </div>
         </div>
       </div>
+
+      {/* 5. System Diagnostics & Help */}
+      <DiagnosticsHelpPanel />
 
       {/* Safety & Local-First Policy */}
       <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] text-xs font-mono text-[#a8a8a8] space-y-2 rounded-none">

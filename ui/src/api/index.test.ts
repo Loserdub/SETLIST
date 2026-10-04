@@ -8,6 +8,9 @@ import {
   setUseMockBackend,
   USE_MOCK_BACKEND,
   type ProgressEvent,
+  turnBackendErrorToToast,
+  emitBackendErrorToast,
+  setBackendToastHandler,
 } from './index';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -414,6 +417,58 @@ describe('suggestOrder regression tests for track preservation', () => {
     result.forEach((e, idx) => {
       expect(e.position).toBe(idx + 1);
     });
+  });
+});
+
+describe('Backend error conversion to toasts (api/index.ts)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setBackendToastHandler(null);
+  });
+
+  it('turns backend error into friendly toast structure with short message and next step', () => {
+    const toast = turnBackendErrorToToast('Directory does not exist or is not a folder: D:/Music');
+    expect(toast.type).toBe('error');
+    expect(toast.message).toBe('Folder not found.');
+    expect(toast.details).toContain('Check that the directory exists');
+  });
+
+  it('emits toast to registered backend toast handler', () => {
+    const handler = vi.fn();
+    setBackendToastHandler(handler);
+
+    const friendly = emitBackendErrorToast('At least 2 tracks are required to suggest an order (received 1)');
+    expect(friendly.kind).toBe('not_enough_tracks');
+    expect(friendly.message).toBe('Not enough tracks to order.');
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        message: 'Not enough tracks to order.',
+        details: expect.stringContaining('Add at least 2 tracks'),
+      })
+    );
+  });
+
+  it('triggers error toast emission and throws friendly Error when tauriBackend call fails', async () => {
+    const handler = vi.fn();
+    setBackendToastHandler(handler);
+
+    vi.mocked(invoke).mockRejectedValueOnce('Failed to decode mp3 frame header: corrupted stream');
+
+    await expect(tauriBackend.scanFolder('C:/CorruptFolder')).rejects.toThrow(
+      'File could not be decoded. Check that the audio file is not corrupt or try re-exporting it.'
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        message: 'File could not be decoded.',
+        details: expect.stringContaining('Check that the audio file is not corrupt'),
+      })
+    );
   });
 });
 

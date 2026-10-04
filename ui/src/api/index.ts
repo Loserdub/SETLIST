@@ -28,6 +28,14 @@ import type { DiscoveryConstraints } from '../bindings/DiscoveryConstraints';
 import { validateSong, validateSetlist } from '../utils/validation';
 import { getTargetEnergy } from '../features/setlist/energyCurve';
 import { computeTransitionCost, DEFAULT_WEIGHTS } from '../features/setlist/costModel';
+export { mapBackendError, formatFriendlyToast, type FriendlyError } from '../utils/errors';
+import { formatFriendlyToast, type FriendlyError } from '../utils/errors';
+import {
+  recordScanMessage,
+  getLatestScanSummary,
+  setLatestScanSummary,
+  createEmptyScanSummary,
+} from '../features/diagnostics/scanSummary';
 
 /**
  * Progress event payload emitted during background tasks.
@@ -265,6 +273,13 @@ function generateMockTracks(): Track[] {
 }
 
 const MOCK_TRACKS_STORE = generateMockTracks();
+
+export function updateMockTrack(track: Track): void {
+  const idx = MOCK_TRACKS_STORE.findIndex((t) => t.id === track.id);
+  if (idx !== -1) {
+    MOCK_TRACKS_STORE[idx] = JSON.parse(JSON.stringify(track));
+  }
+}
 
 /**
  * Converts a Track entity into a normalized Song domain model.
@@ -762,6 +777,14 @@ export const mockBackend: Backend = {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     emitMockProgress({ stage: 'analyzing', current: 40, total: 40, message: 'Scan complete!' });
+    setLatestScanSummary({
+      analyzed: 40,
+      skipped: 0,
+      failed: 0,
+      totalFound: 40,
+      failedFiles: [],
+      completedAt: new Date().toISOString(),
+    });
     return [...MOCK_TRACKS_STORE];
   },
 
@@ -1567,24 +1590,70 @@ let mockSettings: AppSettings = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// tauriBackend Implementation (Native Tauri IPC & Events)
+// tauriBackend Implementation (Native Tauri IPC & Events with Friendly Error Toasts)
 // ─────────────────────────────────────────────────────────────────────────────
+
+export type ToastHandler = (toast: { type: 'error'; message: string; details?: string }) => void;
+let globalToastHandler: ToastHandler | null = null;
+
+export function setBackendToastHandler(handler: ToastHandler | null): void {
+  globalToastHandler = handler;
+}
+
+export function turnBackendErrorToToast(error: unknown): {
+  type: 'error';
+  message: string;
+  details: string;
+  friendly: FriendlyError;
+} {
+  return formatFriendlyToast(error);
+}
+
+export function emitBackendErrorToast(error: unknown): FriendlyError {
+  const toast = turnBackendErrorToToast(error);
+  if (globalToastHandler) {
+    globalToastHandler(toast);
+  } else if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('setlist:toast', { detail: toast }));
+    } catch {
+      // Ignore
+    }
+  }
+  return toast.friendly;
+}
+
+export async function invokeSafe<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return args !== undefined ? await invoke<T>(cmd, args) : await invoke<T>(cmd);
+  } catch (err: unknown) {
+    const friendly = emitBackendErrorToast(err);
+    const friendlyMsg = friendly.nextStep
+      ? `${friendly.message} ${friendly.nextStep}`
+      : friendly.message;
+    const errorObj = new Error(friendlyMsg);
+    (errorObj as unknown as { friendly: FriendlyError; rawError: unknown }).friendly = friendly;
+    (errorObj as unknown as { rawError: unknown }).rawError = err;
+    throw errorObj;
+  }
+}
 
 export const tauriBackend: Backend = {
   ping: async (): Promise<string> => {
-    return invoke<string>('ping');
+    return invokeSafe<string>('ping');
   },
 
   scanFolder: async (path: string): Promise<Track[]> => {
-    return invoke<Track[]>('scan_folder', { path });
+    setLatestScanSummary(createEmptyScanSummary());
+    return invokeSafe<Track[]>('scan_folder', { path });
   },
 
   listTracks: async (): Promise<Track[]> => {
-    return invoke<Track[]>('list_tracks');
+    return invokeSafe<Track[]>('list_tracks');
   },
 
   getTrack: async (id: string): Promise<Track | null> => {
-    return invoke<Track | null>('get_track', { id });
+    return invokeSafe<Track | null>('get_track', { id });
   },
 
   suggestOrder: async (
@@ -1594,7 +1663,7 @@ export const tauriBackend: Backend = {
     firstId?: string,
     lastId?: string
   ): Promise<SetlistEntry[]> => {
-    return invoke<SetlistEntry[]>('suggest_order', {
+    return invokeSafe<SetlistEntry[]>('suggest_order', {
       trackIds,
       profile: profile ?? null,
       weights: weights ?? null,
@@ -1610,7 +1679,7 @@ export const tauriBackend: Backend = {
     weights?: CostWeights,
     deTarget?: number
   ): Promise<TransitionAdvice> => {
-    return invoke<TransitionAdvice>('get_advice', {
+    return invokeSafe<TransitionAdvice>('get_advice', {
       trackAId,
       trackBId,
       profile: profile ?? null,
@@ -1625,7 +1694,7 @@ export const tauriBackend: Backend = {
     outputPath?: string,
     overwrite?: boolean
   ): Promise<ExportResult> => {
-    return invoke<ExportResult>('export_set', {
+    return invokeSafe<ExportResult>('export_set', {
       entries,
       target,
       outputPath: outputPath ?? null,
@@ -1634,11 +1703,11 @@ export const tauriBackend: Backend = {
   },
 
   getSettings: async (): Promise<AppSettings> => {
-    return invoke<AppSettings>('get_settings');
+    return invokeSafe<AppSettings>('get_settings');
   },
 
   saveSettings: async (settings: AppSettings): Promise<void> => {
-    return invoke<void>('save_settings', { settings });
+    return invokeSafe<void>('save_settings', { settings });
   },
 
   subscribeProgress: (callback: (event: ProgressEvent) => void): (() => void) => {
@@ -1647,6 +1716,10 @@ export const tauriBackend: Backend = {
 
     listen<ProgressEvent>('progress', (event) => {
       if (!unsubscribed) {
+        if (event.payload.message) {
+          const current = getLatestScanSummary() ?? createEmptyScanSummary();
+          setLatestScanSummary(recordScanMessage(current, event.payload.message));
+        }
         callback(event.payload);
       }
     })
@@ -1674,74 +1747,74 @@ export const tauriBackend: Backend = {
   },
 
   validateSongInput: async (song: Song): Promise<void> => {
-    return invoke<void>('validate_song_input', { song });
+    return invokeSafe<void>('validate_song_input', { song });
   },
 
   upsertSong: async (song: Song): Promise<string> => {
-    return invoke<string>('upsert_song', { song });
+    return invokeSafe<string>('upsert_song', { song });
   },
 
   getSong: async (id: string): Promise<Song | null> => {
-    return invoke<Song | null>('get_song', { id });
+    return invokeSafe<Song | null>('get_song', { id });
   },
 
   listSongs: async (): Promise<Song[]> => {
-    return invoke<Song[]>('list_songs');
+    return invokeSafe<Song[]>('list_songs');
   },
 
   deleteSong: async (id: string): Promise<boolean> => {
-    return invoke<boolean>('delete_song', { id });
+    return invokeSafe<boolean>('delete_song', { id });
   },
 
   getActiveSetlist: async (): Promise<Setlist | null> => {
-    return invoke<Setlist | null>('get_active_setlist');
+    return invokeSafe<Setlist | null>('get_active_setlist');
   },
 
   saveActiveSetlist: async (setlist: Setlist): Promise<void> => {
-    return invoke<void>('save_active_setlist', { setlist });
+    return invokeSafe<void>('save_active_setlist', { setlist });
   },
 
   loadSetlist: async (id: string): Promise<Setlist | null> => {
-    return invoke<Setlist | null>('load_setlist', { id });
+    return invokeSafe<Setlist | null>('load_setlist', { id });
   },
 
   listSetlists: async (): Promise<Setlist[]> => {
-    return invoke<Setlist[]>('list_setlists');
+    return invokeSafe<Setlist[]>('list_setlists');
   },
 
   saveSetlist: async (setlist: Setlist): Promise<void> => {
-    return invoke<void>('save_setlist', { setlist });
+    return invokeSafe<void>('save_setlist', { setlist });
   },
 
   deleteSetlist: async (id: string): Promise<boolean> => {
-    return invoke<boolean>('delete_setlist', { id });
+    return invokeSafe<boolean>('delete_setlist', { id });
   },
 
   addSetlistItem: async (setlistId: string, item: SetlistItem): Promise<void> => {
-    return invoke<void>('add_setlist_item', { setlistId, item });
+    return invokeSafe<void>('add_setlist_item', { setlistId, item });
   },
 
   removeSetlistItem: async (setlistId: string, position: number): Promise<void> => {
-    return invoke<void>('remove_setlist_item', { setlistId, position });
+    return invokeSafe<void>('remove_setlist_item', { setlistId, position });
   },
 
   moveSetlistItem: async (setlistId: string, fromPos: number, toPos: number): Promise<void> => {
-    return invoke<void>('move_setlist_item', { setlistId, fromPos, toPos });
+    return invokeSafe<void>('move_setlist_item', { setlistId, fromPos, toPos });
   },
 
   updateSetlistItem: async (item: SetlistItem): Promise<void> => {
-    return invoke<void>('update_setlist_item', { item });
+    return invokeSafe<void>('update_setlist_item', { item });
   },
 
   getSongRelationships: async (songId: string): Promise<SongRelationshipsResponse> => {
-    return invoke<SongRelationshipsResponse>('get_song_relationships', { songId });
+    return invokeSafe<SongRelationshipsResponse>('get_song_relationships', { songId });
   },
 
   getSongRelationship: async (
     fromSongId: string,
     toSongId: string
   ): Promise<SongRelationship> => {
-    return invoke<SongRelationship>('get_song_relationship', { fromSongId, toSongId });
+    return invokeSafe<SongRelationship>('get_song_relationship', { fromSongId, toSongId });
   },
 
   getPotentialBridges: async (
@@ -1749,7 +1822,7 @@ export const tauriBackend: Backend = {
     songBId: string,
     limit?: number
   ): Promise<BridgeCandidateAnalysis[]> => {
-    return invoke<BridgeCandidateAnalysis[]>('get_potential_bridges', {
+    return invokeSafe<BridgeCandidateAnalysis[]>('get_potential_bridges', {
       songAId,
       songBId,
       limit,
@@ -1757,32 +1830,32 @@ export const tauriBackend: Backend = {
   },
 
   getCatalogClusters: async (): Promise<CatalogCluster[]> => {
-    return invoke<CatalogCluster[]>('get_catalog_clusters');
+    return invokeSafe<CatalogCluster[]>('get_catalog_clusters');
   },
 
   getCatalogOpenersAndClosers: async (): Promise<CatalogOpenersAndClosers> => {
-    return invoke<CatalogOpenersAndClosers>('get_catalog_openers_and_closers');
+    return invokeSafe<CatalogOpenersAndClosers>('get_catalog_openers_and_closers');
   },
 
   getCatalogOutliers: async (): Promise<CatalogOutlier[]> => {
-    return invoke<CatalogOutlier[]>('get_catalog_outliers');
+    return invokeSafe<CatalogOutlier[]>('get_catalog_outliers');
   },
 
   getUnusualTransitions: async (
     songId: string,
     limit?: number
   ): Promise<SongRelationship[]> => {
-    return invoke<SongRelationship[]>('get_unusual_transitions', { songId, limit });
+    return invokeSafe<SongRelationship[]>('get_unusual_transitions', { songId, limit });
   },
 
   getCatalogSummaryStats: async (): Promise<CatalogSummaryStats> => {
-    return invoke<CatalogSummaryStats>('get_catalog_summary_stats');
+    return invokeSafe<CatalogSummaryStats>('get_catalog_summary_stats');
   },
 
   exploreCandidatePaths: async (
     constraints: DiscoveryConstraints
   ): Promise<DiscoveryCandidatePath[]> => {
-    return invoke<DiscoveryCandidatePath[]>('explore_candidate_paths', { constraints });
+    return invokeSafe<DiscoveryCandidatePath[]>('explore_candidate_paths', { constraints });
   },
 };
 

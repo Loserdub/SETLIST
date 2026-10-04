@@ -1,6 +1,7 @@
 //! Tauri backend application for SETLIST.
 
 pub mod commands;
+pub mod diagnostics;
 pub mod overrides;
 pub mod playback;
 pub mod state;
@@ -262,6 +263,10 @@ pub fn run() {
             playback::playback_set_click,
             playback::playback_set_speed,
             playback::playback_get_speed,
+            playback::playback_set_volume,
+            playback::playback_get_volume,
+            diagnostics::get_diagnostics,
+            diagnostics::open_log_folder,
         ]);
 
     // Catch initialization / webview creation errors
