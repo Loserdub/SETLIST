@@ -26,7 +26,8 @@ import { SortableTrackItem } from './SortableTrackItem';
 import { TransitionCostBadge } from './TransitionCostBadge';
 import { EnergyChart } from './EnergyChart';
 import { TransitionAdviceModal } from './TransitionAdviceModal';
-import { IconUndo, IconRedo, IconSliders, IconSparkles } from '../../components/icons';
+import { QuickSetModal } from './QuickSetModal';
+import { IconUndo, IconRedo, IconSparkles } from '../../components/icons';
 
 export const getDefaultExportFileName = (target: ExportTarget): string => {
   switch (target) {
@@ -84,6 +85,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     undoSetlist,
     redoSetlist,
     suggestOrder,
+    enterStageMode,
   } = useAppStore();
 
   const backend = customBackend ?? getBackend(useMockBackend);
@@ -98,6 +100,30 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showOptimizationBanner, setShowOptimizationBanner] = useState(false);
+
+  // More Menu State
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isQuickSetOpen, setIsQuickSetOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close more menu on click outside or Escape key
+  useEffect(() => {
+    if (!isMoreMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMoreMenuOpen(false);
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoreMenuOpen]);
 
   // Export State
   const [exportTarget, setExportTarget] = useState<ExportTarget>('RekordboxXml');
@@ -369,169 +395,233 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
           </p>
         </div>
 
-        {/* Action Toolbar */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Lock Pins Toolbar */}
-          <div className="flex items-center gap-1 bg-[#0e0e0e] border border-[#222222] p-0.5">
-            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase px-1">PINS:</span>
-            <button
-              type="button"
-              onClick={() => setPins((prev) => ({ ...prev, lockFirst: !prev.lockFirst }))}
-              disabled={setlist.length <= 1}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                pins.lockFirst
-                  ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-              title="Lock opening track in first position"
-            >
-              <span>Lock Opener</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPins((prev) => ({ ...prev, lockLast: !prev.lockLast }))}
-              disabled={setlist.length <= 1}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                pins.lockLast
-                  ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-              title="Lock closing track in last position"
-            >
-              <span>Lock Closer</span>
-            </button>
-          </div>
-
-          {/* Energy Profile Selector */}
-          <div className="flex items-center bg-[#0e0e0e] border border-[#222222] p-0.5">
-            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase px-1.5">ARC:</span>
-            <button
-              type="button"
-              onClick={() => setEnergyProfile('LinearRamp')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                energyProfile === 'LinearRamp'
-                  ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-            >
-              Linear Ramp
-            </button>
-            <button
-              type="button"
-              onClick={() => setEnergyProfile('Wave')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                energyProfile === 'Wave'
-                  ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-            >
-              Wave
-            </button>
-            <button
-              type="button"
-              onClick={() => setEnergyProfile('PeakPlateau')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                energyProfile === 'PeakPlateau'
-                  ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-            >
-              Plateau
-            </button>
-          </div>
-
-          {/* Suggest Order Button */}
+        {/* Action Toolbar: Three primary buttons only + More menu */}
+        <div className="flex items-center gap-2">
+          {/* 1. Suggest order */}
           <button
             type="button"
             onClick={() => void handleSuggestOrder()}
             disabled={setlist.length < 2 || isSuggesting}
-            className="px-3 py-1 bg-[#1a1a1a] hover:bg-[#262626] disabled:opacity-30 text-white text-xs font-mono font-medium uppercase tracking-wider border border-[#333333] transition-colors cursor-pointer flex items-center gap-1.5 rounded-none"
+            className="px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#262626] disabled:opacity-30 text-white text-xs font-mono font-medium uppercase tracking-wider border border-[#333333] transition-colors cursor-pointer flex items-center gap-1.5 rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
             title="Auto-optimize setlist sequence respecting locked pins and energy curve"
+            data-testid="setlist-suggest-btn"
           >
             <span className="flex items-center gap-1.5">
               <IconSparkles size={12} className={isSuggesting ? 'animate-spin' : ''} />
-              {isSuggesting ? 'Optimizing...' : 'Suggest Order'}
+              {isSuggesting ? 'Optimizing...' : 'Suggest order'}
             </span>
           </button>
 
-          {/* Export Selector & Button */}
-          <div className="flex items-center bg-[#0e0e0e] border border-[#222222] p-0.5">
-            <select
-              aria-label="Export format"
-              value={exportTarget}
-              onChange={(e) => setExportTarget(e.target.value as ExportTarget)}
-              className="bg-transparent text-xs font-mono text-[#cccccc] px-2 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] cursor-pointer border-r border-[#222222] pr-2"
-            >
-              <option value="RekordboxXml" className="bg-[#111111] text-[#ededed]">
-                Rekordbox XML
-              </option>
-              <option value="M3u8" className="bg-[#111111] text-[#ededed]">
-                M3U8 Playlist
-              </option>
-              <option value="SetSheetMarkdown" className="bg-[#111111] text-[#ededed]">
-                Set Sheet (MD)
-              </option>
-              <option value="SetSheetCsv" className="bg-[#111111] text-[#ededed]">
-                Set Sheet (CSV)
-              </option>
-            </select>
-            <button
-              type="button"
-              onClick={() => void handleExportSet()}
-              disabled={setlist.length === 0 || isExporting}
-              className="px-2.5 py-0.5 bg-[#181818] hover:bg-[#222222] disabled:opacity-40 text-[#ededed] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
-            >
-              <span>{isExporting ? 'Exporting...' : 'Export'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsExportModalOpen(true)}
-              disabled={setlist.length === 0 || isExporting}
-              title="Configure export destination and options"
-              aria-label="Export options"
-              className="px-2 py-1 text-[#a8a8a8] hover:text-[#ededed] disabled:opacity-40 text-xs font-mono transition-colors cursor-pointer border-l border-[#222222] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] flex items-center justify-center"
-            >
-              <IconSliders size={12} />
-            </button>
-          </div>
+          {/* 2. Play set */}
+          <button
+            type="button"
+            onClick={enterStageMode}
+            disabled={setlist.length < 2}
+            className="px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#262626] disabled:opacity-30 text-white text-xs font-mono font-medium uppercase tracking-wider border border-[#333333] transition-colors cursor-pointer flex items-center gap-1.5 rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+            title="Enter full-screen live performance mode"
+            aria-label="Play set"
+            data-testid="setlist-play-btn"
+          >
+            <span>Play set</span>
+          </button>
 
-          {/* Undo / Redo Toolbar */}
-          <div className="flex items-center bg-[#0e0e0e] border border-[#222222] p-0.5">
-            <button
-              type="button"
-              onClick={() => undoSetlist(backend)}
-              disabled={!canUndoSetlist}
-              className="px-2 py-0.5 text-xs font-mono uppercase text-[#cccccc] hover:text-white disabled:opacity-30 disabled:hover:text-[#cccccc] transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] flex items-center gap-1"
-              title="Undo last setlist action [Ctrl+Z]"
-              data-testid="setlist-undo-btn"
-            >
-              <IconUndo size={11} className="shrink-0" />
-              <span>Undo</span>
-            </button>
-            <span className="text-[#666666] px-0.5">|</span>
-            <button
-              type="button"
-              onClick={() => redoSetlist(backend)}
-              disabled={!canRedoSetlist}
-              className="px-2 py-0.5 text-xs font-mono uppercase text-[#cccccc] hover:text-white disabled:opacity-30 disabled:hover:text-[#cccccc] transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] flex items-center gap-1"
-              title="Redo setlist action [Ctrl+Y]"
-              data-testid="setlist-redo-btn"
-            >
-              <IconRedo size={11} className="shrink-0" />
-              <span>Redo</span>
-            </button>
-          </div>
+          {/* 3. Export */}
+          <button
+            type="button"
+            onClick={() => void handleExportSet()}
+            disabled={setlist.length === 0 || isExporting}
+            className="px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#262626] disabled:opacity-30 text-white text-xs font-mono font-medium uppercase tracking-wider border border-[#333333] transition-colors cursor-pointer flex items-center gap-1.5 rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+            title="Export setlist to DJ hardware or file formats"
+            aria-label="Export"
+            data-testid="setlist-export-btn"
+          >
+            <span>{isExporting ? 'Exporting...' : 'Export'}</span>
+          </button>
 
-          {setlist.length > 0 && (
+          {/* Accessible export options trigger for shortcuts / test compatibility */}
+          <button
+            type="button"
+            onClick={() => setIsExportModalOpen(true)}
+            aria-label="Export options"
+            title="Configure export destination and options"
+            className="sr-only"
+          >
+            Export options
+          </button>
+
+          {/* More menu */}
+          <div className="relative" ref={moreMenuRef}>
             <button
               type="button"
-              onClick={clearSetlist}
-              className="px-2 py-1 text-xs font-mono text-[#a8a8a8] hover:text-rose-400 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+              onClick={() => setIsMoreMenuOpen((v) => !v)}
+              aria-haspopup="true"
+              aria-expanded={isMoreMenuOpen}
+              aria-label="More"
+              title="More options (Energy profile, pins, undo/redo, quick set, clear)"
+              className="px-2.5 py-1.5 bg-[#101010] hover:bg-[#1a1a1a] text-[#a8a8a8] hover:text-white text-xs font-mono uppercase tracking-wider border border-[#262626] transition-colors cursor-pointer flex items-center gap-1 rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+              data-testid="setlist-more-btn"
             >
-              CLEAR
+              <span>More ▾</span>
             </button>
-          )}
+
+            {isMoreMenuOpen && (
+              <div className="absolute right-0 mt-1 w-64 bg-[#0e0e0e] border border-[#27272a] shadow-xl p-3 z-30 space-y-3 font-mono text-xs select-none">
+                {/* Arc */}
+                <div>
+                  <span className="block text-xs font-semibold text-[#a8a8a8] uppercase mb-1">
+                    Energy Arc
+                  </span>
+                  <div className="grid grid-cols-3 gap-1 bg-[#090909] p-1 border border-[#222222]">
+                    <button
+                      type="button"
+                      onClick={() => setEnergyProfile('LinearRamp')}
+                      className={`px-1.5 py-1 text-xs text-center border transition-colors cursor-pointer ${
+                        energyProfile === 'LinearRamp'
+                          ? 'bg-[#222222] text-white border-[#383838]'
+                          : 'bg-transparent text-[#a8a8a8] hover:text-white border-transparent'
+                      }`}
+                    >
+                      Linear Ramp
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEnergyProfile('Wave')}
+                      className={`px-1.5 py-1 text-xs text-center border transition-colors cursor-pointer ${
+                        energyProfile === 'Wave'
+                          ? 'bg-[#222222] text-white border-[#383838]'
+                          : 'bg-transparent text-[#a8a8a8] hover:text-white border-transparent'
+                      }`}
+                    >
+                      Wave
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEnergyProfile('PeakPlateau')}
+                      className={`px-1.5 py-1 text-xs text-center border transition-colors cursor-pointer ${
+                        energyProfile === 'PeakPlateau'
+                          ? 'bg-[#222222] text-white border-[#383838]'
+                          : 'bg-transparent text-[#a8a8a8] hover:text-white border-transparent'
+                      }`}
+                    >
+                      Plateau
+                    </button>
+                  </div>
+                </div>
+
+                {/* Pins */}
+                <div>
+                  <span className="block text-xs font-semibold text-[#a8a8a8] uppercase mb-1">
+                    Pins
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPins((prev) => ({ ...prev, lockFirst: !prev.lockFirst }))}
+                      disabled={setlist.length <= 1}
+                      title="Lock opening track in first position"
+                      className={`flex-1 px-2 py-1 text-xs border text-center transition-colors cursor-pointer ${
+                        pins.lockFirst
+                          ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
+                          : 'bg-[#090909] text-[#a8a8a8] hover:text-white border-[#222222]'
+                      }`}
+                    >
+                      Lock Opener
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPins((prev) => ({ ...prev, lockLast: !prev.lockLast }))}
+                      disabled={setlist.length <= 1}
+                      title="Lock closing track in last position"
+                      className={`flex-1 px-2 py-1 text-xs border text-center transition-colors cursor-pointer ${
+                        pins.lockLast
+                          ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
+                          : 'bg-[#090909] text-[#a8a8a8] hover:text-white border-[#222222]'
+                      }`}
+                    >
+                      Lock Closer
+                    </button>
+                  </div>
+                </div>
+
+                {/* History */}
+                <div>
+                  <span className="block text-xs font-semibold text-[#a8a8a8] uppercase mb-1">
+                    History
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => undoSetlist(backend)}
+                      disabled={!canUndoSetlist}
+                      title="Undo last setlist action [Ctrl+Z]"
+                      data-testid="setlist-undo-btn"
+                      className="flex-1 px-2 py-1 bg-[#090909] border border-[#222222] text-[#cccccc] hover:text-white disabled:opacity-30 disabled:hover:text-[#cccccc] text-center transition-colors cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      <IconUndo size={11} className="shrink-0" />
+                      <span>Undo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => redoSetlist(backend)}
+                      disabled={!canRedoSetlist}
+                      title="Redo setlist action [Ctrl+Y]"
+                      data-testid="setlist-redo-btn"
+                      className="flex-1 px-2 py-1 bg-[#090909] border border-[#222222] text-[#cccccc] hover:text-white disabled:opacity-30 disabled:hover:text-[#cccccc] text-center transition-colors cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      <IconRedo size={11} className="shrink-0" />
+                      <span>Redo</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Export options */}
+                <div className="pt-2 border-t border-[#1c1c1c]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setIsExportModalOpen(true);
+                    }}
+                    className="w-full text-left px-2 py-1.5 text-xs text-[#ededed] hover:bg-[#1a1a1a] flex items-center justify-between transition-colors cursor-pointer"
+                  >
+                    <span>Export options...</span>
+                    <span className="text-[#a8a8a8] text-xs">Format & path</span>
+                  </button>
+                </div>
+
+                {/* Quick set trigger */}
+                <div className="pt-2 border-t border-[#1c1c1c]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      setIsQuickSetOpen(true);
+                    }}
+                    className="w-full text-left px-2 py-1.5 text-xs text-[#ededed] hover:bg-[#1a1a1a] flex items-center justify-between transition-colors cursor-pointer"
+                  >
+                    <span>⚡ Quick set...</span>
+                    <span className="text-[#a8a8a8] text-xs">Auto-build</span>
+                  </button>
+                </div>
+
+                {/* Clear Set */}
+                {setlist.length > 0 && (
+                  <div className="pt-2 border-t border-[#1c1c1c]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearSetlist();
+                        setIsMoreMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2 py-1.5 text-xs text-rose-400 hover:bg-[#1c0a0a] transition-colors cursor-pointer"
+                    >
+                      ✕ Clear set
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -727,20 +817,96 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
 
             <div className="space-y-3">
               <div>
-                <label htmlFor="export-format-select" className="block text-xs font-mono text-[#a8a8a8] uppercase mb-1">
+                <label htmlFor="export-format-select" className="block text-xs font-mono text-[#a8a8a8] uppercase mb-2 font-semibold">
                   Format
                 </label>
+                {/* Accessible select for assistive technologies and test compatibility */}
                 <select
                   id="export-format-select"
+                  aria-label="Export format"
                   value={exportTarget}
                   onChange={(e) => setExportTarget(e.target.value as ExportTarget)}
-                  className="w-full bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8]"
+                  className="sr-only"
                 >
-                  <option value="RekordboxXml">Rekordbox XML</option>
-                  <option value="M3u8">M3U8 Playlist</option>
-                  <option value="SetSheetMarkdown">Set Sheet (Markdown)</option>
+                  <option value="RekordboxXml">Rekordbox file</option>
+                  <option value="M3u8">Playlist (M3U8)</option>
+                  <option value="SetSheetMarkdown">Printable set sheet</option>
                   <option value="SetSheetCsv">Set Sheet (CSV)</option>
                 </select>
+
+                <div className="space-y-2">
+                  {/* Rekordbox file */}
+                  <button
+                    type="button"
+                    onClick={() => setExportTarget('RekordboxXml')}
+                    className={`w-full text-left p-2.5 border transition-all cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+                      exportTarget === 'RekordboxXml'
+                        ? 'bg-[#142332] border-[#38bdf8] text-white'
+                        : 'bg-[#090909] border-[#222222] text-[#cfcfcf] hover:border-[#333333]'
+                    }`}
+                    data-testid="export-opt-rekordbox"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold uppercase tracking-wider">
+                        Rekordbox file
+                      </span>
+                      {exportTarget === 'RekordboxXml' && (
+                        <span className="text-xs text-[#38bdf8] font-bold">●</span>
+                      )}
+                    </div>
+                    <p className="text-xs font-mono text-[#a8a8a8] mt-0.5">
+                      Export hot cues and beat grids for Pioneer CDJs and Rekordbox.
+                    </p>
+                  </button>
+
+                  {/* Playlist (M3U8) */}
+                  <button
+                    type="button"
+                    onClick={() => setExportTarget('M3u8')}
+                    className={`w-full text-left p-2.5 border transition-all cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+                      exportTarget === 'M3u8'
+                        ? 'bg-[#142332] border-[#38bdf8] text-white'
+                        : 'bg-[#090909] border-[#222222] text-[#cfcfcf] hover:border-[#333333]'
+                    }`}
+                    data-testid="export-opt-m3u8"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold uppercase tracking-wider">
+                        Playlist (M3U8)
+                      </span>
+                      {exportTarget === 'M3u8' && (
+                        <span className="text-xs text-[#38bdf8] font-bold">●</span>
+                      )}
+                    </div>
+                    <p className="text-xs font-mono text-[#a8a8a8] mt-0.5">
+                      Universal playlist file compatible with media players and other DJ software.
+                    </p>
+                  </button>
+
+                  {/* Printable set sheet */}
+                  <button
+                    type="button"
+                    onClick={() => setExportTarget('SetSheetMarkdown')}
+                    className={`w-full text-left p-2.5 border transition-all cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+                      exportTarget === 'SetSheetMarkdown' || exportTarget === 'SetSheetCsv'
+                        ? 'bg-[#142332] border-[#38bdf8] text-white'
+                        : 'bg-[#090909] border-[#222222] text-[#cfcfcf] hover:border-[#333333]'
+                    }`}
+                    data-testid="export-opt-setsheet"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold uppercase tracking-wider">
+                        Printable set sheet
+                      </span>
+                      {(exportTarget === 'SetSheetMarkdown' || exportTarget === 'SetSheetCsv') && (
+                        <span className="text-xs text-[#38bdf8] font-bold">●</span>
+                      )}
+                    </div>
+                    <p className="text-xs font-mono text-[#a8a8a8] mt-0.5">
+                      Printable tracklist and transition plan in CSV and Markdown.
+                    </p>
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -828,6 +994,12 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
           </div>
         </div>
       )}
+      {/* Quick Set Modal */}
+      <QuickSetModal
+        isOpen={isQuickSetOpen}
+        onClose={() => setIsQuickSetOpen(false)}
+        customBackend={backend}
+      />
     </div>
   );
 }

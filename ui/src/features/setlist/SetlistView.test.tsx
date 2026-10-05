@@ -139,6 +139,9 @@ describe('SetlistView Component Integration Flow', () => {
   it('switches energy profiles between Linear Ramp, Wave, and Plateau', async () => {
     render(<SetlistView customBackend={mockBackend} />);
 
+    // Open More menu to access energy arc options
+    fireEvent.click(screen.getByTestId('setlist-more-btn'));
+
     const waveBtn = screen.getByRole('button', { name: /^wave$/i });
     fireEvent.click(waveBtn);
     expect(useAppStore.getState().energyProfile).toBe('Wave');
@@ -162,6 +165,9 @@ describe('SetlistView Component Integration Flow', () => {
     });
 
     render(<SetlistView customBackend={mockBackend} />);
+
+    // Open More menu to access pin toggles
+    fireEvent.click(screen.getByTestId('setlist-more-btn'));
 
     const lockOpenerBtn = screen.getByTitle('Lock opening track in first position');
     fireEvent.click(lockOpenerBtn);
@@ -251,14 +257,63 @@ describe('SetlistView Component Integration Flow', () => {
 
     render(<SetlistView customBackend={mockBackend} />);
 
+    // Open export options modal
+    fireEvent.click(screen.getByLabelText('Export options'));
     const exportSelect = screen.getByLabelText('Export format');
     fireEvent.change(exportSelect, { target: { value: 'M3u8' } });
 
-    const exportBtn = screen.getByRole('button', { name: /^export$/i });
-    fireEvent.click(exportBtn);
+    // Confirm export inside modal
+    const confirmBtn = screen.getByRole('button', { name: /confirm export/i });
+    fireEvent.click(confirmBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/✓ Exported 1 tracks to M3u8/)).toBeDefined();
     });
+  });
+
+  it('renders three primary buttons on top bar (Suggest order, Play set, Export) plus More menu', async () => {
+    const allTracks = await mockBackend.listTracks();
+    useAppStore.setState({
+      setlist: [
+        { position: 1, track_id: allTracks[0].id, track: allTracks[0], transition: null, target_energy: 4 },
+        { position: 2, track_id: allTracks[1].id, track: allTracks[1], transition: null, target_energy: 5 },
+      ],
+      currentRoute: 'setlist',
+      isStageMode: false,
+    });
+
+    render(<SetlistView customBackend={mockBackend} />);
+
+    // 1. Suggest order
+    const suggestBtn = screen.getByTestId('setlist-suggest-btn');
+    expect(suggestBtn).toBeDefined();
+    expect(suggestBtn.textContent).toContain('Suggest order');
+
+    // 2. Play set (Stage mode entry)
+    const playSetBtn = screen.getByTestId('setlist-play-btn');
+    expect(playSetBtn).toBeDefined();
+    expect(playSetBtn.textContent).toContain('Play set');
+    fireEvent.click(playSetBtn);
+    expect(useAppStore.getState().currentRoute).toBe('stage');
+    expect(useAppStore.getState().isStageMode).toBe(true);
+
+    // 3. Export
+    const exportBtn = screen.getByTestId('setlist-export-btn');
+    expect(exportBtn).toBeDefined();
+    expect(exportBtn.textContent).toContain('Export');
+
+    // 4. More menu
+    const moreBtn = screen.getByTestId('setlist-more-btn');
+    expect(moreBtn).toBeDefined();
+    expect(moreBtn.textContent).toContain('More');
+
+    // Open More menu and verify sub-options
+    fireEvent.click(moreBtn);
+    expect(screen.getByText('Energy Arc')).toBeDefined();
+    expect(screen.getByText('Pins')).toBeDefined();
+    expect(screen.getByText('History')).toBeDefined();
+    expect(screen.getByText(/Quick set/i)).toBeDefined();
+    expect(screen.getAllByText(/Export options/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Clear set/i)).toBeDefined();
   });
 });

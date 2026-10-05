@@ -1,4 +1,5 @@
 export { SetlistView } from './SetlistView';
+export { QuickSetModal, type QuickSetModalProps } from './QuickSetModal';
 export { EnergyChart } from './EnergyChart';
 export { SortableTrackItem } from './SortableTrackItem';
 export { TransitionCostBadge } from './TransitionCostBadge';
