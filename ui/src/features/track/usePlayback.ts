@@ -54,20 +54,24 @@ export function usePlayback({ trackId, durationMs }: UsePlaybackOptions): UsePla
   const startRafLoop = useCallback(() => {
     if (rafIdRef.current !== null) return;
 
+    let lastTickTime = 0;
     const tick = () => {
       if (stateRef.current === 'playing') {
         const now = performance.now();
-        const currentPos = interpolatePosition(
-          lastEventPositionRef.current,
-          lastEventTimestampRef.current,
-          now,
-          'playing',
-          durationRef.current,
-          speedRef.current
-        );
+        if (now - lastTickTime >= 30) {
+          lastTickTime = now;
+          const currentPos = interpolatePosition(
+            lastEventPositionRef.current,
+            lastEventTimestampRef.current,
+            now,
+            'playing',
+            durationRef.current,
+            speedRef.current
+          );
 
-        setPositionMs(currentPos);
-        setPlayheadPositionMs(currentPos);
+          setPositionMs(currentPos);
+          setPlayheadPositionMs(currentPos);
+        }
 
         rafIdRef.current = requestAnimationFrame(tick);
       } else {

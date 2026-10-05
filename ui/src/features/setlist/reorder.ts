@@ -92,8 +92,33 @@ export function applyPinsToOrderedIds(
 ): string[] {
   const n = originalIds.length;
   const validPins = validatePins(n, pins);
-  if (!validPins.lockFirst && !validPins.lockLast) {
+  const pinnedIds = validPins.pinnedIds ?? [];
+
+  if (!validPins.lockFirst && !validPins.lockLast && pinnedIds.length === 0) {
     return [...suggestedIds];
+  }
+
+  // If arbitrary pinned tracks are specified, fix them at their original indices
+  if (pinnedIds.length > 0) {
+    const pinnedSet = new Set(pinnedIds);
+    if (validPins.lockFirst && originalIds.length > 0) pinnedSet.add(originalIds[0]);
+    if (validPins.lockLast && originalIds.length > 1) pinnedSet.add(originalIds[originalIds.length - 1]);
+
+    const result: (string | null)[] = new Array(n).fill(null);
+    originalIds.forEach((id, idx) => {
+      if (pinnedSet.has(id)) {
+        result[idx] = id;
+      }
+    });
+
+    const unpinnedSuggested = suggestedIds.filter((id) => !pinnedSet.has(id));
+    let uIdx = 0;
+    for (let i = 0; i < n; i++) {
+      if (result[i] === null && uIdx < unpinnedSuggested.length) {
+        result[i] = unpinnedSuggested[uIdx++];
+      }
+    }
+    return result.filter((id): id is string => Boolean(id));
   }
 
   const firstId = validPins.lockFirst ? originalIds[0] : null;
@@ -121,3 +146,4 @@ export function applyPinsToOrderedIds(
 
   return result;
 }
+

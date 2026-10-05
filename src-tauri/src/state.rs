@@ -9,9 +9,10 @@ use library_db::scan::CancellationToken;
 use serde::{Deserialize, Serialize};
 
 /// Progress stage enum matching the UI frontend progress tracking definition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ProgressStage {
+    #[default]
     Scanning,
     Decoding,
     Analyzing,
@@ -20,7 +21,7 @@ pub enum ProgressStage {
 }
 
 /// Progress event emitted over the Tauri IPC channel during long-running background tasks.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ProgressEvent {
     /// Active lifecycle stage.
     pub stage: ProgressStage,
@@ -34,6 +35,24 @@ pub struct ProgressEvent {
     /// Optional identifier of the track currently being analyzed or processed.
     #[serde(rename = "trackId", skip_serializing_if = "Option::is_none")]
     pub track_id: Option<String>,
+    /// Estimated tempo in beats per minute.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bpm: Option<f64>,
+    /// Musical key name (e.g. "A minor").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// Camelot harmonic code (e.g. "8A").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub camelot: Option<String>,
+    /// Energy score (1.0 to 10.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub energy: Option<f64>,
+    /// Integrated loudness in LUFS.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lufs: Option<f32>,
+    /// Name of the active file being processed.
+    #[serde(rename = "fileName", skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
 }
 
 /// RAII guard managing the lifecycle of an active scan operation.

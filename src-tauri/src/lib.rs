@@ -220,6 +220,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::ping,
             commands::scan_folder,
+            commands::scan_paths,
             commands::list_tracks,
             commands::get_track,
             commands::suggest_order,

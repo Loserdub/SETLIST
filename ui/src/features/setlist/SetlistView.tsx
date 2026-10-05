@@ -16,17 +16,23 @@ import {
 } from '@dnd-kit/sortable';
 import { useAppStore } from '../../store/useAppStore';
 import { getBackend, type Backend } from '../../api';
+import type { Track } from '../../bindings/Track';
 import type { ExportTarget } from '../../bindings/ExportTarget';
 import type { ExportResult } from '../../bindings/ExportResult';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
-import type { TransitionModalState } from './types';
-import { computeEnergyTrajectory } from './energyCurve';
+import type { TransitionModalState, PreferredTransitionPreset } from './types';
+import { computeEnergyTrajectory, recalculateSetlistTargetEnergy } from './energyCurve';
+import { computeCumulativeTimeline } from './roles';
 
 import { SortableTrackItem } from './SortableTrackItem';
 import { TransitionCostBadge } from './TransitionCostBadge';
 import { EnergyChart } from './EnergyChart';
 import { TransitionAdviceModal } from './TransitionAdviceModal';
-import { IconUndo, IconRedo, IconSliders, IconSparkles } from '../../components/icons';
+import { ConstraintCockpit } from './ConstraintCockpit';
+import { TrackSelectionDrawer } from './TrackSelectionDrawer';
+import { BridgeFinderModal } from './BridgeFinderModal';
+import { FinalDeliveryModal } from '../delivery';
+import { IconUndo, IconRedo, IconSliders } from '../../components/icons';
 
 export const getDefaultExportFileName = (target: ExportTarget): string => {
   switch (target) {
@@ -66,11 +72,13 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     energyProfile,
     setEnergyProfile,
     costWeights,
+    setCostWeights,
     reorderSetlist,
     removeFromSetlist,
     clearSetlist,
     setRoute,
     tracks,
+    loadTracks,
     addToSetlist,
     useMockBackend,
     selectTrack,
@@ -84,6 +92,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     undoSetlist,
     redoSetlist,
     suggestOrder,
+    persistActiveSetlist,
   } = useAppStore();
 
   const backend = customBackend ?? getBackend(useMockBackend);
@@ -94,18 +103,26 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     }
   }, [hasLoadedActiveSetlist, loadActiveSetlist, backend]);
 
+  // Target Duration State (Default: 60 minutes)
+  const [targetDurationMinutes, setTargetDurationMinutes] = useState<number>(60);
+
   // Suggesting Order State & Revert Notice
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showOptimizationBanner, setShowOptimizationBanner] = useState(false);
+
+  // Drawers & Modals State
+  const [isTrackDrawerOpen, setIsTrackDrawerOpen] = useState(false);
+  const [bridgePair, setBridgePair] = useState<{ trackA: Track; trackB: Track } | null>(null);
 
   // Export State
   const [exportTarget, setExportTarget] = useState<ExportTarget>('RekordboxXml');
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [outputPath, setOutputPath] = useState<string>('');
-  const [allowOverwrite, setAllowOverwrite] = useState<boolean>(false);
+  const [allowOverwrite] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [lastExportResult, setLastExportResult] = useState<ExportResult | null>(null);
 
   // Transition Advice Modal State
   const [modalState, setModalState] = useState<TransitionModalState>({
@@ -136,7 +153,17 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     return computeEnergyTrajectory(setlist, energyProfile);
   }, [setlist, energyProfile]);
 
-  // Active Advice Request Tracking (avoids stale advice replacing newer adjacent pair advice)
+  // Cumulative Physical Timeline intervals
+  const timelineIntervals = useMemo(() => {
+    return computeCumulativeTimeline(setlist);
+  }, [setlist]);
+
+  // Total Set Duration
+  const totalSetDurationMs = useMemo(() => {
+    return setlist.reduce((acc, e) => acc + (e.track?.duration_ms ?? 0), 0);
+  }, [setlist]);
+
+  // Active Advice Request Tracking
   const activeAdvicePairRef = useRef<string | null>(null);
 
   // Handle Drag Reorder
@@ -152,7 +179,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     await reorderSetlist(oldIndex, newIndex, pins, backend);
   };
 
-  // Setlist Undo / Redo Global Keyboard Shortcuts (Ctrl+Z / Ctrl+Y / Cmd+Z / Cmd+Shift+Z)
+  // Keyboard Shortcuts (Undo / Redo)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -183,7 +210,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [canUndoSetlist, canRedoSetlist, undoSetlist, redoSetlist, backend]);
 
-  // Suggest Order with Pin Preservation & Undo History
+  // Suggest Order
   const handleSuggestOrder = async () => {
     if (setlist.length < 2) return;
     setIsSuggesting(true);
@@ -205,6 +232,103 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     }
   };
 
+  // Selective Regeneration: Regenerate only unlocked tracks
+  const handleRegenerateUnlocked = async () => {
+    if (setlist.length < 3) return;
+    setIsSuggesting(true);
+    setErrorMessage(null);
+
+    try {
+      await suggestOrder(backend);
+      setShowOptimizationBanner(true);
+      addToast({
+        type: 'success',
+        message: 'Unlocked tracks re-sequenced',
+        details: 'Pinned tracks remained anchored in place.',
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(msg);
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
+  // Re-sequence starting from a specific track
+  const handleResequenceFromHere = async (fromIndex: number) => {
+    if (fromIndex >= setlist.length - 1) return;
+    const lockedIds = setlist.slice(0, fromIndex).map((e) => e.track_id);
+    setPins((prev) => ({
+      ...prev,
+      pinnedIds: Array.from(new Set([...(prev.pinnedIds ?? []), ...lockedIds])),
+    }));
+
+    setIsSuggesting(true);
+    try {
+      await suggestOrder(backend);
+      addToast({
+        type: 'success',
+        message: `Set re-sequenced from track #${fromIndex + 1}`,
+        details: `Preceding ${fromIndex} track${fromIndex === 1 ? '' : 's'} preserved.`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(msg);
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
+  // Toggle individual track pin
+  const handleTogglePinTrack = (trackId: string) => {
+    setPins((prev) => {
+      const current = new Set(prev.pinnedIds ?? []);
+      if (current.has(trackId)) {
+        current.delete(trackId);
+      } else {
+        current.add(trackId);
+      }
+      return {
+        ...prev,
+        pinnedIds: Array.from(current),
+      };
+    });
+  };
+
+  // Toggle individual track exclusion
+  const handleToggleExcludeTrack = (trackId: string) => {
+    setPins((prev) => {
+      const current = new Set(prev.excludedIds ?? []);
+      if (current.has(trackId)) {
+        current.delete(trackId);
+      } else {
+        current.add(trackId);
+      }
+      return {
+        ...prev,
+        excludedIds: Array.from(current),
+      };
+    });
+  };
+
+  // Preferred transitions / weights preset selection
+  const handleSelectWeightsPreset = (preset: PreferredTransitionPreset) => {
+    switch (preset) {
+      case 'Balanced':
+        setCostWeights({ tempo: 0.3, key: 0.35, energy: 0.35, timbre: 0.0 });
+        break;
+      case 'Harmonic':
+        setCostWeights({ tempo: 0.2, key: 0.6, energy: 0.2, timbre: 0.0 });
+        break;
+      case 'Energy':
+        setCostWeights({ tempo: 0.2, key: 0.2, energy: 0.6, timbre: 0.0 });
+        break;
+      case 'Tempo':
+        setCostWeights({ tempo: 0.6, key: 0.2, energy: 0.2, timbre: 0.0 });
+        break;
+    }
+  };
+
   // Open Transition Advice Modal
   const handleOpenAdvice = async (entryA: SetlistEntry, entryB: SetlistEntry) => {
     const pairKey = `${entryA.track_id}->${entryB.track_id}`;
@@ -216,6 +340,8 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
       trackBId: entryB.track_id,
       trackATitle: entryA.track?.tags.title ?? 'Track A',
       trackBTitle: entryB.track?.tags.title ?? 'Track B',
+      posA: entryA.position,
+      posB: entryB.position,
       advice: entryB.transition ?? null,
       isLoading: !entryB.transition,
       error: null,
@@ -262,12 +388,86 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
     }
   };
 
+  // Open Bridge Finder between two tracks
+  const handleOpenBridgeFinder = (trackA: Track, trackB: Track) => {
+    setBridgePair({ trackA, trackB });
+  };
+
+  // Insert Bridge Track directly into sequence
+  const handleInsertBridge = async (bridgeTrack: Track) => {
+    if (!bridgePair) return;
+    const currentList = [...setlist];
+    const idxA = currentList.findIndex((e) => e.track_id === bridgePair.trackA.id);
+    if (idxA === -1) return;
+
+    const newEntry: SetlistEntry = {
+      position: idxA + 2,
+      track_id: bridgeTrack.id,
+      track: bridgeTrack,
+      transition: null,
+      target_energy: null,
+    };
+
+    currentList.splice(idxA + 1, 0, newEntry);
+    const updated = recalculateSetlistTargetEnergy(currentList, energyProfile);
+
+    useAppStore.setState((state) => ({
+      setlist: updated,
+      setlistVersion: (state.setlistVersion ?? 0) + 1,
+    }));
+    await persistActiveSetlist(backend);
+
+    addToast({
+      type: 'success',
+      message: `Bridge track inserted: ${bridgeTrack.tags.title ?? 'Untitled'}`,
+      details: `Connected ${bridgePair.trackA.tags.title ?? 'Track A'} to ${bridgePair.trackB.tags.title ?? 'Track B'}.`,
+    });
+
+    // Asynchronously resolve transitions for newly created adjacent pairs
+    try {
+      const de1 = (updated[idxA + 1].target_energy ?? 0) - (updated[idxA].target_energy ?? 0);
+      const trans1 = await backend.getAdvice(
+        bridgePair.trackA.id,
+        bridgeTrack.id,
+        energyProfile,
+        costWeights,
+        de1
+      );
+
+      let trans2 = null;
+      if (updated[idxA + 2]) {
+        const de2 = (updated[idxA + 2].target_energy ?? 0) - (updated[idxA + 1].target_energy ?? 0);
+        trans2 = await backend.getAdvice(
+          bridgeTrack.id,
+          updated[idxA + 2].track_id,
+          energyProfile,
+          costWeights,
+          de2
+        );
+      }
+
+      useAppStore.setState((state) => {
+        const list = [...state.setlist];
+        if (list[idxA + 1]?.track_id === bridgeTrack.id) {
+          list[idxA + 1] = { ...list[idxA + 1], transition: trans1 };
+          if (list[idxA + 2]) {
+            list[idxA + 2] = { ...list[idxA + 2], transition: trans2 };
+          }
+          return { setlist: list };
+        }
+        return state;
+      });
+    } catch {
+      // ignore
+    }
+  };
+
   // Export Set
   const handleExportSet = async (
     overrideTarget?: ExportTarget,
     overridePath?: string,
     overrideOverwrite?: boolean
-  ) => {
+  ): Promise<ExportResult | void> => {
     if (setlist.length === 0) return;
     setIsExporting(true);
     setExportMessage(null);
@@ -276,7 +476,6 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
       const target = overrideTarget ?? exportTarget;
       let path = overridePath !== undefined ? overridePath : (outputPath.trim() || undefined);
 
-      // If destination path is not explicitly set, use native save dialog with format-based default filename
       if (path === undefined) {
         try {
           const defaultPath = getDefaultExportFileName(target);
@@ -289,7 +488,6 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             path = selected;
             setOutputPath(selected);
           } else if (selected === null) {
-            // User explicitly cancelled save dialog
             setIsExporting(false);
             return;
           }
@@ -302,12 +500,13 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
       const result: ExportResult = await backend.exportSet(setlist, target, path, overwrite);
       const msg = `Exported ${result.track_count} tracks to ${result.format} (${result.path})`;
       setExportMessage(msg);
-      setIsExportModalOpen(false);
+      setLastExportResult(result);
       addToast({
         type: 'success',
         message: 'Setlist exported successfully',
         details: msg,
       });
+      return result;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(msg);
@@ -316,6 +515,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
         message: 'Setlist export failed',
         details: msg,
       });
+      throw err;
     } finally {
       setIsExporting(false);
     }
@@ -347,10 +547,13 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
       : null;
   }, [modalState.trackBId, setlist]);
 
+  const excludedIdsSet = useMemo(() => new Set(pins.excludedIds ?? []), [pins.excludedIds]);
+  const pinnedIdsSet = useMemo(() => new Set(pins.pinnedIds ?? []), [pins.pinnedIds]);
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#080808] text-[#ededed]">
       {/* Top Header */}
-      <header className="px-5 py-3 border-b border-[#1c1c1c] bg-[#0a0a0a] flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
+      <header className="px-5 py-2.5 border-b border-[#1c1c1c] bg-[#0a0a0a] flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
         <div>
           <div className="flex items-center gap-2.5">
             <input
@@ -371,88 +574,17 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
 
         {/* Action Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Lock Pins Toolbar */}
-          <div className="flex items-center gap-1 bg-[#0e0e0e] border border-[#222222] p-0.5">
-            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase px-1">PINS:</span>
-            <button
-              type="button"
-              onClick={() => setPins((prev) => ({ ...prev, lockFirst: !prev.lockFirst }))}
-              disabled={setlist.length <= 1}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                pins.lockFirst
-                  ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-              title="Lock opening track in first position"
-            >
-              <span>Lock Opener</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPins((prev) => ({ ...prev, lockLast: !prev.lockLast }))}
-              disabled={setlist.length <= 1}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                pins.lockLast
-                  ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-              title="Lock closing track in last position"
-            >
-              <span>Lock Closer</span>
-            </button>
-          </div>
-
-          {/* Energy Profile Selector */}
-          <div className="flex items-center bg-[#0e0e0e] border border-[#222222] p-0.5">
-            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase px-1.5">ARC:</span>
-            <button
-              type="button"
-              onClick={() => setEnergyProfile('LinearRamp')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                energyProfile === 'LinearRamp'
-                  ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-            >
-              Linear Ramp
-            </button>
-            <button
-              type="button"
-              onClick={() => setEnergyProfile('Wave')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                energyProfile === 'Wave'
-                  ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-            >
-              Wave
-            </button>
-            <button
-              type="button"
-              onClick={() => setEnergyProfile('PeakPlateau')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
-                energyProfile === 'PeakPlateau'
-                  ? 'bg-[#222222] text-white border-[#383838]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
-              }`}
-            >
-              Plateau
-            </button>
-          </div>
-
-          {/* Suggest Order Button */}
+          {/* READY FOR PERFORMANCE Delivery Experience */}
           <button
             type="button"
-            onClick={() => void handleSuggestOrder()}
-            disabled={setlist.length < 2 || isSuggesting}
-            className="px-3 py-1 bg-[#1a1a1a] hover:bg-[#262626] disabled:opacity-30 text-white text-xs font-mono font-medium uppercase tracking-wider border border-[#333333] transition-colors cursor-pointer flex items-center gap-1.5 rounded-none"
-            title="Auto-optimize setlist sequence respecting locked pins and energy curve"
+            onClick={() => setIsExportModalOpen(true)}
+            disabled={setlist.length === 0}
+            data-testid="ready-for-performance-btn"
+            className="px-3 py-1 bg-[#142332] hover:bg-[#1a3044] border border-[#1e5480] text-[#38bdf8] hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] disabled:opacity-40 disabled:cursor-not-allowed hw-btn"
+            title="Open Ready for Performance delivery checklist and hardware export workflow"
           >
-            <span className="flex items-center gap-1.5">
-              <IconSparkles size={12} className={isSuggesting ? 'animate-spin' : ''} />
-              {isSuggesting ? 'Optimizing...' : 'Suggest Order'}
-            </span>
+            <span className="hw-led hw-led-cyan" />
+            <span>[ READY FOR PERFORMANCE ]</span>
           </button>
 
           {/* Export Selector & Button */}
@@ -535,8 +667,28 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
         </div>
       </header>
 
-      {/* Main Scrollable Body */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      {/* Constraints & Cockpit Controller */}
+      <ConstraintCockpit
+        totalDurationMs={totalSetDurationMs}
+        targetDurationMinutes={targetDurationMinutes}
+        onSetTargetDurationMinutes={setTargetDurationMinutes}
+        energyProfile={energyProfile}
+        onSetEnergyProfile={setEnergyProfile}
+        pins={pins}
+        onToggleLockFirst={() => setPins((prev) => ({ ...prev, lockFirst: !prev.lockFirst }))}
+        onToggleLockLast={() => setPins((prev) => ({ ...prev, lockLast: !prev.lockLast }))}
+        costWeights={costWeights}
+        onSelectWeightsPreset={handleSelectWeightsPreset}
+        isSuggesting={isSuggesting}
+        onSuggestOrder={() => void handleSuggestOrder()}
+        onRegenerateUnlocked={() => void handleRegenerateUnlocked()}
+        onOpenTrackSelector={() => setIsTrackDrawerOpen(true)}
+        trackCount={setlist.length}
+        excludedCount={pins.excludedIds?.length ?? 0}
+      />
+
+      {/* Main Scrollable Creative Canvas */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Suggest Order Feedback & 1-Click Revert Banner */}
         {showOptimizationBanner && (
           <div
@@ -546,7 +698,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             <div className="flex items-center gap-2">
               <span className="text-[#38bdf8] font-bold">✨ SEQUENCE OPTIMIZED</span>
               <span className="text-[#cfcfcf] text-xs">
-                Arranged by DSP solver for optimal harmonic compatibility and energy progression.
+                Arranged by classical DSP solver for optimal harmonic flow and target energy arc.
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -606,10 +758,17 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             <h3 className="text-xs font-mono font-bold tracking-widest text-[#cccccc] uppercase">
               Your Setlist is Empty
             </h3>
-            <p className="text-xs text-[#71717a] max-w-md mt-2 mb-6 leading-relaxed">
+            <p className="text-xs text-[#a8a8a8] max-w-md mt-2 mb-6 leading-relaxed">
               Add tracks from the catalog to begin building a sequence. Optimize track order, adjust energy progression, and inspect transition advice.
             </p>
             <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsTrackDrawerOpen(true)}
+                className="px-3 py-1.5 bg-[#181818] hover:bg-[#222222] text-[#38bdf8] text-xs font-mono uppercase tracking-wider border border-[#38bdf8]/40 transition-colors cursor-pointer rounded-none font-semibold"
+              >
+                + Select Tracks
+              </button>
               <button
                 type="button"
                 onClick={() => setRoute('library')}
@@ -631,7 +790,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             {/* Energy Curve Progression Chart */}
             <EnergyChart points={energyPoints} profile={energyProfile} />
 
-            {/* Setlist Drag & Drop List */}
+            {/* Setlist Physical Sequence Container */}
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -646,10 +805,14 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                     const isFirst = index === 0;
                     const isLast = index === setlist.length - 1;
                     const prevEntry = index > 0 ? setlist[index - 1] : null;
+                    const prevEnergy = prevEntry?.track?.analysis?.energy_score ?? prevEntry?.target_energy ?? undefined;
+                    const interval = timelineIntervals[index];
+                    const isPinned = pinnedIdsSet.has(entry.track_id);
+                    const isExcluded = excludedIdsSet.has(entry.track_id);
 
                     return (
                       <div key={entry.track_id} className="space-y-1">
-                        {/* Transition Cost Badge between adjacent tracks */}
+                        {/* Between-Track Relationship Link (Visible Transition Rail) */}
                         {prevEntry && (
                           <TransitionCostBadge
                             fromTrack={prevEntry.track}
@@ -658,10 +821,15 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                             fromTitle={prevEntry.track?.tags.title ?? `Track #${prevEntry.position}`}
                             toTitle={entry.track?.tags.title ?? `Track #${entry.position}`}
                             onOpenAdvice={() => void handleOpenAdvice(prevEntry, entry)}
+                            onFindBridge={
+                              prevEntry.track && entry.track
+                                ? () => handleOpenBridgeFinder(prevEntry.track!, entry.track!)
+                                : undefined
+                            }
                           />
                         )}
 
-                        {/* Draggable Track Item Card */}
+                        {/* Physical Track Module Card */}
                         <SortableTrackItem
                           entry={entry}
                           isFirst={isFirst}
@@ -679,6 +847,25 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
                             selectTrack(trackId);
                             setRoute('track');
                           }}
+                          timelineInterval={interval}
+                          isPinned={isPinned}
+                          onTogglePin={() => handleTogglePinTrack(entry.track_id)}
+                          isExcluded={isExcluded}
+                          onToggleExclude={() => handleToggleExcludeTrack(entry.track_id)}
+                          onMoveUp={
+                            index > 0
+                              ? () => void reorderSetlist(index, index - 1, pins, backend)
+                              : undefined
+                          }
+                          onMoveDown={
+                            index < setlist.length - 1
+                              ? () => void reorderSetlist(index, index + 1, pins, backend)
+                              : undefined
+                          }
+                          onResequenceFromHere={() => void handleResequenceFromHere(index)}
+                          totalTracks={setlist.length}
+                          activeProfile={energyProfile}
+                          prevEnergy={prevEnergy}
                         />
                       </div>
                     );
@@ -690,7 +877,25 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
         )}
       </div>
 
-      {/* Transition Advice Modal / Drawer */}
+      {/* Track Selection Drawer */}
+      <TrackSelectionDrawer
+        isOpen={isTrackDrawerOpen}
+        onClose={() => setIsTrackDrawerOpen(false)}
+        targetDurationMinutes={targetDurationMinutes}
+      />
+
+      {/* Bridge Finder Modal */}
+      {bridgePair && (
+        <BridgeFinderModal
+          isOpen={Boolean(bridgePair)}
+          onClose={() => setBridgePair(null)}
+          trackA={bridgePair.trackA}
+          trackB={bridgePair.trackB}
+          onInsertBridge={(bridgeTrack) => void handleInsertBridge(bridgeTrack)}
+        />
+      )}
+
+      {/* Transition Advice / Transition Lab Modal */}
       <TransitionAdviceModal
         isOpen={modalState.isOpen}
         onClose={() => {
@@ -699,135 +904,31 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
         }}
         trackA={trackA}
         trackB={trackB}
+        posA={modalState.posA}
+        posB={modalState.posB}
         advice={modalState.advice}
         isLoading={modalState.isLoading}
         error={modalState.error}
+        onOverrideSaved={async () => {
+          await loadTracks(backend);
+        }}
       />
 
-      {/* Export Options Modal */}
-      {isExportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="bg-[#0e0e0e] border border-[#27272a] max-w-md w-full p-4 space-y-3.5 select-none rounded-none">
-            <div className="flex items-center justify-between border-b border-[#1c1c1c] pb-2.5">
-              <h3 className="text-xs font-mono font-bold tracking-wider uppercase text-[#ededed]">
-                Export Setlist
-              </h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsExportModalOpen(false);
-                  setErrorMessage(null);
-                }}
-                className="text-[#a8a8a8] hover:text-[#ededed] text-xs font-mono cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
-                aria-label="Close export modal"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="export-format-select" className="block text-xs font-mono text-[#a8a8a8] uppercase mb-1">
-                  Format
-                </label>
-                <select
-                  id="export-format-select"
-                  value={exportTarget}
-                  onChange={(e) => setExportTarget(e.target.value as ExportTarget)}
-                  className="w-full bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8]"
-                >
-                  <option value="RekordboxXml">Rekordbox XML</option>
-                  <option value="M3u8">M3U8 Playlist</option>
-                  <option value="SetSheetMarkdown">Set Sheet (Markdown)</option>
-                  <option value="SetSheetCsv">Set Sheet (CSV)</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="export-destination-input" className="block text-xs font-mono text-[#a8a8a8] uppercase mb-1">
-                  Custom Destination Path (optional)
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    id="export-destination-input"
-                    type="text"
-                    value={outputPath}
-                    onChange={(e) => setOutputPath(e.target.value)}
-                    placeholder="Auto-generated or choose location..."
-                    className="flex-1 bg-[#090909] border border-[#222222] px-2.5 py-1 text-xs font-mono text-[#ededed] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:border-[#38bdf8] placeholder-[#888888]"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        const defaultPath = getDefaultExportFileName(exportTarget);
-                        const selected = await save({
-                          defaultPath,
-                          filters: getExportDialogFilters(exportTarget),
-                          title: 'Save Export As',
-                        });
-                        if (selected) {
-                          setOutputPath(selected);
-                        }
-                      } catch {
-                        // ignore
-                      }
-                    }}
-                    className="px-2.5 py-1 text-xs font-mono tracking-wider uppercase border border-[#333333] bg-[#161616] hover:bg-[#222222] text-[#d4d4d4] transition-colors cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
-                  >
-                    Browse...
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="export-overwrite-checkbox"
-                  checked={allowOverwrite}
-                  onChange={(e) => setAllowOverwrite(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded-none border border-[#333333] bg-[#0c0c0c] text-[#ededed] cursor-pointer accent-[#222222] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
-                />
-                <label htmlFor="export-overwrite-checkbox" className="text-xs font-mono text-[#a8a8a8] cursor-pointer">
-                  Overwrite destination file if it already exists
-                </label>
-              </div>
-
-              <div className="text-xs font-mono text-[#a8a8a8] bg-[#090909] p-2 border border-[#1a1a1a]">
-                Exporting <span className="font-semibold text-[#ededed]">{setlist.length}</span> tracks with cues and transitions.
-              </div>
-
-              {errorMessage && (
-                <div className="text-xs font-mono text-[#f87171] bg-[#1a0808] border border-[#501515] p-2">
-                  ⚠️ {errorMessage}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1c1c1c]">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsExportModalOpen(false);
-                  setErrorMessage(null);
-                }}
-                className="px-2.5 py-1 text-xs font-mono text-[#a8a8a8] hover:text-[#ededed] transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleExportSet()}
-                disabled={isExporting}
-                aria-label="Confirm export"
-                className="px-3 py-1 bg-[#1a1a1a] hover:bg-[#262626] disabled:opacity-40 text-white text-xs font-mono uppercase tracking-wider border border-[#333333] transition-colors cursor-pointer rounded-none"
-              >
-                <span>{isExporting ? 'Exporting...' : 'Export Now'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Final Delivery & Hardware Export Modal */}
+      <FinalDeliveryModal
+        isOpen={isExportModalOpen}
+        onClose={() => {
+          setIsExportModalOpen(false);
+          setErrorMessage(null);
+        }}
+        setlist={setlist}
+        setlistName={setlistName}
+        isExporting={isExporting}
+        onExport={handleExportSet}
+        onLaunchStageMode={() => setRoute('stage')}
+        lastExportResult={lastExportResult}
+        errorMessage={errorMessage}
+      />
     </div>
   );
 }

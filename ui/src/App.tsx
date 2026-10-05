@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { isTauriEnvironment } from './api';
+import { toggleWindowFullscreen } from './utils/windowFullscreen';
 import { Sidebar } from './components/Sidebar';
 import { LibraryRoute } from './components/routes/LibraryRoute';
 import { DiscoveryRoute } from './components/routes/DiscoveryRoute';
@@ -26,6 +27,18 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    // Global F11 shortcut to toggle window fullscreen
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault();
+        void toggleWindowFullscreen();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
     if (!hasLoadedTracks) {
       void loadTracks();
     }
@@ -35,7 +48,7 @@ export function App() {
   }, [hasLoadedTracks, loadTracks, hasLoadedActiveSetlist, loadActiveSetlist]);
 
   return (
-    <div className="flex h-screen w-screen bg-[#080808] text-[#e2e2e2] overflow-hidden font-sans relative">
+    <div className="flex h-full w-full bg-[#080808] text-[#e2e2e2] overflow-hidden font-sans relative">
       {!isStageMode && currentRoute !== 'stage' && <Sidebar />}
       <main
         className="flex-1 flex flex-col h-full overflow-hidden bg-[#080808]"

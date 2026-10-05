@@ -7,7 +7,12 @@ import {
   entryToSetlistItem,
   setlistItemToEntry,
 } from '../api';
-import { getPlaybackClient, type PlayerState } from '../api/playback';
+import {
+  getPlaybackClient,
+  mockPlaybackClient,
+  tauriPlaybackClient,
+  type PlayerState,
+} from '../api/playback';
 import type { Track } from '../bindings/Track';
 import type { SetlistEntry } from '../bindings/SetlistEntry';
 import type { Setlist } from '../bindings/Setlist';
@@ -91,6 +96,7 @@ export interface AppState {
   setSearchQuery: (query: string) => void;
   loadTracks: (backend?: Backend) => Promise<void>;
   scanFolder: (path: string, backend?: Backend) => Promise<void>;
+  scanPaths: (paths: string[], backend?: Backend) => Promise<void>;
   selectTrack: (id: string | null) => void;
   refreshTrackInSetlist: (freshTrack: Track, backend?: Backend) => Promise<void>;
 
@@ -362,6 +368,44 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().addToast({
         type: 'error',
         message: 'Folder scan failed',
+        details: msg,
+      });
+    } finally {
+      unsubscribe();
+    }
+  },
+
+  scanPaths: async (paths: string[], customBackend) => {
+    if (paths.length === 0) return;
+    const backend = customBackend ?? getBackend(get().useMockBackend);
+    set({ isLoadingTracks: true, tracksError: null });
+
+    const unsubscribe = backend.subscribeProgress((p) => {
+      set({ progress: p });
+    });
+
+    try {
+      const tracks = backend.scanPaths ? await backend.scanPaths(paths) : await backend.scanFolder(paths[0]);
+      const updatedSelected = tracks.find((t) => t.id === get().selectedTrackId) ?? (tracks[0] ?? null);
+      set({
+        tracks,
+        isLoadingTracks: false,
+        hasLoadedTracks: true,
+        selectedTrackId: updatedSelected?.id ?? null,
+        selectedTrack: updatedSelected,
+        progress: null,
+      });
+      get().addToast({
+        type: 'success',
+        message: 'Ingestion and analysis complete',
+        details: `Discovered and cataloged ${tracks.length} track${tracks.length === 1 ? '' : 's'}.`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ tracksError: msg, isLoadingTracks: false, progress: null });
+      get().addToast({
+        type: 'error',
+        message: 'Audio ingestion failed',
         details: msg,
       });
     } finally {
@@ -661,24 +705,54 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleAudition: async (trackId) => {
-    const { auditionTrackId, auditionState, tracks } = get();
+    const { auditionTrackId, auditionState, tracks, addToast } = get();
     const targetId = trackId ?? auditionTrackId;
     if (!targetId) return;
 
+    if (isTauriEnvironment() && !get().useMockBackend && targetId.startsWith('mock-')) {
+      addToast({
+        type: 'info',
+        message: 'Benchmark tracks are synthetic and cannot be auditioned from local audio.',
+      });
+      return;
+    }
+
     const client = getPlaybackClient();
-    if (auditionTrackId === targetId && auditionState === 'playing') {
-      set({ auditionState: 'paused' });
-      await client.pause();
-    } else if (auditionTrackId === targetId && auditionState === 'paused') {
-      set({ auditionState: 'playing' });
-      await client.play();
-    } else {
-      set({ auditionTrackId: targetId, auditionState: 'playing' });
-      const loadRes = await client.load(targetId);
-      const foundTrack = tracks.find((t) => t.id === targetId);
-      const dur = loadRes?.duration_ms || foundTrack?.duration_ms || 180000;
-      set({ auditionDurationMs: dur, auditionPositionMs: 0 });
-      await client.play();
+    try {
+      if (auditionTrackId === targetId && auditionState === 'playing') {
+        set({ auditionState: 'paused' });
+        await client.pause();
+      } else if (auditionTrackId === targetId && auditionState === 'paused') {
+        set({ auditionState: 'playing' });
+        await client.play();
+      } else {
+        const foundTrack = tracks.find((t) => t.id === targetId);
+        const dur = foundTrack?.duration_ms || 180000;
+        set({
+          auditionTrackId: targetId,
+          auditionState: 'playing',
+          auditionDurationMs: dur,
+          auditionPositionMs: 0,
+        });
+        const loadRes = await client.load(targetId);
+        if (loadRes?.duration_ms) {
+          set({ auditionDurationMs: loadRes.duration_ms });
+        }
+        await client.play();
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error('Audio audition error:', errMsg);
+      set({
+        auditionState: 'stopped',
+        auditionTrackId: null,
+        auditionPositionMs: 0,
+      });
+      addToast({
+        type: 'error',
+        message: 'Audio playback failed',
+        details: errMsg,
+      });
     }
   },
 
@@ -705,11 +779,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   syncAuditionPosition: (payload) => {
+    const isFinished =
+      payload.state === 'stopped' &&
+      payload.duration_ms > 0 &&
+      payload.position_ms >= payload.duration_ms;
     set({
       auditionState: payload.state,
       auditionPositionMs: payload.position_ms,
       auditionDurationMs: payload.duration_ms,
       auditionSpeed: payload.speed && payload.speed > 0 ? payload.speed : get().auditionSpeed,
+      ...(isFinished ? { auditionTrackId: null } : {}),
     });
   },
 
@@ -1385,10 +1464,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 // Wire playback client position broadcasts into store for global transport continuity
 if (typeof window !== 'undefined') {
   try {
-    const client = getPlaybackClient();
-    client.onPosition((payload) => {
+    mockPlaybackClient.onPosition((payload) => {
       useAppStore.getState().syncAuditionPosition(payload);
     });
+    if (isTauriEnvironment()) {
+      tauriPlaybackClient.onPosition((payload) => {
+        useAppStore.getState().syncAuditionPosition(payload);
+      });
+    }
   } catch {
     // Ignore in non-browser or early-load test runs
   }

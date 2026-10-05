@@ -1,12 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { LibraryView } from './LibraryView';
 import { openLibraryWithReviewFilter } from './navigation';
 import { useAppStore } from '../../store/useAppStore';
 import { generateMockTracks } from './mock5000';
+import { mockPlaybackClient } from '../../api/playback';
 
 describe('LibraryView Component', () => {
   beforeEach(() => {
+    mockPlaybackClient.reset();
     useAppStore.setState({
       currentRoute: 'library',
       tracks: generateMockTracks(20),
@@ -17,6 +19,10 @@ describe('LibraryView Component', () => {
       tracksError: null,
       progress: null,
     });
+  });
+
+  afterEach(() => {
+    mockPlaybackClient.reset();
   });
 
   it('renders table headers and column metadata', () => {
@@ -183,6 +189,9 @@ describe('LibraryView Component', () => {
 
     const setlist = useAppStore.getState().setlist;
     expect(setlist.some((item) => item.track_id === 'mock-track-2')).toBe(true);
+    act(() => {
+      mockPlaybackClient.reset();
+    });
   });
 
   it('does not trigger table keyboard shortcuts when typing in search input', () => {

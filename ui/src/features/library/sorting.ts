@@ -36,8 +36,8 @@ export function sortTracks(
 
     switch (field) {
       case 'title': {
-        const titleA = a.tags.title ?? '';
-        const titleB = b.tags.title ?? '';
+        const titleA = a.tags.title ?? a.path.split(/[/\\]/).pop() ?? '';
+        const titleB = b.tags.title ?? b.path.split(/[/\\]/).pop() ?? '';
         comparison = titleA.localeCompare(titleB, undefined, { sensitivity: 'base' });
         break;
       }

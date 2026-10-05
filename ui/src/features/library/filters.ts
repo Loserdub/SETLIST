@@ -3,6 +3,33 @@ import type { TrackWithOverrides } from '../../api/overrides';
 import type { LibraryFilters } from './types';
 import { isHarmonicallyCompatible } from './harmonic';
 
+export const CAMELOT_TO_MUSICAL_KEY: Record<string, string> = {
+  '1A': 'Ab minor',
+  '1B': 'B major',
+  '2A': 'Eb minor',
+  '2B': 'F# major',
+  '3A': 'Bb minor',
+  '3B': 'Db major',
+  '4A': 'F minor',
+  '4B': 'Ab major',
+  '5A': 'C minor',
+  '5B': 'Eb major',
+  '6A': 'G minor',
+  '6B': 'Bb major',
+  '7A': 'D minor',
+  '7B': 'F major',
+  '8A': 'A minor',
+  '8B': 'C major',
+  '9A': 'E minor',
+  '9B': 'G major',
+  '10A': 'B minor',
+  '10B': 'D major',
+  '11A': 'F# minor',
+  '11B': 'A major',
+  '12A': 'Db minor',
+  '12B': 'E major',
+};
+
 /**
  * Pure function to extract the Camelot key string representation from a Track.
  */
@@ -10,6 +37,15 @@ export function getTrackCamelotKey(track: Track): string | null {
   if (!track.analysis?.key?.camelot) return null;
   const { number, letter } = track.analysis.key.camelot;
   return `${number}${letter}`;
+}
+
+/**
+ * Pure function to extract standard musical key name (e.g. "A minor", "F# major").
+ */
+export function getTrackMusicalKeyName(track: Track): string | null {
+  const camelotKey = getTrackCamelotKey(track);
+  if (!camelotKey) return null;
+  return CAMELOT_TO_MUSICAL_KEY[camelotKey.toUpperCase()] ?? null;
 }
 
 /**
@@ -76,6 +112,7 @@ export function filterTracks(tracks: Track[], filters: LibraryFilters): Track[] 
       const album = track.tags.album?.toLowerCase() ?? '';
       const filename = track.path.split(/[/\\]/).pop()?.toLowerCase() ?? '';
       const keyStr = getTrackCamelotKey(track)?.toLowerCase() ?? '';
+      const musicalKey = getTrackMusicalKeyName(track)?.toLowerCase() ?? '';
       const bpm = track.analysis?.rhythm?.grid?.bpm;
       const bpmStr = bpm ? Math.round(bpm).toString() : '';
 
@@ -85,6 +122,7 @@ export function filterTracks(tracks: Track[], filters: LibraryFilters): Track[] 
         album.includes(query) ||
         filename.includes(query) ||
         keyStr.includes(query) ||
+        musicalKey.includes(query) ||
         bpmStr.includes(query);
 
       if (!matchesSearch) return false;

@@ -7,6 +7,9 @@ import { usePlayback } from './usePlayback';
 import { PlaybackBar, SPEED_OPTIONS } from './PlaybackBar';
 import { handleTrackKeyDown } from './playbackMath';
 import { getTrackDisplayTitle, getTrackDisplayArtist } from '../../utils/trackDisplay';
+import { FourPointCueDeck } from './cues/FourPointCueDeck';
+import { resolveFourPointCues, type PerformanceCueSlot } from './cues/fourPointCues';
+import { isFieldOverridden } from './overrides/EditedBadge';
 
 const SEGMENT_COLORS: Record<string, string> = {
   intro: '#0284c7', // Sky Blue
@@ -112,11 +115,19 @@ export const TrackView: React.FC = () => {
         } else if (action.type === 'seek') {
           handleSeekRef.current(action.targetMs);
         } else if (action.type === 'jump_cue') {
-          const targetCue = selectedTrack.analysis?.cue_points.find(
-            (c) => c.index === action.cueIndex
-          );
-          if (targetCue) {
-            handleJumpAndSeekRef.current(targetCue.time_ms);
+          const slots: PerformanceCueSlot[] = ['A', 'B', 'C', 'D'];
+          const fourPointCues = resolveFourPointCues(selectedTrack);
+          const slot = slots[action.cueIndex];
+          const resolvedCue = slot ? fourPointCues[slot] : null;
+          if (resolvedCue) {
+            handleJumpAndSeekRef.current(resolvedCue.timeMs);
+          } else {
+            const targetCue = selectedTrack.analysis?.cue_points.find(
+              (c) => c.index === action.cueIndex
+            );
+            if (targetCue) {
+              handleJumpAndSeekRef.current(targetCue.time_ms);
+            }
           }
         } else if (action.type === 'step_speed') {
           const currentSpeed = playbackRef.current.speed;
@@ -192,9 +203,9 @@ export const TrackView: React.FC = () => {
 
   const analysis = selectedTrack.analysis;
   const camelot = analysis?.key.camelot;
-  const keyStr = camelot ? `${camelot.number}${camelot.letter}` : '—';
-  const bg = camelot ? camelotColor(camelot) : '#475569';
-  const fg = camelot ? camelotTextColor(camelot) : '#ffffff';
+  const keyStr = camelot ? `${camelot.number}${camelot.letter}` : '-';
+  const bg = camelot ? camelotColor(camelot) : '#22222a';
+  const fg = camelot ? camelotTextColor(camelot) : '#9898a4';
   const inSetlist = setlist.some((e) => e.track_id === selectedTrack.id);
 
   // Determine which segment the current playhead is positioned in
@@ -391,31 +402,35 @@ export const TrackView: React.FC = () => {
           </div>
         </div>
 
-      {/* ── Metrics Row (Key, BPM, Energy, Loudness) ────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5" data-testid="track-metrics-row">
-        {/* BPM */}
-        <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none">
-          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
+      {/* ── Studio Hardware Telemetry Strip (Tempo, Key, Energy, Loudness) ──── */}
+      <div
+        className="grid grid-cols-2 sm:grid-cols-4 bg-[#0a0a0d] border border-[#191922] divide-y sm:divide-y-0 sm:divide-x divide-[#191922] select-none"
+        data-testid="track-metrics-row"
+      >
+        {/* BPM / Tempo */}
+        <div className="p-3.5">
+          <div className="te-silkscreen">
             Tempo (BPM)
           </div>
-          <div className="text-xl font-mono font-bold text-white mt-0.5 tabular-nums" data-testid="track-bpm-value">
-            {analysis?.rhythm.grid.bpm.toFixed(1) ?? '—'}
+          <div className="text-2xl font-mono font-bold text-white te-num tabular-nums mt-1 flex items-baseline gap-1">
+            <span data-testid="track-bpm-value">{analysis?.rhythm.grid.bpm.toFixed(1) ?? '-'}</span>
+            <span className="te-unit text-[#71717a]">BPM</span>
           </div>
-          <div className="text-xs font-mono text-[#a8a8a8] mt-0.5">
+          <div className="text-xs font-mono text-[#9898a4] mt-1">
             {analysis?.rhythm.grid.steady ? 'Steady grid' : 'Variable tempo'}
           </div>
         </div>
 
         {/* Camelot Key & Tuning */}
-        <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none">
-          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
+        <div className="p-3.5">
+          <div className="te-silkscreen">
             Key & Mode
           </div>
-          <div className="text-xl font-mono font-bold text-white mt-0.5 flex items-center gap-2">
+          <div className="text-2xl font-mono font-bold text-white te-num mt-1 flex items-center gap-2">
             <span>{keyStr}</span>
-            <span className="text-xs font-normal text-[#a8a8a8]">({analysis?.key.mode ?? '—'})</span>
+            <span className="text-xs font-normal text-[#9898a4]">({analysis?.key.mode ?? '-'})</span>
           </div>
-          <div className="text-xs font-mono text-[#a8a8a8] mt-0.5">
+          <div className="text-xs font-mono text-[#9898a4] mt-1 te-num">
             {analysis?.key.tuning_cents !== undefined
               ? `${analysis.key.tuning_cents > 0 ? '+' : ''}${analysis.key.tuning_cents.toFixed(1)} cents`
               : '440.0 Hz'}
@@ -423,32 +438,45 @@ export const TrackView: React.FC = () => {
         </div>
 
         {/* Energy Rating */}
-        <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none">
-          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
+        <div className="p-3.5">
+          <div className="te-silkscreen">
             Energy Rating
           </div>
-          <div className="text-xl font-mono font-bold text-[#ededed] mt-0.5" data-testid="track-energy-value">
-            {analysis?.energy_score ?? '—'}<span className="text-xs text-[#a8a8a8] font-sans">/10</span>
+          <div className="text-2xl font-mono font-bold text-[#f2f2f5] te-num mt-1" data-testid="track-energy-value">
+            {analysis?.energy_score ?? '-'}<span className="text-xs text-[#9898a4] font-mono ml-0.5">/10</span>
           </div>
-          <div className="w-full bg-[#181818] h-1 mt-2 overflow-hidden border border-[#222222]">
-            <div
-              className="bg-[#ededed] h-full"
-              style={{ width: `${((analysis?.energy_score ?? 5) / 10) * 100}%` }}
-            />
+          <div className="w-full bg-[#16161c] h-1.5 mt-2.5 flex items-center gap-[2px]">
+            {Array.from({ length: 10 }).map((_, i) => {
+              const active = i < (analysis?.energy_score ?? 5);
+              return (
+                <div
+                  key={i}
+                  className={`flex-1 h-full rounded-[1px] transition-colors ${
+                    active
+                      ? (analysis?.energy_score ?? 5) >= 8
+                        ? 'bg-rose-500'
+                        : (analysis?.energy_score ?? 5) >= 5
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-400'
+                      : 'bg-[#222228]'
+                  }`}
+                />
+              );
+            })}
           </div>
         </div>
 
         {/* Integrated Loudness */}
-        <div className="p-3 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none">
-          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
+        <div className="p-3.5">
+          <div className="te-silkscreen">
             Loudness
           </div>
-          <div className="text-xl font-mono font-bold text-white mt-0.5 tabular-nums">
-            {analysis?.loudness.integrated_lufs.toFixed(1) ?? '—'}{' '}
-            <span className="text-xs font-normal text-[#a8a8a8]">LUFS</span>
+          <div className="text-2xl font-mono font-bold text-white te-num tabular-nums mt-1">
+            {analysis?.loudness.integrated_lufs.toFixed(1) ?? '-'}{' '}
+            <span className="te-unit text-[#71717a]">LUFS</span>
           </div>
-          <div className="text-xs font-mono text-[#a8a8a8] mt-0.5">
-            LRA: {analysis?.loudness.loudness_range.toFixed(1) ?? '—'} LU • Peak: {analysis?.loudness.true_peak.toFixed(1) ?? '—'} dBTP
+          <div className="text-xs font-mono text-[#9898a4] mt-1 te-num">
+            LRA: {analysis?.loudness.loudness_range.toFixed(1) ?? '-'} LU · Peak: {analysis?.loudness.true_peak.toFixed(1) ?? '-'} dBTP
           </div>
         </div>
       </div>
@@ -466,6 +494,7 @@ export const TrackView: React.FC = () => {
           onZoomChange={setZoomLevel}
           onScrollChange={setScrollOffsetMs}
           onSetPlayhead={handleSeek}
+          isCuesOverridden={isFieldOverridden(selectedTrack, 'cues')}
         />
       )}
 
@@ -513,65 +542,18 @@ export const TrackView: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Cue Points Registers A to H ────────────────────────────────────── */}
-      <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] space-y-3">
-        <div className="flex items-center justify-between border-b border-[#181818] pb-2">
-          <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
-            Cue Points (Registers A – H)
-          </h3>
-          <span className="text-xs font-mono text-[#a8a8a8]">
-            Click cue to jump playhead and zoom focus
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2" data-testid="cues-list">
-          {analysis?.cue_points.map((cue) => {
-            const letter = String.fromCharCode(65 + cue.index);
-            const isNearPlayhead =
-              playheadPositionMs !== null && Math.abs(playheadPositionMs - cue.time_ms) < 500;
-
-            return (
-              <div
-                key={cue.index}
-                onClick={() => handleJumpAndSeek(cue.time_ms)}
-                className={`p-2.5 border flex items-start gap-2.5 transition-colors cursor-pointer select-none ${
-                  isNearPlayhead
-                    ? 'bg-[#181818] border-[#38bdf8]'
-                    : 'bg-[#0e0e0e] border-[#1c1c1c] hover:bg-[#141414] hover:border-[#2a2a2a]'
-                }`}
-                title={`Jump to ${letter}: ${cue.label}`}
-                data-testid={`cue-card-${letter}`}
-              >
-                <span
-                  className="w-6 h-6 flex items-center justify-center font-mono font-bold text-xs text-white shrink-0"
-                  style={{ backgroundColor: cue.color_hex }}
-                >
-                  {letter}
-                </span>
-
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-xs text-white truncate font-mono">
-                    {cue.label}
-                  </div>
-                  <div className="font-mono text-xs text-[#4ade80] mt-0.5">
-                    {formatTimeMs(cue.time_ms)}
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-xs text-[#a8a8a8] uppercase font-mono px-1.5 py-0.5 bg-[#141414] border border-[#222222]">
-                      {cue.kind}
-                    </span>
-                    {cue.loop_end_ms && (
-                      <span className="text-xs text-[#22d3ee] font-mono">
-                        +{formatTimeMs(cue.loop_end_ms - cue.time_ms)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* ── Hardware Performance Cue Deck (Standard A – D) ────────────────── */}
+      <FourPointCueDeck
+        track={selectedTrack}
+        playheadPositionMs={playheadPositionMs}
+        isPlaying={playback.state === 'playing'}
+        onJumpToCue={(timeMs, autoPlay) => {
+          handleJumpAndSeek(timeMs);
+          if (autoPlay && playback.state !== 'playing') {
+            void playback.play();
+          }
+        }}
+      />
 
       {/* ── Structural Segments Timeline ────────────────────────────────────── */}
       <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] space-y-3">

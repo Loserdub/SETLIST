@@ -5,6 +5,7 @@ import type { CatalogSummaryStats } from '../../bindings/CatalogSummaryStats';
 import { camelotColor, camelotTextColor } from '../../utils/camelotColor';
 import { useAppStore } from '../../store/useAppStore';
 import { getBackend, trackToSong } from '../../api';
+import { MusicalTopologyView } from './MusicalTopologyView';
 import { SongRelationshipDrawer } from './SongRelationshipDrawer';
 import { BridgeDiscoveryModal } from './BridgeDiscoveryModal';
 import { PathExplorerModal } from './PathExplorerModal';
@@ -161,7 +162,7 @@ export function CatalogExplorerView() {
             <button
               type="button"
               onClick={() => handleOpenBridge()}
-              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#cfcfcf] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#cfcfcf] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none hw-btn"
               data-testid="btn-find-bridges"
             >
               [Find Bridges]
@@ -169,7 +170,7 @@ export function CatalogExplorerView() {
             <button
               type="button"
               onClick={() => handleOpenPath()}
-              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#cfcfcf] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#cfcfcf] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none hw-btn"
               data-testid="btn-build-path"
             >
               [Build Path]
@@ -177,7 +178,7 @@ export function CatalogExplorerView() {
             <button
               type="button"
               onClick={() => setDurationModalOpen(true)}
-              className="px-3 py-1.5 bg-[#1a2d1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] text-[#cfcfcf] hover:text-white border border-[#2c2c2c] uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none hw-btn"
               data-testid="btn-duration-sets"
             >
               [Discover Sets by Duration]
@@ -222,10 +223,22 @@ export function CatalogExplorerView() {
       <div className="flex border-b border-[#1c1c1c] bg-[#0c0c0c] px-4 gap-2 text-xs font-mono">
         <button
           type="button"
+          onClick={() => setActiveTab('topology')}
+          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+            activeTab === 'topology'
+              ? 'border-[#38bdf8] text-white font-semibold'
+              : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
+          }`}
+          data-testid="tab-topology"
+        >
+          Musical Topology
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('catalog')}
-          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 ${
+          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
             activeTab === 'catalog'
-              ? 'border-[#e0e0e0] text-white font-semibold'
+              ? 'border-[#38bdf8] text-white font-semibold'
               : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
           }`}
           data-testid="tab-catalog-songs"
@@ -235,9 +248,9 @@ export function CatalogExplorerView() {
         <button
           type="button"
           onClick={() => setActiveTab('clusters')}
-          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 ${
+          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
             activeTab === 'clusters'
-              ? 'border-[#e0e0e0] text-white font-semibold'
+              ? 'border-[#38bdf8] text-white font-semibold'
               : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
           }`}
           data-testid="tab-clusters"
@@ -247,9 +260,9 @@ export function CatalogExplorerView() {
         <button
           type="button"
           onClick={() => setActiveTab('matrix')}
-          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 ${
+          className={`py-2 px-3 border-b-2 font-medium tracking-wide uppercase transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
             activeTab === 'matrix'
-              ? 'border-[#e0e0e0] text-white font-semibold'
+              ? 'border-[#38bdf8] text-white font-semibold'
               : 'border-transparent text-[#a8a8a8] hover:text-[#cccccc]'
           }`}
           data-testid="tab-matrix"
@@ -260,8 +273,18 @@ export function CatalogExplorerView() {
 
       {/* Main Tab Views & Side-by-Side Split Rail */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        <div className="flex-1 overflow-y-auto p-4 min-w-0">
-        {activeTab === 'catalog' && (
+        {activeTab === 'topology' && (
+          <MusicalTopologyView
+            songs={songs}
+            initialAnchorSongId={inspectedSong?.id}
+            onOpenBridgeModal={(sourceId, targetId) => handleOpenBridge(sourceId, targetId)}
+            onOpenPathModal={(startId) => handleOpenPath(startId)}
+          />
+        )}
+
+        {activeTab !== 'topology' && (
+          <div className="flex-1 overflow-y-auto p-4 min-w-0">
+          {activeTab === 'catalog' && (
           <div className="space-y-4">
             {/* Search & Filter Bar */}
             <div className="p-3 bg-[#111111] border border-[#222222] flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
@@ -472,7 +495,8 @@ export function CatalogExplorerView() {
           />
         )}
         </div>
-        {inspectedSong && (
+        )}
+        {activeTab !== 'topology' && inspectedSong && (
           <aside
             className="w-[440px] xl:w-[500px] border-l border-[#242424] bg-[#0c0c0c] flex flex-col shrink-0 h-full overflow-hidden shadow-2xl transition-all"
             aria-label="Song Relationship Inspector Rail"

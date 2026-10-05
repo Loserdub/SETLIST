@@ -46,6 +46,13 @@ export interface ProgressEvent {
   total: number;
   message?: string;
   trackId?: string;
+  bpm?: number;
+  key?: string;
+  camelot?: string;
+  energy?: number;
+  lufs?: number;
+  fileName?: string;
+  file_name?: string;
 }
 
 /**
@@ -54,6 +61,7 @@ export interface ProgressEvent {
 export interface Backend {
   ping(): Promise<string>;
   scanFolder(path: string): Promise<Track[]>;
+  scanPaths?(paths: string[]): Promise<Track[]>;
   listTracks(): Promise<Track[]>;
   getTrack(id: string): Promise<Track | null>;
   suggestOrder(
@@ -767,16 +775,55 @@ export const mockBackend: Backend = {
   },
 
   scanFolder: async (path: string): Promise<Track[]> => {
-    emitMockProgress({ stage: 'scanning', current: 0, total: 40, message: `Scanning ${path}...` });
+    emitMockProgress({
+      stage: 'scanning',
+      current: 0,
+      total: 40,
+      message: `Scanning ${path}...`,
+      fileName: path.split(/[/\\]/).pop() || 'catalog_source',
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    emitMockProgress({ stage: 'decoding', current: 15, total: 40, message: 'Decoding audio streams...' });
+    emitMockProgress({
+      stage: 'decoding',
+      current: 12,
+      total: 40,
+      message: 'Decoding audio streams...',
+      bpm: 124.0,
+      key: 'G minor',
+      camelot: '6A',
+      energy: 6.5,
+      lufs: -9.2,
+      fileName: '01_deep_pulse.wav',
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    emitMockProgress({ stage: 'analyzing', current: 30, total: 40, message: 'Extracting rhythm, key, and dynamics...' });
+    emitMockProgress({
+      stage: 'analyzing',
+      current: 28,
+      total: 40,
+      message: 'Extracting rhythm, key, and dynamics...',
+      bpm: 126.4,
+      key: 'A minor',
+      camelot: '8A',
+      energy: 7.2,
+      lufs: -8.4,
+      fileName: '02_midnight_resonance.flac',
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    emitMockProgress({ stage: 'analyzing', current: 40, total: 40, message: 'Scan complete!' });
+    emitMockProgress({
+      stage: 'analyzing',
+      current: 40,
+      total: 40,
+      message: 'Scan complete!',
+      bpm: 128.0,
+      key: 'C major',
+      camelot: '8B',
+      energy: 8.0,
+      lufs: -7.5,
+      fileName: '03_apex_drop_master.wav',
+    });
     setLatestScanSummary({
       analyzed: 40,
       skipped: 0,
@@ -786,6 +833,10 @@ export const mockBackend: Backend = {
       completedAt: new Date().toISOString(),
     });
     return [...MOCK_TRACKS_STORE];
+  },
+
+  scanPaths: async (paths: string[]): Promise<Track[]> => {
+    return mockBackend.scanFolder(paths[0] || 'catalog_batch');
   },
 
   listTracks: async (): Promise<Track[]> => {
@@ -1646,6 +1697,11 @@ export const tauriBackend: Backend = {
   scanFolder: async (path: string): Promise<Track[]> => {
     setLatestScanSummary(createEmptyScanSummary());
     return invokeSafe<Track[]>('scan_folder', { path });
+  },
+
+  scanPaths: async (paths: string[]): Promise<Track[]> => {
+    setLatestScanSummary(createEmptyScanSummary());
+    return invokeSafe<Track[]>('scan_paths', { paths });
   },
 
   listTracks: async (): Promise<Track[]> => {

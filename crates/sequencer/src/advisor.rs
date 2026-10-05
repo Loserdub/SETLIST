@@ -433,7 +433,7 @@ pub fn advise_with_cost_and_config(
     let recommended_bars;
 
     if effective_delta > 8.0 || (key_dist > 3 && !is_half_step_lift && !is_tritone) {
-        if has_percussion_free_breakdown(a) {
+        if effective_delta > 8.0 && has_percussion_free_breakdown(a) {
             technique = TransitionTechnique::TempoRamp;
             recommended_bars = 16;
             notes.push(
@@ -443,10 +443,17 @@ pub fn advise_with_cost_and_config(
         } else {
             technique = TransitionTechnique::EchoOutFreeze;
             recommended_bars = 8;
-            notes.push(
-                "Wide tempo or key gap requires intervention. Echo-out freeze outgoing track."
-                    .to_string(),
-            );
+            if effective_delta > 8.0 {
+                notes.push(
+                    "Wide tempo gap requires intervention. Echo-out freeze outgoing track."
+                        .to_string(),
+                );
+            } else {
+                notes.push(
+                    "Wide key gap requires intervention. Echo-out freeze outgoing track."
+                        .to_string(),
+                );
+            }
         }
     } else if is_half_step_lift || is_tritone {
         // Rule 2: Half-step lift or tritone: direct cut, echo-out, or drop-swap. Never long overlap.
@@ -1118,5 +1125,30 @@ mod tests {
         assert_eq!(core.energy_cost, Some(0.0));
         assert_eq!(core.profile, Some(EnergyProfile::LinearRamp));
         assert_eq!(core.de_target, Some(2.0));
+    }
+
+    #[test]
+    fn test_rule_1_intervention_key_gap_same_bpm_echo_out_freeze() {
+        // Track A and B have exact same BPM (128.0), but key distance is 4 (8A to 12A).
+        // Track A has a breakdown segment. Advisor should recommend EchoOutFreeze, NOT TempoRamp.
+        let a = make_test_analysis(
+            128.0,
+            8,
+            CamelotLetter::A,
+            5,
+            vec![Segment {
+                label: SegmentLabel::Breakdown,
+                start_ms: 30000.0,
+                end_ms: 60000.0,
+                energy: 2,
+            }],
+            vec![],
+        );
+        let b = make_test_analysis(128.0, 12, CamelotLetter::A, 5, vec![], vec![]);
+        let advice = advise(&a, &b);
+        assert_eq!(advice.r#type, TransitionTechnique::EchoOutFreeze);
+        assert!(advice.intervention_required);
+        assert!(advice.notes.iter().any(|n| n.contains("Wide key gap")));
+        assert!(!advice.notes.iter().any(|n| n.contains("tempo difference")));
     }
 }

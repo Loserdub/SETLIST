@@ -58,9 +58,16 @@ pub struct PlaybackStateResult {
     /// Current playback speed multiplier.
     #[serde(default = "default_speed")]
     pub speed: f64,
+    /// Current playback master volume multiplier.
+    #[serde(default = "default_volume")]
+    pub volume: f64,
 }
 
 fn default_speed() -> f64 {
+    1.0
+}
+
+fn default_volume() -> f64 {
     1.0
 }
 
@@ -78,6 +85,9 @@ pub struct PlaybackPositionPayload {
     /// Current playback speed multiplier.
     #[serde(default = "default_speed")]
     pub speed: f64,
+    /// Current playback master volume multiplier.
+    #[serde(default = "default_volume")]
+    pub volume: f64,
 }
 
 /// Real-time audio player instance managing a single active track.
@@ -90,6 +100,7 @@ pub struct AudioPlayer {
     beat_grid: Mutex<Option<BeatGrid>>,
     click_enabled: Arc<AtomicBool>,
     speed: Mutex<f32>,
+    volume: Mutex<f32>,
 }
 
 impl Default for AudioPlayer {
@@ -112,6 +123,7 @@ impl AudioPlayer {
             .name("setlist-audio-stream".to_string())
             .spawn(move || match OutputStream::try_default() {
                 Ok((stream, handle)) => {
+                    log::info!("Default audio output stream initialized successfully");
                     let _ = tx.send(Some(handle));
                     let _ = stop_rx.recv();
                     drop(stream);
@@ -133,6 +145,7 @@ impl AudioPlayer {
             beat_grid: Mutex::new(None),
             click_enabled: Arc::new(AtomicBool::new(false)),
             speed: Mutex::new(1.0),
+            volume: Mutex::new(1.0),
         }
     }
 
@@ -204,69 +217,104 @@ impl AudioPlayer {
             .map_err(|e| PlaybackError::SeekError(format!("sink mutex error: {e}")))?;
 
         let current_speed = self.speed();
+        let current_volume = self.volume();
 
         // If sink exists, is paused, and still valid, unpause it
         if let Some(ref sink) = *sink_guard {
             if sink.is_paused() && !sink.empty() {
                 sink.set_speed(current_speed);
+                sink.set_volume(current_volume);
                 sink.play();
                 return Ok(());
             }
         }
 
-        // Recreate output stream handle if missing
-        let handle_guard = self
+        // Recreate or acquire output stream handle if missing
+        let mut handle_guard = self
             .stream_handle
             .lock()
             .map_err(|e| PlaybackError::SeekError(format!("stream_handle mutex error: {e}")))?;
 
-        if let Some(ref handle) = *handle_guard {
-            let file = File::open(&path)?;
-            let reader = BufReader::new(file);
-            let decoder = rodio::Decoder::new(reader)
-                .map_err(|e| PlaybackError::DecodeError(e.to_string()))?;
+        if handle_guard.is_none() {
+            log::info!(
+                "Audio output stream handle is None, attempting on-demand device initialization..."
+            );
+            let (tx, rx) = std::sync::mpsc::channel();
+            let (stop_tx, stop_rx) = std::sync::mpsc::channel();
 
-            let sample_rate = decoder.sample_rate();
-            let channels = decoder.channels();
+            let spawned = std::thread::Builder::new()
+                .name("setlist-audio-stream".to_string())
+                .spawn(move || match OutputStream::try_default() {
+                    Ok((stream, handle)) => {
+                        log::info!("Default audio output stream re-initialized successfully");
+                        let _ = tx.send(Some(handle));
+                        let _ = stop_rx.recv();
+                        drop(stream);
+                    }
+                    Err(e) => {
+                        log::warn!("Audio output device still unavailable on-demand: {e}");
+                        let _ = tx.send(None);
+                    }
+                });
 
-            let new_sink =
-                Sink::try_new(handle).map_err(|e| PlaybackError::DeviceError(e.to_string()))?;
-
-            let beat_grid = self.beat_grid.lock().ok().and_then(|g| g.clone());
-
-            if let Some(grid) = beat_grid {
-                let duration_ms = self.duration_ms();
-                let total_frames = (duration_ms / 1000.0 * f64::from(sample_rate)).round() as usize;
-
-                let mut click_source = ClickTrackSource::new(
-                    grid.beats_ms,
-                    grid.downbeat_flags,
-                    sample_rate,
-                    channels,
-                    total_frames,
-                    self.click_enabled.clone(),
-                );
-
-                if current_pos_ms > 0.0 {
-                    let seek_dur = Duration::from_secs_f64(current_pos_ms / 1000.0);
-                    let _ = click_source.try_seek(seek_dur);
+            if spawned.is_ok() {
+                if let Ok(Some(handle)) = rx.recv() {
+                    if let Ok(mut guard) = self._stream_guard.lock() {
+                        *guard = Some(stop_tx);
+                    }
+                    *handle_guard = Some(handle);
                 }
-
-                let mixed = decoder.mix(click_source);
-                new_sink.append(mixed);
-            } else {
-                new_sink.append(decoder);
             }
+        }
 
+        let handle = handle_guard.as_ref().ok_or_else(|| {
+            PlaybackError::DeviceError("No active audio output device found on system".to_string())
+        })?;
+
+        let file = File::open(&path)?;
+        let reader = BufReader::new(file);
+        let decoder =
+            rodio::Decoder::new(reader).map_err(|e| PlaybackError::DecodeError(e.to_string()))?;
+
+        let sample_rate = decoder.sample_rate();
+        let channels = decoder.channels();
+
+        let new_sink =
+            Sink::try_new(handle).map_err(|e| PlaybackError::DeviceError(e.to_string()))?;
+        new_sink.set_volume(current_volume);
+        new_sink.set_speed(current_speed);
+
+        let beat_grid = self.beat_grid.lock().ok().and_then(|g| g.clone());
+
+        if let Some(grid) = beat_grid {
+            let duration_ms = self.duration_ms();
+            let total_frames = (duration_ms / 1000.0 * f64::from(sample_rate)).round() as usize;
+
+            let click_source = ClickTrackSource::new(
+                grid.beats_ms,
+                grid.downbeat_flags,
+                sample_rate,
+                channels,
+                total_frames,
+                self.click_enabled.clone(),
+            );
+
+            let mixed = decoder.mix(click_source);
             if current_pos_ms > 0.0 {
                 let seek_dur = Duration::from_secs_f64(current_pos_ms / 1000.0);
-                let _ = new_sink.try_seek(seek_dur);
+                new_sink.append(mixed.skip_duration(seek_dur));
+            } else {
+                new_sink.append(mixed);
             }
-
-            new_sink.set_speed(current_speed);
-            new_sink.play();
-            *sink_guard = Some(new_sink);
+        } else if current_pos_ms > 0.0 {
+            let seek_dur = Duration::from_secs_f64(current_pos_ms / 1000.0);
+            new_sink.append(decoder.skip_duration(seek_dur));
+        } else {
+            new_sink.append(decoder);
         }
+
+        new_sink.play();
+        *sink_guard = Some(new_sink);
 
         Ok(())
     }
@@ -295,6 +343,25 @@ impl AudioPlayer {
     #[must_use]
     pub fn speed(&self) -> f32 {
         self.speed.lock().map(|s| *s).unwrap_or(1.0)
+    }
+
+    /// Sets the master playback volume multiplier, clamped to `[0.0, 2.0]`.
+    pub fn set_volume(&self, volume: f32) {
+        let clamped = volume.clamp(0.0, 2.0);
+        if let Ok(mut volume_guard) = self.volume.lock() {
+            *volume_guard = clamped;
+        }
+        if let Ok(sink_guard) = self.sink.lock() {
+            if let Some(ref sink) = *sink_guard {
+                sink.set_volume(clamped);
+            }
+        }
+    }
+
+    /// Returns the current master playback volume multiplier.
+    #[must_use]
+    pub fn volume(&self) -> f32 {
+        self.volume.lock().map(|v| *v).unwrap_or(1.0)
     }
 
     /// Pauses playback, retaining the current position.
@@ -359,10 +426,18 @@ impl AudioPlayer {
             }
         }
 
-        // If try_seek on active sink wasn't supported/failed and we were playing, re-launch from seek position
-        if !sink_seek_succeeded && was_playing {
-            self.stop()?;
-            self.play()?;
+        // If try_seek on active sink wasn't supported/failed:
+        // Clear active sink so next playback starts from the seeked position.
+        // DO NOT call self.stop() because sm.stop() resets base_position_ms to 0.0!
+        if !sink_seek_succeeded {
+            if let Ok(mut sink_guard) = self.sink.lock() {
+                if let Some(sink) = sink_guard.take() {
+                    sink.stop();
+                }
+            }
+            if was_playing {
+                self.play()?;
+            }
         }
 
         Ok(())
@@ -385,12 +460,14 @@ impl AudioPlayer {
                 state,
                 position_ms,
                 speed: f64::from(self.speed()),
+                volume: f64::from(self.volume()),
             }
         } else {
             PlaybackStateResult {
                 state: PlayerState::Stopped,
                 position_ms: 0.0,
                 speed: f64::from(self.speed()),
+                volume: f64::from(self.volume()),
             }
         };
 
@@ -451,5 +528,39 @@ mod tests {
         // Reset to normal
         player.set_speed(1.0).unwrap();
         assert_eq!(player.speed(), 1.0);
+    }
+
+    #[test]
+    fn test_player_volume_setting_and_clamping() {
+        let player = AudioPlayer::new();
+        assert_eq!(player.volume(), 1.0);
+        assert_eq!(player.state().volume, 1.0);
+
+        player.set_volume(0.5);
+        assert_eq!(player.volume(), 0.5);
+        assert_eq!(player.state().volume, 0.5);
+
+        // Clamping to max 2.0
+        player.set_volume(5.0);
+        assert_eq!(player.volume(), 2.0);
+
+        // Clamping to min 0.0
+        player.set_volume(-1.0);
+        assert_eq!(player.volume(), 0.0);
+    }
+
+    #[test]
+    fn test_seek_retains_position_without_resetting_to_zero() {
+        let player = AudioPlayer::new();
+        // Load virtual 180s track
+        player.state_machine.lock().unwrap().load(180_000.0);
+
+        // Seeking to 45,000 ms should clamp and retain 45,000 ms
+        player.seek(45_000.0).unwrap();
+        assert_eq!(player.state().position_ms, 45_000.0);
+
+        // Seeking to 90,000 ms should retain 90,000 ms
+        player.seek(90_000.0).unwrap();
+        assert_eq!(player.state().position_ms, 90_000.0);
     }
 }

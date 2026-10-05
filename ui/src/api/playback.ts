@@ -12,6 +12,7 @@ export interface PlaybackStateResult {
   state: PlayerState;
   position_ms: number;
   speed?: number;
+  volume?: number;
 }
 
 export interface PlaybackPositionPayload {
@@ -19,6 +20,7 @@ export interface PlaybackPositionPayload {
   duration_ms: number;
   state: PlayerState;
   speed?: number;
+  volume?: number;
 }
 
 /**
@@ -33,6 +35,8 @@ export interface PlaybackClient {
   setClick(enabled: boolean): Promise<void>;
   setSpeed(speed: number): Promise<void>;
   getSpeed(): Promise<number>;
+  setVolume(volume: number): Promise<void>;
+  getVolume(): Promise<number>;
   stop(): Promise<void>;
   onPosition(callback: (payload: PlaybackPositionPayload) => void): () => void;
 }
@@ -46,6 +50,7 @@ export class MockPlaybackClient implements PlaybackClient {
   private currentDurationMs = 180_000; // Default 3 minutes
   private currentState: PlayerState = 'stopped';
   private currentSpeed = 1.0;
+  private currentVolume = 1.0;
   private clickEnabled = false;
   private listeners = new Set<(payload: PlaybackPositionPayload) => void>();
   private tickerId: ReturnType<typeof setInterval> | null = null;
@@ -62,6 +67,7 @@ export class MockPlaybackClient implements PlaybackClient {
     durationMs: number;
     state: PlayerState;
     speed: number;
+    volume: number;
     clickEnabled: boolean;
   } {
     return {
@@ -70,6 +76,7 @@ export class MockPlaybackClient implements PlaybackClient {
       durationMs: this.currentDurationMs,
       state: this.currentState,
       speed: this.currentSpeed,
+      volume: this.currentVolume,
       clickEnabled: this.clickEnabled,
     };
   }
@@ -80,6 +87,7 @@ export class MockPlaybackClient implements PlaybackClient {
     this.currentPositionMs = 0;
     this.currentState = 'stopped';
     this.currentSpeed = 1.0;
+    this.currentVolume = 1.0;
     this.clickEnabled = false;
     this.listeners.clear();
   }
@@ -90,6 +98,7 @@ export class MockPlaybackClient implements PlaybackClient {
       duration_ms: this.currentDurationMs,
       state: this.currentState,
       speed: this.currentSpeed,
+      volume: this.currentVolume,
     };
     for (const listener of this.listeners) {
       try {
@@ -164,6 +173,7 @@ export class MockPlaybackClient implements PlaybackClient {
       state: this.currentState,
       position_ms: this.currentPositionMs,
       speed: this.currentSpeed,
+      volume: this.currentVolume,
     };
   }
 
@@ -182,6 +192,16 @@ export class MockPlaybackClient implements PlaybackClient {
     return this.currentSpeed;
   }
 
+  public async setVolume(volume: number): Promise<void> {
+    const clamped = Math.max(0.0, Math.min(2.0, volume));
+    this.currentVolume = clamped;
+    this.emit();
+  }
+
+  public async getVolume(): Promise<number> {
+    return this.currentVolume;
+  }
+
   public async stop(): Promise<void> {
     this.pauseSync();
     this.currentState = 'stopped';
@@ -196,6 +216,7 @@ export class MockPlaybackClient implements PlaybackClient {
       position_ms: this.currentPositionMs,
       duration_ms: this.currentDurationMs,
       state: this.currentState,
+      volume: this.currentVolume,
     });
     return () => {
       this.listeners.delete(callback);
@@ -237,6 +258,14 @@ export class TauriPlaybackClient implements PlaybackClient {
 
   public async getSpeed(): Promise<number> {
     return invoke<number>('playback_get_speed');
+  }
+
+  public async setVolume(volume: number): Promise<void> {
+    return invoke<void>('playback_set_volume', { volume });
+  }
+
+  public async getVolume(): Promise<number> {
+    return invoke<number>('playback_get_volume');
   }
 
   public async stop(): Promise<void> {
@@ -308,6 +337,12 @@ export const playbackSetSpeed = (speed: number): Promise<void> =>
 
 export const playbackGetSpeed = (): Promise<number> =>
   getPlaybackClient().getSpeed();
+
+export const playbackSetVolume = (volume: number): Promise<void> =>
+  getPlaybackClient().setVolume(volume);
+
+export const playbackGetVolume = (): Promise<number> =>
+  getPlaybackClient().getVolume();
 
 export const playbackStop = (): Promise<void> => getPlaybackClient().stop();
 

@@ -290,4 +290,23 @@ describe('Keyboard Event Handler Pure Function', () => {
       direction: 'down',
     });
   });
+
+  it('triggers jump_cue for keys 1 to 8 without shift', () => {
+    expect(handleTrackKeyDown({ key: '1' }, context)).toEqual({
+      type: 'jump_cue',
+      cueIndex: 0,
+    });
+    expect(handleTrackKeyDown({ key: '4' }, context)).toEqual({
+      type: 'jump_cue',
+      cueIndex: 3,
+    });
+    expect(handleTrackKeyDown({ key: '8' }, context)).toEqual({
+      type: 'jump_cue',
+      cueIndex: 7,
+    });
+    // Shift+number or 9/0 should not trigger jump_cue
+    expect(handleTrackKeyDown({ key: '1', shiftKey: true }, context)).toBeNull();
+    expect(handleTrackKeyDown({ key: '9' }, context)).toBeNull();
+    expect(handleTrackKeyDown({ key: '0' }, context)).toBeNull();
+  });
 });

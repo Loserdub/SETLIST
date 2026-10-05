@@ -161,9 +161,123 @@ impl library_db::scan::Analyzer for AnalysisPipeline {
     fn analyze(&self, path: &Path) -> Result<TrackAnalysis, String> {
         let decoded = audio_io::decode_file(path)
             .map_err(|e| format!("Failed to decode audio file {}: {e}", path.display()))?;
-        self.analyze_decoded(&decoded)
-            .map_err(|e| format!("Failed to analyze audio file {}: {e}", path.display()))
+        let mut analysis = self
+            .analyze_decoded(&decoded)
+            .map_err(|e| format!("Failed to analyze audio file {}: {e}", path.display()))?;
+
+        // Metadata scan for BPM / Key: if present, apply them; if absent, default to current DSP method
+        let (tagged_bpm, tagged_key) = audio_io::extract_metadata_bpm_and_key(path);
+
+        if let Some(bpm) = tagged_bpm {
+            apply_metadata_bpm(&mut analysis, bpm, decoded.duration_ms);
+        }
+
+        if let Some(ref raw_key) = tagged_key {
+            if let Some(key) = parse_initial_key(raw_key) {
+                analysis.key = key;
+            }
+        }
+
+        Ok(analysis)
     }
+}
+
+/// Snaps the beat grid to an exact tagged BPM while maintaining the DSP-detected downbeat phase.
+fn apply_metadata_bpm(analysis: &mut TrackAnalysis, bpm: f64, duration_ms: f64) {
+    let beat_period_ms = (60.0 / bpm) * 1000.0;
+    if beat_period_ms <= 0.0 {
+        return;
+    }
+
+    let mut current_ms = analysis.rhythm.grid.first_downbeat_ms;
+    while current_ms - beat_period_ms >= 0.0 {
+        current_ms -= beat_period_ms;
+    }
+    let beat_zero_ms = current_ms;
+    let offset_beats_to_first_db =
+        ((analysis.rhythm.grid.first_downbeat_ms - beat_zero_ms) / beat_period_ms).round() as i64;
+
+    let mut beats_ms = Vec::new();
+    let mut downbeat_flags = Vec::new();
+    let mut beat_count = 0i64;
+
+    while current_ms < duration_ms {
+        beats_ms.push(current_ms);
+        let relative = beat_count - offset_beats_to_first_db;
+        let is_downbeat = relative.rem_euclid(4) == 0;
+        downbeat_flags.push(is_downbeat);
+        current_ms += beat_period_ms;
+        beat_count += 1;
+    }
+
+    analysis.rhythm.grid.bpm = bpm;
+    analysis.rhythm.grid.beats_ms = beats_ms;
+    analysis.rhythm.grid.downbeat_flags = downbeat_flags;
+    analysis.rhythm.grid.steady = true;
+}
+
+/// Parses a container metadata key string (Camelot e.g. "8A", or standard notation e.g. "Am", "C major")
+/// into a structured [`core_types::Key`].
+pub fn parse_initial_key(raw: &str) -> Option<core_types::Key> {
+    use core_types::{Camelot, Mode};
+    use std::str::FromStr;
+
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    // 1. Try Camelot code directly (e.g. "8A", "11B")
+    if let Ok(camelot) = Camelot::from_str(trimmed) {
+        let mode = Mode::from(camelot.letter);
+        let pc = match mode {
+            Mode::Minor => (((camelot.number as i32 - 5) * 7).rem_euclid(12)) as u8,
+            Mode::Major => (((camelot.number as i32 - 8) * 7).rem_euclid(12)) as u8,
+        };
+        return Some(core_types::Key {
+            pitch_class: pc,
+            mode,
+            camelot,
+            tuning_cents: 0.0,
+        });
+    }
+
+    // 2. Try standard musical keys (e.g., "Am", "A minor", "C", "C# minor", "Eb maj")
+    let lower = trimmed.to_lowercase();
+    let is_minor = lower.contains("min") || (lower.ends_with('m') && !lower.ends_with("dim"));
+    let mode = if is_minor { Mode::Minor } else { Mode::Major };
+
+    let root_str = lower
+        .trim_end_matches("minor")
+        .trim_end_matches("major")
+        .trim_end_matches("min")
+        .trim_end_matches("maj")
+        .trim_end_matches('m')
+        .trim();
+
+    let pitch_class = match root_str {
+        "c" => 0,
+        "c#" | "db" => 1,
+        "d" => 2,
+        "d#" | "eb" => 3,
+        "e" => 4,
+        "f" => 5,
+        "f#" | "gb" => 6,
+        "g" => 7,
+        "g#" | "ab" => 8,
+        "a" => 9,
+        "a#" | "bb" => 10,
+        "b" => 11,
+        _ => return None,
+    };
+
+    let camelot = Camelot::from_key(pitch_class, mode).ok()?;
+    Some(core_types::Key {
+        pitch_class,
+        mode,
+        camelot,
+        tuning_cents: 0.0,
+    })
 }
 
 #[cfg(test)]
@@ -306,5 +420,91 @@ mod tests {
         assert!(analysis.rhythm.grid.bpm > 0.0);
         assert!(analysis.energy_score >= 1 && analysis.energy_score <= 10);
         assert!(!analysis.waveform.low.peak.is_empty());
+    }
+
+    #[test]
+    fn test_parse_initial_key_camelot_and_standard() {
+        use core_types::{Camelot, CamelotLetter, Mode};
+
+        // Camelot formats
+        let k8a = parse_initial_key("8A").expect("parse 8A");
+        assert_eq!(k8a.camelot, Camelot::new(8, CamelotLetter::A).unwrap());
+        assert_eq!(k8a.mode, Mode::Minor);
+        assert_eq!(k8a.pitch_class, 9); // A minor
+
+        let k11b = parse_initial_key("11B").expect("parse 11B");
+        assert_eq!(k11b.camelot, Camelot::new(11, CamelotLetter::B).unwrap());
+        assert_eq!(k11b.mode, Mode::Major);
+        assert_eq!(k11b.pitch_class, 9); // A major
+
+        // Standard notation
+        let k_am = parse_initial_key("Am").expect("parse Am");
+        assert_eq!(k_am.camelot, Camelot::new(8, CamelotLetter::A).unwrap());
+
+        let k_a_minor = parse_initial_key("A minor").expect("parse A minor");
+        assert_eq!(
+            k_a_minor.camelot,
+            Camelot::new(8, CamelotLetter::A).unwrap()
+        );
+
+        let k_c_maj = parse_initial_key("C major").expect("parse C major");
+        assert_eq!(k_c_maj.camelot, Camelot::new(8, CamelotLetter::B).unwrap());
+
+        let k_c = parse_initial_key("C").expect("parse C");
+        assert_eq!(k_c.camelot, Camelot::new(8, CamelotLetter::B).unwrap());
+
+        let k_f_sharp_m = parse_initial_key("F#m").expect("parse F#m");
+        assert_eq!(
+            k_f_sharp_m.camelot,
+            Camelot::new(11, CamelotLetter::A).unwrap()
+        );
+
+        // Empty / invalid
+        assert!(parse_initial_key("").is_none());
+        assert!(parse_initial_key("NotAKey").is_none());
+    }
+
+    #[test]
+    fn test_analyzer_trait_with_metadata_bpm_and_key() {
+        use audio_io::lofty::config::WriteOptions;
+        use audio_io::lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
+
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let wav_path = temp_dir.path().join("tagged_track.wav");
+
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 44100,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(&wav_path, spec).expect("create wav");
+        let buffer = generate_synthetic_audio(4.0, 125.0);
+        for &sample in &buffer.samples {
+            let int_sample = (sample * 32767.0).clamp(-32768.0, 32767.0) as i16;
+            writer.write_sample(int_sample).expect("write sample");
+        }
+        writer.finalize().expect("finalize wav");
+
+        // Write ID3v2 tags with BPM 128 and Key 8A
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.insert(TagItem::new(
+            ItemKey::IntegerBpm,
+            ItemValue::Text("128".into()),
+        ));
+        tag.insert(TagItem::new(
+            ItemKey::InitialKey,
+            ItemValue::Text("8A".into()),
+        ));
+        tag.save_to_path(&wav_path, WriteOptions::default())
+            .unwrap();
+
+        let pipeline = AnalysisPipeline::new();
+        let analysis = pipeline.analyze(&wav_path).expect("analyze wav file");
+
+        // Tagged BPM (128.0) and Key (8A) must take priority
+        assert_eq!(analysis.rhythm.grid.bpm, 128.0);
+        assert_eq!(analysis.key.camelot.to_string(), "8A");
+        assert!(analysis.rhythm.grid.steady);
     }
 }

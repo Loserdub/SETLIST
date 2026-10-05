@@ -187,7 +187,12 @@ pub fn order_tracks_with_config(
     }
 
     let matrix = build_cost_matrix_with_config(tracks, weights, profile, config);
-    let order = solve_open_hamiltonian_path(&matrix, &active, pins, seed)?;
+    let mut order = solve_open_hamiltonian_path(&matrix, &active, pins, seed)?;
+
+    // Refine order with dynamic trajectory scoring for non-linear energy profiles
+    if profile != EnergyProfile::LinearRamp && m > 2 {
+        refine_dynamic_trajectory(&mut order, tracks, weights, profile, pins, config);
+    }
 
     // Compute exact per-edge costs along the sequenced path with dynamic profile slopes
     let mut edge_costs = Vec::with_capacity(m.saturating_sub(1));
@@ -207,6 +212,120 @@ pub fn order_tracks_with_config(
         total_cost,
         edge_costs,
     })
+}
+
+#[cfg(test)]
+pub(crate) fn evaluate_dynamic_cost(
+    order: &[usize],
+    tracks: &[TrackAnalysis],
+    weights: &CostWeights,
+    profile: EnergyProfile,
+    config: Option<&CostModelConfig>,
+) -> f32 {
+    let m = order.len();
+    let mut total = 0.0;
+    for k in 0..m.saturating_sub(1) {
+        let u = order[k];
+        let v = order[k + 1];
+        let slope = dE_target(profile, k, m);
+        total += transition_cost_with_config(&tracks[u], &tracks[v], weights, slope, config).total;
+    }
+    total
+}
+
+fn refine_dynamic_trajectory(
+    order: &mut [usize],
+    tracks: &[TrackAnalysis],
+    weights: &CostWeights,
+    profile: EnergyProfile,
+    pins: &TrackPins,
+    config: Option<&CostModelConfig>,
+) {
+    let m = order.len();
+    if m <= 2 {
+        return;
+    }
+
+    let start_idx = if pins.first.is_some() { 1 } else { 0 };
+    let end_idx = if pins.last.is_some() { m - 2 } else { m - 1 };
+
+    if start_idx >= end_idx {
+        return;
+    }
+
+    // Precompute profile slopes for all m - 1 positions
+    let slopes: Vec<f32> = (0..m - 1).map(|k| dE_target(profile, k, m)).collect();
+
+    // Initialize per-edge costs along current order
+    let mut edge_costs: Vec<f32> = Vec::with_capacity(m - 1);
+    for k in 0..m - 1 {
+        let u = order[k];
+        let v = order[k + 1];
+        let cost =
+            transition_cost_with_config(&tracks[u], &tracks[v], weights, slopes[k], config).total;
+        edge_costs.push(cost);
+    }
+
+    let mut improved = true;
+    let mut passes = 0;
+    let mut candidate_edge_costs: Vec<f32> = Vec::with_capacity(m);
+
+    while improved && passes < 10 {
+        improved = false;
+        passes += 1;
+
+        for i in start_idx..end_idx {
+            for j in (i + 1)..=end_idx {
+                // The 2-opt reversal of order[i..=j] only alters edges connecting to or within [i, j]:
+                // - Edge i - 1 (if i > 0): connects order[i - 1] to the new first element order[j]
+                // - Internal edges k in i..j: reversed sequence order[j - (k - i)] -> order[j - (k - i) - 1]
+                // - Edge j (if j < m - 1): connects the new last element order[i] to order[j + 1]
+                // All other edges k < k_start and k > k_end remain strictly identical.
+                let k_start = if i > 0 { i - 1 } else { i };
+                let k_end = if j < m - 1 { j } else { j - 1 };
+
+                candidate_edge_costs.clear();
+                let mut old_cost_sum = 0.0;
+                let mut new_cost_sum = 0.0;
+
+                for k in k_start..=k_end {
+                    let u = if k < i {
+                        order[k]
+                    } else if k <= j {
+                        order[j - (k - i)]
+                    } else {
+                        order[k]
+                    };
+
+                    let next_pos = k + 1;
+                    let v = if next_pos < i {
+                        order[next_pos]
+                    } else if next_pos <= j {
+                        order[j - (next_pos - i)]
+                    } else {
+                        order[next_pos]
+                    };
+
+                    let new_cost = transition_cost_with_config(
+                        &tracks[u], &tracks[v], weights, slopes[k], config,
+                    )
+                    .total;
+                    candidate_edge_costs.push(new_cost);
+                    old_cost_sum += edge_costs[k];
+                    new_cost_sum += new_cost;
+                }
+
+                let delta = new_cost_sum - old_cost_sum;
+                if delta < -1e-4 {
+                    order[i..=j].reverse();
+                    for (idx, k) in (k_start..=k_end).enumerate() {
+                        edge_costs[k] = candidate_edge_costs[idx];
+                    }
+                    improved = true;
+                }
+            }
+        }
+    }
 }
 
 /// Solves the open Hamiltonian path on the given matrix for the active tracks.
@@ -861,6 +980,45 @@ mod tests {
                 Some(&last_idx),
                 "Failed to preserve last anchor with config for n={n}"
             );
+        }
+    }
+
+    #[test]
+    fn test_refine_dynamic_trajectory_differential_cost_parity() {
+        let n = 15;
+        let tracks: Vec<TrackAnalysis> = (0..n)
+            .map(|i| {
+                let bpm = 120.0 + (i as f64) * 1.5;
+                let camelot = ((i % 12) + 1) as u8;
+                let energy = ((i % 10) + 1) as u8;
+                make_dummy_analysis(bpm, camelot, energy)
+            })
+            .collect();
+        let weights = CostWeights::default();
+        let pins = TrackPins::new().with_first(0).with_last(n - 1);
+
+        for profile in [EnergyProfile::Wave, EnergyProfile::PeakPlateau] {
+            let mut order: Vec<usize> = (0..n).collect();
+            let initial_cost = evaluate_dynamic_cost(&order, &tracks, &weights, profile, None);
+
+            refine_dynamic_trajectory(&mut order, &tracks, &weights, profile, &pins, None);
+
+            let refined_cost = evaluate_dynamic_cost(&order, &tracks, &weights, profile, None);
+
+            // 1. Refinement never makes trajectory worse
+            assert!(
+                refined_cost <= initial_cost + 1e-4,
+                "Refined cost ({refined_cost}) must not exceed initial cost ({initial_cost})"
+            );
+
+            // 2. Anchors are strictly preserved
+            assert_eq!(order.first(), Some(&0));
+            assert_eq!(order.last(), Some(&(n - 1)));
+
+            // 3. Permutation integrity (all items present once)
+            let mut sorted = order.clone();
+            sorted.sort_unstable();
+            assert_eq!(sorted, (0..n).collect::<Vec<_>>());
         }
     }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, within, fireEvent, act } from '@testing-library/react';
 import { StageMode } from './StageMode';
 import { formatDuration, formatDurationCompact } from './usePerformanceClock';
 import { useAppStore } from '../../store/useAppStore';
@@ -213,7 +213,7 @@ describe('StageMode Component & Live Performance View', () => {
 
     const transitionInfo = screen.getByTestId('stage-transition-info');
     expect(transitionInfo).toBeDefined();
-    expect(screen.getByText('Fifth')).toBeDefined();
+    expect(within(transitionInfo).getByText('Fifth')).toBeDefined();
     expect(screen.getByText('Δ2.0 BPM')).toBeDefined();
     expect(screen.getByText('Key dist 1')).toBeDefined();
     expect(screen.getByText('16 bars')).toBeDefined();
@@ -277,9 +277,13 @@ describe('StageMode Component & Live Performance View', () => {
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
     expect(useAppStore.getState().stageCurrentIndex).toBe(0);
 
-    // Space -> next
-    fireEvent.keyDown(window, { key: ' ' });
+    // Enter -> next
+    fireEvent.keyDown(window, { key: 'Enter' });
     expect(useAppStore.getState().stageCurrentIndex).toBe(1);
+
+    // Space -> toggles audition play/pause
+    expect(screen.getByTestId('stage-audition-btn')).toBeDefined();
+    fireEvent.keyDown(window, { key: ' ' });
   });
 
   it('opens exit confirmation modal on Escape or exit button click and protects against accidental exit', () => {
@@ -338,6 +342,120 @@ describe('StageMode Component & Live Performance View', () => {
     });
 
     expect(screen.getByTestId('stage-elapsed').textContent).toBe('01:05');
+  });
+
+  it('renders hardware-styled 4-point Performance Cues HUD for current song', () => {
+    const trackWithCues: Track = {
+      ...mockTrack1,
+      analysis: {
+        ...mockTrack1.analysis!,
+        cue_points: [
+          { index: 0, label: 'A: INTRO', time_ms: 500, kind: 'HotCue' as const, color_hex: '#10B981', loop_end_ms: null },
+          { index: 1, label: 'B: BREAKDOWN', time_ms: 30000, kind: 'HotCue' as const, color_hex: '#F59E0B', loop_end_ms: null },
+          { index: 2, label: 'C: DROP', time_ms: 60000, kind: 'HotCue' as const, color_hex: '#EF4444', loop_end_ms: null },
+          { index: 3, label: 'D: MIX OUT', time_ms: 180000, kind: 'HotCue' as const, color_hex: '#06B6D4', loop_end_ms: null },
+        ],
+      },
+    };
+    useAppStore.setState({
+      setlist: [
+        { position: 1, track_id: 't1', track: trackWithCues, transition: null, target_energy: 5 },
+        { position: 2, track_id: 't2', track: mockTrack2, transition: null, target_energy: 5 },
+      ],
+      stageCurrentIndex: 0,
+      isStageMode: true,
+    });
+
+    render(<StageMode />);
+
+    const hud = screen.getByTestId('stage-cues-hud');
+    expect(hud).toBeDefined();
+
+    expect(screen.getByTestId('stage-cue-pad-A').textContent).toContain('INTRO');
+    expect(screen.getByTestId('stage-cue-pad-B').textContent).toContain('BREAKDOWN');
+    expect(screen.getByTestId('stage-cue-pad-C').textContent).toContain('DROP');
+    expect(screen.getByTestId('stage-cue-pad-D').textContent).toContain('MIX OUT');
+  });
+
+  it('renders dedicated hardware telemetry strip with pitch fader offset and harmonic interval', () => {
+    // Track 1 is 126 BPM, Track 2 is 128 BPM -> +1.6%
+    // Track 1 is 8A, Track 2 is 9A with Fifth advice -> +1 Fifth
+    render(<StageMode />);
+
+    expect(screen.getByText('PITCH FADER')).toBeDefined();
+    expect(screen.getByText('+1.6%')).toBeDefined();
+
+    expect(screen.getByText('HARMONIC INTERVAL')).toBeDefined();
+    expect(screen.getByText('8A → 9A')).toBeDefined();
+  });
+
+  it('renders hardware step LED phrase meter with bar and beat progress', () => {
+    render(<StageMode />);
+
+    expect(screen.getByText(/PHRASE METER:/i)).toBeDefined();
+    expect(screen.getByText(/BAR 1 \/ 16/i)).toBeDefined();
+    expect(screen.getByText(/BEAT 1 \/ 4/i)).toBeDefined();
+  });
+
+  it('allows clicking interactive cue pads to trigger audition seeking', () => {
+    const trackWithCues = {
+      ...mockTrack1,
+      analysis: {
+        ...mockTrack1.analysis!,
+        cue_points: [
+          { index: 0, label: 'A: INTRO', time_ms: 500, kind: 'HotCue' as const, color_hex: '#10B981', loop_end_ms: null },
+          { index: 1, label: 'B: BREAKDOWN', time_ms: 30000, kind: 'HotCue' as const, color_hex: '#F59E0B', loop_end_ms: null },
+          { index: 2, label: 'C: DROP', time_ms: 60000, kind: 'HotCue' as const, color_hex: '#EF4444', loop_end_ms: null },
+          { index: 3, label: 'D: MIX OUT', time_ms: 180000, kind: 'HotCue' as const, color_hex: '#06B6D4', loop_end_ms: null },
+        ],
+      },
+    };
+    useAppStore.setState({
+      setlist: [
+        { position: 1, track_id: 't1', track: trackWithCues, transition: null, target_energy: 5 },
+      ],
+      stageCurrentIndex: 0,
+      isStageMode: true,
+      auditionTrackId: 't1',
+      auditionState: 'playing',
+    });
+
+    render(<StageMode />);
+
+    const cueB = screen.getByTestId('stage-cue-pad-B');
+    fireEvent.click(cueB);
+    expect(useAppStore.getState().auditionPositionMs).toBe(30000);
+
+    // Keyboard shortcut 3 -> jumps to Cue C (DROP: 60000ms)
+    fireEvent.keyDown(window, { key: '3' });
+    expect(useAppStore.getState().auditionPositionMs).toBe(60000);
+  });
+
+  it('toggles audition playback via audition button and Space key', async () => {
+    useAppStore.setState({
+      tracks: [mockTrack1],
+      auditionTrackId: 'track-1',
+      auditionState: 'stopped',
+      useMockBackend: true,
+    });
+
+    render(<StageMode />);
+
+    const auditionBtn = screen.getByTestId('stage-audition-btn');
+    expect(auditionBtn.textContent).toContain('[ PLAY ]');
+
+    // Click button to play
+    await act(async () => {
+      fireEvent.click(auditionBtn);
+    });
+    expect(useAppStore.getState().auditionState).toBe('playing');
+    expect(auditionBtn.textContent).toContain('[ PAUSE ]');
+
+    // Press Space to pause
+    await act(async () => {
+      fireEvent.keyDown(window, { key: ' ' });
+    });
+    expect(useAppStore.getState().auditionState).toBe('paused');
   });
 });
 

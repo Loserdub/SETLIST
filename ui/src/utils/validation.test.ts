@@ -414,4 +414,112 @@ describe('Store Synchronization and Persistence (TASK 4 & 5)', () => {
 
     vi.useRealTimers();
   });
+
+  it('re-links track details in active setlist when loadTracks completes after setlist load', async () => {
+    // Simulate setlist loaded before tracks finished loading
+    useAppStore.setState({
+      setlist: [
+        {
+          position: 1,
+          track_id: 'track-001',
+          track: null,
+          transition: null,
+          target_energy: 5.0,
+        },
+      ],
+      tracks: [],
+      hasLoadedTracks: false,
+    });
+
+    await useAppStore.getState().loadTracks(mockBackend as unknown as import('../api').Backend);
+
+    const updated = useAppStore.getState().setlist;
+    expect(updated[0].track).not.toBeNull();
+    expect(updated[0].track?.id).toBe('track-001');
+    expect(updated[0].track?.tags.title).toBeDefined();
+  });
+
+  it('refreshTrackInSetlist updates track in setlist and recomputes transition advice for adjacent tracks', async () => {
+    const tracks = await mockBackend.listTracks();
+    const t1 = JSON.parse(JSON.stringify(tracks[0]));
+    const t2 = JSON.parse(JSON.stringify(tracks[1]));
+    const t3 = JSON.parse(JSON.stringify(tracks[2]));
+
+    const dummyAdvice1: import('../bindings/TransitionAdvice').TransitionAdvice = {
+      transition_type: 'ExactMatch',
+      bpm_delta: 0,
+      key_distance: 0,
+      mode_flip: false,
+      intervention_required: false,
+      loop_extension_recommended: false,
+      phrase_bars: 16,
+      notes: ['initial advice 1'],
+      total_cost: 0.1,
+      tempo_cost: 0.0,
+      key_cost: 0.0,
+      energy_cost: 0.1,
+      timbre_cost: null,
+      de_target: null,
+      weights: null,
+      profile: null,
+    };
+
+    const dummyAdvice2: import('../bindings/TransitionAdvice').TransitionAdvice = {
+      ...dummyAdvice1,
+      notes: ['initial advice 2'],
+    };
+
+    useAppStore.setState({
+      tracks: [t1, t2, t3],
+      selectedTrackId: t2.id,
+      selectedTrack: t2,
+      setlist: [
+        { position: 1, track_id: t1.id, track: t1, transition: null, target_energy: 5.0 },
+        { position: 2, track_id: t2.id, track: t2, transition: dummyAdvice1, target_energy: 6.0 },
+        { position: 3, track_id: t3.id, track: t3, transition: dummyAdvice2, target_energy: 7.0 },
+      ],
+      setlistVersion: 1,
+    });
+
+    const mockGetAdvice = vi.fn(async (fromId: string, toId: string) => ({
+      ...dummyAdvice1,
+      notes: [`recomputed ${fromId}->${toId}`],
+    }));
+
+    const customBackend = {
+      ...mockBackend,
+      getAdvice: mockGetAdvice,
+      saveActiveSetlist: vi.fn(async () => {}),
+    } as unknown as import('../api').Backend;
+
+    const freshT2 = JSON.parse(JSON.stringify(t2));
+    freshT2.analysis.rhythm.grid.bpm = 135.0;
+
+    await useAppStore.getState().refreshTrackInSetlist(freshT2, customBackend);
+
+    const state = useAppStore.getState();
+    expect(state.selectedTrack?.analysis?.rhythm.grid.bpm).toBe(135.0);
+    expect(state.tracks.find((t) => t.id === t2.id)?.analysis?.rhythm.grid.bpm).toBe(135.0);
+    expect(state.setlist[1].track?.analysis?.rhythm.grid.bpm).toBe(135.0);
+
+    // Verify both adjacent transitions were recomputed
+    expect(mockGetAdvice).toHaveBeenCalledWith(
+      t1.id,
+      t2.id,
+      expect.anything(),
+      expect.anything(),
+      expect.anything()
+    );
+    expect(mockGetAdvice).toHaveBeenCalledWith(
+      t2.id,
+      t3.id,
+      expect.anything(),
+      expect.anything(),
+      expect.anything()
+    );
+
+    expect(state.setlist[1].transition?.notes[0]).toBe(`recomputed ${t1.id}->${t2.id}`);
+    expect(state.setlist[2].transition?.notes[0]).toBe(`recomputed ${t2.id}->${t3.id}`);
+  });
 });
+

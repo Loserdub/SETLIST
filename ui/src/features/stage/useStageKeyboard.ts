@@ -6,15 +6,21 @@ import { useEffect, useCallback } from 'react';
  * PageDown/PageUp, arrow keys, or Space) as well as standard keyboard input.
  */
 export const DEFAULT_KEY_BINDINGS = {
-  next: ['ArrowRight', 'ArrowDown', 'PageDown', ' '],
-  prev: ['ArrowLeft', 'ArrowUp', 'PageUp'],
+  next: ['ArrowRight', 'ArrowDown', 'PageDown', 'Enter'],
+  prev: ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'],
   exit: ['Escape'],
+  toggleSetlist: ['s', 'S'],
+  playPause: [' '],
+  cues: ['1', '2', '3', '4'],
 } as const;
 
 export interface StageKeyBindings {
   next: readonly string[];
   prev: readonly string[];
   exit: readonly string[];
+  toggleSetlist?: readonly string[];
+  playPause?: readonly string[];
+  cues?: readonly string[];
 }
 
 interface UseStageKeyboardOptions {
@@ -22,19 +28,25 @@ interface UseStageKeyboardOptions {
   onNext: () => void;
   onPrev: () => void;
   onExit: () => void;
+  onToggleSetlist?: () => void;
+  onPlayPause?: () => void;
+  onCue?: (slot: 'A' | 'B' | 'C' | 'D') => void;
   bindings?: StageKeyBindings;
 }
 
 /**
  * Keyboard navigation hook for Stage Mode.
  * Captures keyboard events and maps them to navigation actions.
- * Supports configurable key bindings for foot pedal compatibility.
+ * Supports configurable key bindings for foot pedal compatibility and DAW-style transport.
  */
 export function useStageKeyboard({
   active,
   onNext,
   onPrev,
   onExit,
+  onToggleSetlist,
+  onPlayPause,
+  onCue,
   bindings = DEFAULT_KEY_BINDINGS,
 }: UseStageKeyboardOptions) {
   const handleKeyDown = useCallback(
@@ -49,6 +61,11 @@ export function useStageKeyboard({
         return;
       }
 
+      if (bindings.playPause?.includes(e.key) && onPlayPause) {
+        e.preventDefault();
+        onPlayPause();
+        return;
+      }
       if (bindings.next.includes(e.key)) {
         e.preventDefault();
         onNext();
@@ -64,8 +81,25 @@ export function useStageKeyboard({
         onExit();
         return;
       }
+      if (bindings.toggleSetlist && bindings.toggleSetlist.includes(e.key) && onToggleSetlist) {
+        e.preventDefault();
+        onToggleSetlist();
+        return;
+      }
+      if (bindings.cues?.includes(e.key) && onCue) {
+        e.preventDefault();
+        const map: Record<string, 'A' | 'B' | 'C' | 'D'> = {
+          '1': 'A',
+          '2': 'B',
+          '3': 'C',
+          '4': 'D',
+        };
+        const slot = map[e.key];
+        if (slot) onCue(slot);
+        return;
+      }
     },
-    [onNext, onPrev, onExit, bindings]
+    [onNext, onPrev, onExit, onToggleSetlist, onPlayPause, onCue, bindings]
   );
 
   useEffect(() => {

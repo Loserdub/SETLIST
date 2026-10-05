@@ -161,10 +161,11 @@ export const WaveformMinimap: React.FC<WaveformMinimapProps> = ({
       }
     }
 
-    // 3. Cue points marker dots
+    // 3. Cue points marker dots (Canonical Four-Point standard)
+    const canonicalCueColors = ['#10B981', '#F59E0B', '#EF4444', '#06B6D4'];
     for (const cue of analysis.cue_points) {
       const cx = (cue.time_ms / durationMs) * width;
-      ctx.fillStyle = cue.color_hex;
+      ctx.fillStyle = cue.index < 4 ? canonicalCueColors[cue.index] : cue.color_hex;
       ctx.beginPath();
       ctx.arc(cx, centerY, 3, 0, Math.PI * 2);
       ctx.fill();

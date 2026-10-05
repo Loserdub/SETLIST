@@ -91,7 +91,7 @@ pub trait Analyzer: Send + Sync {
 }
 
 /// Progress events emitted during folder scanning and background analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ScanEvent {
     /// A new audio file was discovered and queued for analysis.
     Queued {
@@ -109,6 +109,16 @@ pub enum ScanEvent {
         path: PathBuf,
         /// Database track identifier assigned to the track.
         track_id: String,
+        /// Estimated tempo in beats per minute.
+        bpm: Option<f64>,
+        /// Musical key name (e.g. "A minor").
+        key: Option<String>,
+        /// Camelot harmonic code (e.g. "8A").
+        camelot: Option<String>,
+        /// Energy score (1 to 10).
+        energy: Option<u8>,
+        /// Integrated loudness in LUFS.
+        lufs: Option<f32>,
     },
     /// Analysis or database insertion failed for the given audio file.
     Failed {
@@ -198,14 +208,14 @@ struct ScanJob {
     hash: String,
 }
 
-/// Scans a directory, queues unanalyzed audio files, executes analysis on a worker pool,
-/// and saves the resulting tracks and analyses into the SQLite database.
+/// Scans multiple paths (folders or individual audio files), queues unanalyzed audio files,
+/// executes analysis on a worker pool, and saves the resulting tracks and analyses into the SQLite database.
 ///
 /// # Errors
 /// Returns `DbError` on database errors.
-pub fn scan_folder<P, A>(
+pub fn scan_paths<P, A>(
     conn: &rusqlite::Connection,
-    folder: P,
+    paths: &[P],
     analyzer: Arc<A>,
     config: &ScanConfig,
     cancel_token: Option<CancellationToken>,
@@ -218,24 +228,32 @@ where
     let cancel = cancel_token.unwrap_or_default();
     let mut summary = ScanSummary::default();
 
-    // 1. Walk folder and discover candidate audio files
+    // 1. Walk folders and discover candidate audio files
     let mut discovered_paths = Vec::new();
-    for entry in walkdir::WalkDir::new(folder)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        if cancel.is_cancelled() {
-            summary.cancelled = true;
-            return Ok(summary);
-        }
-        if entry.file_type().is_file() && is_supported_audio_file(entry.path()) {
-            discovered_paths.push(entry.path().to_path_buf());
+    for target in paths {
+        let p = target.as_ref();
+        if p.is_dir() {
+            for entry in walkdir::WalkDir::new(p)
+                .follow_links(true)
+                .into_iter()
+                .filter_map(Result::ok)
+            {
+                if cancel.is_cancelled() {
+                    summary.cancelled = true;
+                    return Ok(summary);
+                }
+                if entry.file_type().is_file() && is_supported_audio_file(entry.path()) {
+                    discovered_paths.push(entry.path().to_path_buf());
+                }
+            }
+        } else if p.is_file() && is_supported_audio_file(p) {
+            discovered_paths.push(p.to_path_buf());
         }
     }
 
-    // Sort paths for deterministic job processing
+    // Sort and deduplicate paths for deterministic job processing
     discovered_paths.sort();
+    discovered_paths.dedup();
 
     // 2. Hash files and evaluate skip logic
     let mut jobs = Vec::new();
@@ -272,6 +290,13 @@ where
         )?;
 
         if already_analyzed {
+            // If the track path changed (e.g. portable SSD mounted under a new drive letter),
+            // update the path in SQLite so playback and exports immediately locate the file.
+            let path_str = path.to_string_lossy();
+            let _ = conn.execute(
+                "UPDATE tracks SET path = ?1, updated_at = datetime('now') WHERE hash = ?2 AND path != ?1",
+                rusqlite::params![path_str.as_ref(), hash],
+            );
             summary.skipped += 1;
             if let Some(ref tx) = event_sender {
                 let _ = tx.send(ScanEvent::Skipped { path });
@@ -349,6 +374,14 @@ where
         match result {
             Ok(analysis) => {
                 let duration_ms = analysis.segments.last().map(|s| s.end_ms).unwrap_or(0.0);
+                let bpm = Some(analysis.rhythm.grid.bpm);
+                let key_name = analysis.key.camelot.to_standard_name().to_string();
+                let camelot_key = format!(
+                    "{}{:?}",
+                    analysis.key.camelot.number, analysis.key.camelot.letter
+                );
+                let energy = Some(analysis.energy_score);
+                let lufs = Some(analysis.loudness.integrated_lufs);
                 let track = Track {
                     id: String::new(),
                     path: job.path.to_string_lossy().to_string(),
@@ -367,6 +400,11 @@ where
                             let _ = tx.send(ScanEvent::Done {
                                 path: job.path,
                                 track_id,
+                                bpm,
+                                key: Some(key_name),
+                                camelot: Some(camelot_key),
+                                energy,
+                                lufs,
                             });
                         }
                     }
@@ -405,6 +443,33 @@ where
     Ok(summary)
 }
 
+/// Scans a directory, queues unanalyzed audio files, executes analysis on a worker pool,
+/// and saves the resulting tracks and analyses into the SQLite database.
+///
+/// # Errors
+/// Returns `DbError` on database errors.
+pub fn scan_folder<P, A>(
+    conn: &rusqlite::Connection,
+    folder: P,
+    analyzer: Arc<A>,
+    config: &ScanConfig,
+    cancel_token: Option<CancellationToken>,
+    event_sender: Option<mpsc::Sender<ScanEvent>>,
+) -> Result<ScanSummary, DbError>
+where
+    P: AsRef<Path>,
+    A: Analyzer + 'static,
+{
+    scan_paths(
+        conn,
+        &[folder.as_ref().to_path_buf()],
+        analyzer,
+        config,
+        cancel_token,
+        event_sender,
+    )
+}
+
 /// Scanner service wrapping analyzer and scan configuration.
 #[derive(Debug, Clone)]
 pub struct Scanner<A> {
@@ -440,6 +505,27 @@ impl<A: Analyzer + 'static> Scanner<A> {
         scan_folder(
             conn,
             folder,
+            Arc::clone(&self.analyzer),
+            &self.config,
+            cancel_token,
+            event_sender,
+        )
+    }
+
+    /// Scans multiple paths (folders or individual audio files) using the configured analyzer and settings.
+    ///
+    /// # Errors
+    /// Returns `DbError` on database errors.
+    pub fn scan_paths<P: AsRef<Path>>(
+        &self,
+        conn: &rusqlite::Connection,
+        paths: &[P],
+        cancel_token: Option<CancellationToken>,
+        event_sender: Option<mpsc::Sender<ScanEvent>>,
+    ) -> Result<ScanSummary, DbError> {
+        scan_paths(
+            conn,
+            paths,
             Arc::clone(&self.analyzer),
             &self.config,
             cancel_token,
@@ -855,5 +941,73 @@ mod tests {
         assert!(summary.cancelled);
         // It shouldn't have finished all 10 tracks
         assert!(summary.succeeded < 10);
+    }
+
+    #[test]
+    fn test_rescan_moved_or_relocated_file_updates_path() {
+        let conn = test_db();
+        let temp1 = tempfile::tempdir().unwrap();
+        let temp2 = tempfile::tempdir().unwrap();
+
+        let path1 = temp1.path().join("song.mp3");
+        let path2 = temp2.path().join("song.mp3");
+
+        // Same content in both locations (simulating external SSD drive letter change)
+        File::create(&path1)
+            .unwrap()
+            .write_all(b"audio_bytes_123")
+            .unwrap();
+        File::create(&path2)
+            .unwrap()
+            .write_all(b"audio_bytes_123")
+            .unwrap();
+
+        let config = ScanConfig {
+            num_workers: 2,
+            analysis_version: "v1".to_string(),
+        };
+
+        // First scan from initial location
+        let sum1 = scan_folder(
+            &conn,
+            temp1.path(),
+            Arc::new(SuccessAnalyzer),
+            &config,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(sum1.succeeded, 1);
+
+        let initial_track: String = conn
+            .query_row(
+                "SELECT path FROM tracks WHERE hash = ?1",
+                [compute_file_hash(&path1).unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(initial_track, path1.to_string_lossy());
+
+        // Second scan from relocated directory (e.g. SSD mounted at new mountpoint)
+        let sum2 = scan_folder(
+            &conn,
+            temp2.path(),
+            Arc::new(SuccessAnalyzer),
+            &config,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(sum2.skipped, 1); // skipped DSP analysis!
+
+        // Path in database must be updated to the new path!
+        let updated_path: String = conn
+            .query_row(
+                "SELECT path FROM tracks WHERE hash = ?1",
+                [compute_file_hash(&path2).unwrap()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(updated_path, path2.to_string_lossy());
     }
 }

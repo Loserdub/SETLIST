@@ -49,7 +49,7 @@ describe('TrackView Component', () => {
 
     const track = useAppStore.getState().selectedTrack!;
     expect(screen.getByText(track.tags.title!)).toBeDefined();
-    expect(screen.getByText(new RegExp(track.tags.artist!, 'i'))).toBeDefined();
+    expect(screen.getByText(track.tags.artist!, { exact: true })).toBeDefined();
 
     // Check Camelot Key Badge
     const keyBadge = screen.getByTestId('track-key-badge');
@@ -244,6 +244,57 @@ describe('TrackView Component', () => {
     expect(mockPlaybackClient.getMockState().speed).toBe(1.0);
   });
 
+  it('toggles playback from quick transport button in waveform header', async () => {
+    render(<TrackView />);
+
+    const quickBtn = screen.getByTestId('waveform-quick-play-pause-btn');
+    expect(quickBtn.textContent).toContain('PLAY');
+
+    await act(async () => {
+      fireEvent.click(quickBtn);
+    });
+    expect(mockPlaybackClient.getMockState().state).toBe('playing');
+    expect(quickBtn.textContent).toContain('PAUSE');
+
+    await act(async () => {
+      fireEvent.click(quickBtn);
+    });
+    expect(mockPlaybackClient.getMockState().state).toBe('paused');
+    expect(quickBtn.textContent).toContain('PLAY');
+  });
+
+  it('responds to number key 1 to jump to Cue A', async () => {
+    render(<TrackView />);
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }));
+    });
+
+    const playheadMs = useTrackState.getState().playheadPositionMs;
+    expect(playheadMs).toBe(120);
+    expect(mockPlaybackClient.getMockState().positionMs).toBe(120);
+  });
+
+  it('displays Teenage Engineering hover tooltip and lingers on mouse leave', async () => {
+    render(<TrackView />);
+
+    const canvasContainer = screen.getByTestId('waveform-canvas-container');
+    await act(async () => {
+      fireEvent.mouseMove(canvasContainer, { clientX: 200, clientY: 50 });
+    });
+
+    const tooltip = screen.getByTestId('waveform-te-tooltip');
+    expect(tooltip).toBeDefined();
+
+    // Mouse leave: tooltip should still be present with HOLD 2S linger
+    await act(async () => {
+      fireEvent.mouseLeave(canvasContainer);
+    });
+
+    expect(screen.getByTestId('waveform-te-tooltip')).toBeDefined();
+    expect(screen.getByText(/HOLD 2S/i)).toBeDefined();
+  });
+
   it('stops playback when unmounting component', async () => {
     const { unmount } = render(<TrackView />);
 
@@ -257,5 +308,54 @@ describe('TrackView Component', () => {
     });
 
     expect(mockPlaybackClient.getMockState().state).toBe('stopped');
+  });
+
+  it('allows in-app editing of track title and artist, saving overrides, and resetting', async () => {
+    render(<TrackView />);
+
+    const editBtn = screen.getByTestId('edit-track-metadata-btn');
+    expect(editBtn).toBeDefined();
+
+    // Click edit info
+    await act(async () => {
+      fireEvent.click(editBtn);
+    });
+
+    const titleInput = screen.getByTestId('edit-title-input') as HTMLInputElement;
+    const artistInput = screen.getByTestId('edit-artist-input') as HTMLInputElement;
+    expect(titleInput).toBeDefined();
+    expect(artistInput).toBeDefined();
+
+    // Edit title and artist
+    await act(async () => {
+      fireEvent.change(titleInput, { target: { value: 'Club Mix 2026' } });
+      fireEvent.change(artistInput, { target: { value: 'Daft Punk & Friends' } });
+    });
+
+    // Save
+    const saveBtn = screen.getByTestId('save-metadata-btn');
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    // Verify updated title and custom badge
+    expect(screen.getByText('Club Mix 2026')).toBeDefined();
+    expect(screen.getByText('Custom Title')).toBeDefined();
+    expect(screen.getByText('Daft Punk & Friends')).toBeDefined();
+    expect(screen.getByText('Custom Artist')).toBeDefined();
+
+    // Re-open and reset to default
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('edit-track-metadata-btn'));
+    });
+
+    const resetBtn = screen.getByRole('button', { name: /Reset to Default/i });
+    await act(async () => {
+      fireEvent.click(resetBtn);
+    });
+
+    // Verify original title restored
+    expect(screen.getByText('One More Time')).toBeDefined();
+    expect(screen.queryByText('Custom Title')).toBeNull();
   });
 });

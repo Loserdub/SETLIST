@@ -24,6 +24,16 @@ pub fn resolve_cues(entry: &SetlistEntry) -> (&'static str, &'static str) {
     if let Some(trans) = &entry.transition {
         let mut out_cue = if trans.loop_extension_recommended {
             "H"
+        } else if let Some(analysis) = entry.track.as_ref().and_then(|t| t.analysis.as_ref()) {
+            if analysis.cue_points.iter().any(|c| {
+                c.index == 3
+                    && (c.label.to_lowercase().contains("mix")
+                        || c.label.to_lowercase().contains("out"))
+            }) {
+                "D"
+            } else {
+                "G"
+            }
         } else {
             "G"
         };
@@ -31,29 +41,53 @@ pub fn resolve_cues(entry: &SetlistEntry) -> (&'static str, &'static str) {
 
         for note in &trans.notes {
             let lower = note.to_lowercase();
-            if lower.contains("out") {
-                if lower.contains("cue h")
-                    || lower.contains("out: h")
-                    || lower.contains("out cue: h")
-                {
-                    out_cue = "H";
-                } else if lower.contains("cue g")
-                    || lower.contains("out: g")
-                    || lower.contains("out cue: g")
-                {
-                    out_cue = "G";
-                }
+            // Out cue detection (D is Mix Out, H is Loop, G is legacy Outro)
+            if lower.contains("out: d")
+                || lower.contains("out cue: d")
+                || lower.contains("mix out: cue d")
+                || lower.contains("mix-out: cue d")
+                || (lower.contains("cue d") && !lower.contains("in: cue d"))
+                || lower.contains("mix out")
+                || lower.contains("mix-out")
+            {
+                out_cue = "D";
+            } else if lower.contains("out: h")
+                || lower.contains("out cue: h")
+                || lower.contains("cue h")
+            {
+                out_cue = "H";
+            } else if lower.contains("out: g")
+                || lower.contains("out cue: g")
+                || lower.contains("cue g")
+            {
+                out_cue = "G";
             }
-            if lower.contains("in") {
-                if lower.contains("cue b") || lower.contains("in: b") || lower.contains("in cue: b")
-                {
-                    in_cue = "B";
-                } else if lower.contains("cue a")
-                    || lower.contains("in: a")
-                    || lower.contains("in cue: a")
-                {
-                    in_cue = "A";
-                }
+
+            // In cue detection (A is Intro, B is Breakdown, C is Drop)
+            if lower.contains("in: d") || lower.contains("in cue: d") || lower.contains("enter: d")
+            {
+                in_cue = "D";
+            } else if lower.contains("in: c")
+                || lower.contains("in cue: c")
+                || lower.contains("enter: c")
+                || lower.contains("cue c")
+                || lower.contains("drop")
+            {
+                in_cue = "C";
+            } else if lower.contains("in: b")
+                || lower.contains("in cue: b")
+                || lower.contains("enter: b")
+                || lower.contains("cue b")
+                || lower.contains("breakdown")
+            {
+                in_cue = "B";
+            } else if lower.contains("in: a")
+                || lower.contains("in cue: a")
+                || lower.contains("enter: a")
+                || lower.contains("cue a")
+                || lower.contains("intro")
+            {
+                in_cue = "A";
             }
         }
 
@@ -529,5 +563,33 @@ mod tests {
         let _ = fs::remove_file(csv_path);
         let _ = fs::remove_file(md_path);
         let _ = fs::remove_dir(temp_dir);
+    }
+
+    #[test]
+    fn test_four_point_cue_resolution() {
+        let trans = TransitionAdvice {
+            transition_type: TransitionType::ExactMatch,
+            bpm_delta: 0.0,
+            key_distance: 0,
+            mode_flip: false,
+            intervention_required: false,
+            loop_extension_recommended: false,
+            phrase_bars: 16,
+            notes: vec!["Mix out: Cue D, In: Cue C (Drop)".to_string()],
+            ..Default::default()
+        };
+        let e = make_entry(
+            2,
+            "Drop Track",
+            "Artist",
+            126.0,
+            8,
+            CamelotLetter::A,
+            7,
+            Some(trans),
+        );
+        let (out_cue, in_cue) = resolve_cues(&e);
+        assert_eq!(out_cue, "D");
+        assert_eq!(in_cue, "C");
     }
 }

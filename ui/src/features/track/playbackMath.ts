@@ -4,7 +4,8 @@ import type { PlayerState } from '../../api/playback';
 export type TrackKeyboardAction =
   | { type: 'toggle_play_pause' }
   | { type: 'seek'; targetMs: number }
-  | { type: 'step_speed'; direction: 'up' | 'down' };
+  | { type: 'step_speed'; direction: 'up' | 'down' }
+  | { type: 'jump_cue'; cueIndex: number };
 
 export interface KeyboardActionInput {
   key: string;
@@ -180,6 +181,12 @@ export function handleTrackKeyDown(
 
   if (input.key === ']' || (input.shiftKey && (input.key === '>' || input.key === '.'))) {
     return { type: 'step_speed', direction: 'up' };
+  }
+
+  // Number keys 1-8: Trigger Hot Cue jump to Cue A-H (registers 0-7)
+  if (!input.shiftKey && input.key >= '1' && input.key <= '8') {
+    const cueIndex = parseInt(input.key, 10) - 1;
+    return { type: 'jump_cue', cueIndex };
   }
 
   return null;

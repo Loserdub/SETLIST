@@ -1,7 +1,7 @@
 //! Tauri command handlers and background event emitter for audio playback.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock};
 
 use playback::{
@@ -14,8 +14,8 @@ use crate::state::AppState;
 /// Shared global audio player instance.
 static PLAYER: OnceLock<Arc<AudioPlayer>> = OnceLock::new();
 
-/// Flag tracking whether the 50 ms position emitter background thread is currently active.
-static TICKER_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Generational counter tracking the active ticker thread.
+static TICKER_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Returns the singleton audio player handle.
 #[must_use]
@@ -23,33 +23,32 @@ pub fn get_player() -> &'static Arc<AudioPlayer> {
     PLAYER.get_or_init(|| Arc::new(AudioPlayer::new()))
 }
 
-/// Spawns a background thread emitting `\"playback-position\"` events every 50 ms
+/// Spawns a background thread emitting "playback-position" events every 100 ms
 /// while playback is active.
 fn ensure_ticker_running(app: AppHandle) {
-    if TICKER_ACTIVE
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_ok()
-    {
-        let player = Arc::clone(get_player());
-        std::thread::spawn(move || {
-            while TICKER_ACTIVE.load(Ordering::SeqCst) {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                let state_res = player.state();
-                let payload = PlaybackPositionPayload {
-                    position_ms: state_res.position_ms,
-                    duration_ms: player.duration_ms(),
-                    state: state_res.state,
-                    speed: state_res.speed,
-                };
-                let _ = app.emit("playback-position", payload);
-
-                if state_res.state != PlayerState::Playing {
-                    TICKER_ACTIVE.store(false, Ordering::SeqCst);
-                    break;
-                }
+    let current_gen = TICKER_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let player = Arc::clone(get_player());
+    std::thread::spawn(move || {
+        while TICKER_GENERATION.load(Ordering::SeqCst) == current_gen {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if TICKER_GENERATION.load(Ordering::SeqCst) != current_gen {
+                break;
             }
-        });
-    }
+            let state_res = player.state();
+            let payload = PlaybackPositionPayload {
+                position_ms: state_res.position_ms,
+                duration_ms: player.duration_ms(),
+                state: state_res.state,
+                speed: state_res.speed,
+                volume: state_res.volume,
+            };
+            let _ = app.emit("playback-position", payload);
+
+            if state_res.state != PlayerState::Playing {
+                break;
+            }
+        }
+    });
 }
 
 /// Core implementation of loading a track into the audio player.
@@ -57,26 +56,47 @@ fn ensure_ticker_running(app: AppHandle) {
 /// # Errors
 /// Returns error if track does not exist in library database or audio file is missing on disk.
 pub fn playback_load_core(state: &AppState, track_id: &str) -> Result<PlaybackLoadResult, String> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| format!("database mutex error: {e}"))?;
+    log::info!("[playback] Loading track ID '{track_id}'");
+    let conn = state.db.lock().map_err(|e| {
+        let msg = format!("database mutex error: {e}");
+        log::error!("[playback] {msg}");
+        msg
+    })?;
 
     let track = library_db::get_track(&conn, track_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Track not found in database: {track_id}"))?;
+        .map_err(|e| {
+            let msg = e.to_string();
+            log::error!("[playback] Failed to query track '{track_id}': {msg}");
+            msg
+        })?
+        .ok_or_else(|| {
+            let msg = format!("Track not found in database: {track_id}");
+            log::warn!("[playback] {msg}");
+            msg
+        })?;
 
     let path_obj = Path::new(&track.path);
     if !path_obj.exists() {
-        return Err(format!("Audio file not found on disk: {}", track.path));
+        let msg = format!("Audio file not found on disk: {}", track.path);
+        log::error!("[playback] {msg}");
+        return Err(msg);
     }
 
     let beat_grid = track.analysis.as_ref().map(|a| a.rhythm.grid.clone());
     let player = get_player();
     let res = player
         .load(&track.path, track.duration_ms, beat_grid)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("Failed to load audio into player: {e}");
+            log::error!("[playback] {msg}");
+            msg
+        })?;
 
+    log::info!(
+        "[playback] Successfully loaded '{}' (duration: {:.1}s)",
+        track.path,
+        res.duration_ms / 1000.0
+    );
     Ok(res)
 }
 
@@ -85,7 +105,12 @@ pub fn playback_load_core(state: &AppState, track_id: &str) -> Result<PlaybackLo
 /// # Errors
 /// Returns error if audio decoder or device fails.
 pub fn playback_play_core() -> Result<(), String> {
-    get_player().play().map_err(|e| e.to_string())
+    log::info!("[playback] Starting audio playback");
+    get_player().play().map_err(|e| {
+        let msg = format!("Playback play failed: {e}");
+        log::error!("[playback] {msg}");
+        msg
+    })
 }
 
 /// Core implementation of pausing playback.
@@ -93,7 +118,12 @@ pub fn playback_play_core() -> Result<(), String> {
 /// # Errors
 /// Returns error if pausing fails.
 pub fn playback_pause_core() -> Result<(), String> {
-    get_player().pause().map_err(|e| e.to_string())
+    log::info!("[playback] Pausing audio playback");
+    get_player().pause().map_err(|e| {
+        let msg = format!("Playback pause failed: {e}");
+        log::error!("[playback] {msg}");
+        msg
+    })
 }
 
 /// Core implementation of seeking to a position in milliseconds.
@@ -101,7 +131,12 @@ pub fn playback_pause_core() -> Result<(), String> {
 /// # Errors
 /// Returns error if seeking fails.
 pub fn playback_seek_core(position_ms: f64) -> Result<(), String> {
-    get_player().seek(position_ms).map_err(|e| e.to_string())
+    log::info!("[playback] Seeking audio playback to {position_ms:.1}ms");
+    get_player().seek(position_ms).map_err(|e| {
+        let msg = format!("Playback seek failed: {e}");
+        log::error!("[playback] {msg}");
+        msg
+    })
 }
 
 /// Core implementation of retrieving the current playback state and position.
@@ -112,6 +147,7 @@ pub fn playback_state_core() -> PlaybackStateResult {
 
 /// Core implementation of enabling or disabling the beat grid click track.
 pub fn playback_set_click_core(enabled: bool) {
+    log::info!("[playback] Click track enabled: {enabled}");
     get_player().set_click(enabled);
 }
 
@@ -120,13 +156,30 @@ pub fn playback_set_click_core(enabled: bool) {
 /// # Errors
 /// Returns error if setting player speed fails.
 pub fn playback_set_speed_core(speed: f32) -> Result<(), String> {
-    get_player().set_speed(speed).map_err(|e| e.to_string())
+    log::info!("[playback] Setting playback speed to {speed:.2}x");
+    get_player().set_speed(speed).map_err(|e| {
+        let msg = format!("Playback set_speed failed: {e}");
+        log::error!("[playback] {msg}");
+        msg
+    })
 }
 
 /// Core implementation of retrieving the current playback speed multiplier.
 #[must_use]
 pub fn playback_get_speed_core() -> f64 {
     f64::from(get_player().speed())
+}
+
+/// Core implementation of setting the playback master volume.
+pub fn playback_set_volume_core(volume: f32) {
+    log::info!("[playback] Setting master volume to {volume:.2}");
+    get_player().set_volume(volume);
+}
+
+/// Core implementation of retrieving the current playback master volume.
+#[must_use]
+pub fn playback_get_volume_core() -> f64 {
+    f64::from(get_player().volume())
 }
 
 /// Loads a track by ID into the player and prepares it for auditioning.
@@ -156,13 +209,14 @@ pub async fn playback_load(
             duration_ms: res.duration_ms,
             state: PlayerState::Stopped,
             speed: playback_get_speed_core(),
+            volume: playback_get_volume_core(),
         },
     );
 
     Ok(res)
 }
 
-/// Starts or resumes audio playback and starts emitting 50 ms position updates.
+/// Starts or resumes audio playback and starts emitting position updates.
 ///
 /// # Errors
 /// Returns error text if playback fails.
@@ -179,6 +233,7 @@ pub async fn playback_play(app: AppHandle) -> Result<(), String> {
             duration_ms: get_player().duration_ms(),
             state: state_res.state,
             speed: state_res.speed,
+            volume: state_res.volume,
         },
     );
 
@@ -191,6 +246,7 @@ pub async fn playback_play(app: AppHandle) -> Result<(), String> {
 /// Returns error text if pausing fails.
 #[tauri::command]
 pub async fn playback_pause(app: AppHandle) -> Result<(), String> {
+    TICKER_GENERATION.fetch_add(1, Ordering::SeqCst);
     playback_pause_core()?;
 
     let state_res = get_player().state();
@@ -201,6 +257,7 @@ pub async fn playback_pause(app: AppHandle) -> Result<(), String> {
             duration_ms: get_player().duration_ms(),
             state: state_res.state,
             speed: state_res.speed,
+            volume: state_res.volume,
         },
     );
 
@@ -224,6 +281,10 @@ pub async fn playback_seek(
     playback_seek_core(pos)?;
 
     let state_res = get_player().state();
+    if state_res.state == PlayerState::Playing {
+        ensure_ticker_running(app.clone());
+    }
+
     let _ = app.emit(
         "playback-position",
         PlaybackPositionPayload {
@@ -231,6 +292,7 @@ pub async fn playback_seek(
             duration_ms: get_player().duration_ms(),
             state: state_res.state,
             speed: state_res.speed,
+            volume: state_res.volume,
         },
     );
 
@@ -282,6 +344,7 @@ pub async fn playback_set_speed(
             duration_ms: get_player().duration_ms(),
             state: state_res.state,
             speed: state_res.speed,
+            volume: state_res.volume,
         },
     );
 
@@ -295,6 +358,46 @@ pub async fn playback_set_speed(
 #[tauri::command]
 pub async fn playback_get_speed() -> Result<f64, String> {
     Ok(playback_get_speed_core())
+}
+
+/// Sets the playback master volume multiplier, clamped to `[0.0, 2.0]`.
+///
+/// # Errors
+/// Always returns `Ok`.
+#[tauri::command]
+pub async fn playback_set_volume(
+    app: AppHandle,
+    volume: Option<f64>,
+    #[allow(non_snake_case)] playVolume: Option<f64>,
+) -> Result<(), String> {
+    let v = volume
+        .or(playVolume)
+        .ok_or_else(|| "volume parameter is required".to_string())?;
+
+    playback_set_volume_core(v as f32);
+
+    let state_res = get_player().state();
+    let _ = app.emit(
+        "playback-position",
+        PlaybackPositionPayload {
+            position_ms: state_res.position_ms,
+            duration_ms: get_player().duration_ms(),
+            state: state_res.state,
+            speed: state_res.speed,
+            volume: state_res.volume,
+        },
+    );
+
+    Ok(())
+}
+
+/// Returns the current master playback volume multiplier.
+///
+/// # Errors
+/// Always returns `Ok`.
+#[tauri::command]
+pub async fn playback_get_volume() -> Result<f64, String> {
+    Ok(playback_get_volume_core())
 }
 
 #[cfg(test)]

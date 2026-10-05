@@ -15,6 +15,7 @@ export interface WaveformContainerProps {
   onZoomChange: (newZoom: number) => void;
   onScrollChange: (newOffsetMs: number) => void;
   onSetPlayhead: (newTimeMs: number) => void;
+  isCuesOverridden?: boolean;
   className?: string;
 }
 
@@ -38,6 +39,7 @@ export const WaveformContainer: React.FC<WaveformContainerProps> = ({
   onZoomChange,
   onScrollChange,
   onSetPlayhead,
+  isCuesOverridden = false,
   className = '',
 }) => {
   const visible = getVisibleWindow(durationMs, zoomLevel, scrollOffsetMs);
@@ -195,6 +197,7 @@ export const WaveformContainer: React.FC<WaveformContainerProps> = ({
           onPan={handlePan}
           onZoomAtTime={handleZoomAtTime}
           zoomLevel={zoomLevel}
+          isCuesOverridden={isCuesOverridden}
           className="w-full h-full"
         />
       </div>

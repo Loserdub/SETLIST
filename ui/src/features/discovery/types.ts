@@ -10,6 +10,7 @@ import type { OpenerCandidate } from '../../bindings/OpenerCandidate';
 import type { CloserCandidate } from '../../bindings/CloserCandidate';
 
 export type DiscoveryTab =
+  | 'topology'
   | 'catalog'
   | 'clusters'
   | 'outliers'
@@ -17,6 +18,19 @@ export type DiscoveryTab =
   | 'paths'
   | 'duration_sets'
   | 'matrix';
+
+export type RelationshipFacet =
+  | 'all'
+  | 'harmonic'
+  | 'tempo'
+  | 'energy'
+  | 'style'
+  | 'openers'
+  | 'peaks'
+  | 'bridges'
+  | 'closers';
+
+export type SongMusicalRole = 'OPENER' | 'PEAK' | 'BRIDGE' | 'CLOSER' | 'GROOVE';
 
 export interface CatalogFilterState {
   searchQuery: string;

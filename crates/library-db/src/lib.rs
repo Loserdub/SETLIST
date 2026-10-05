@@ -526,6 +526,107 @@ mod tests {
     }
 
     #[test]
+    fn test_list_tracks_batching_efficiency() {
+        let conn = setup_db();
+
+        // Insert 10 fully analyzed tracks
+        for i in 1..=10 {
+            let mut analysis = sample_analysis();
+            analysis.rhythm.grid.bpm = 120.0 + (i as f64);
+            analysis.key.camelot = Camelot::new(i, CamelotLetter::A).unwrap();
+            analysis.energy_score = (i % 10) as u8 + 1;
+
+            let track = Track {
+                id: format!("batch-track-{i:02}"),
+                path: format!("/music/track_{i:02}.mp3"),
+                hash: format!("hash-{i:02}"),
+                tags: TrackTags {
+                    title: Some(format!("Track Title {i:02}")),
+                    artist: Some(format!("Artist {i:02}")),
+                    album: Some("Batch Album".to_string()),
+                },
+                duration_ms: 180000.0,
+                analysis: Some(analysis),
+                analyzed_at: None,
+                analysis_version: None,
+            };
+            upsert_track(&conn, &track).unwrap();
+        }
+
+        // Apply overrides to track 2 (BPM + Title) and track 5 (Key)
+        set_override(
+            &conn,
+            "batch-track-02",
+            &TrackOverridePatch {
+                bpm: Some(132.0),
+                title: Some("Overridden Title 02".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        set_override(
+            &conn,
+            "batch-track-05",
+            &TrackOverridePatch {
+                key_camelot: Some("12B".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // 1. Verify list_tracks batch execution
+        let tracks = list_tracks(&conn, &TrackFilter::new()).unwrap();
+        assert_eq!(tracks.len(), 10);
+
+        // Verify data integrity of returned tracks
+        let t2 = tracks.iter().find(|t| t.id == "batch-track-02").unwrap();
+        assert_eq!(t2.tags.title.as_deref(), Some("Overridden Title 02"));
+        assert_eq!(t2.analysis.as_ref().unwrap().rhythm.grid.bpm, 132.0);
+        assert_eq!(t2.analysis.as_ref().unwrap().segments.len(), 6);
+        assert_eq!(t2.analysis.as_ref().unwrap().cue_points.len(), 8);
+        assert_eq!(
+            t2.analysis.as_ref().unwrap().energy_curve.per_bar,
+            vec![5.0, 6.0, 7.5, 8.0]
+        );
+        assert_eq!(t2.analysis.as_ref().unwrap().waveform.points_per_sec, 10);
+
+        let t5 = tracks.iter().find(|t| t.id == "batch-track-05").unwrap();
+        assert_eq!(
+            t5.analysis.as_ref().unwrap().key.camelot,
+            Camelot::new(12, CamelotLetter::B).unwrap()
+        );
+
+        // 2. Verify list_tracks_with_overrides batch execution
+        let with_overrides = list_tracks_with_overrides(&conn, &TrackFilter::new()).unwrap();
+        assert_eq!(with_overrides.len(), 10);
+
+        let wo2 = with_overrides
+            .iter()
+            .find(|w| w.track.id == "batch-track-02")
+            .unwrap();
+        assert!(wo2.overrides.bpm);
+        assert!(wo2.overrides.title);
+        assert!(!wo2.overrides.artist);
+        assert!(!wo2.overrides.key_camelot);
+
+        let wo5 = with_overrides
+            .iter()
+            .find(|w| w.track.id == "batch-track-05")
+            .unwrap();
+        assert!(!wo5.overrides.bpm);
+        assert!(wo5.overrides.key_camelot);
+
+        let wo1 = with_overrides
+            .iter()
+            .find(|w| w.track.id == "batch-track-01")
+            .unwrap();
+        assert!(!wo1.overrides.bpm);
+        assert!(!wo1.overrides.title);
+        assert!(!wo1.overrides.key_camelot);
+    }
+
+    #[test]
     fn test_cascade_delete() {
         let conn = setup_db();
 

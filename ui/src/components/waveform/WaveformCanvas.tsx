@@ -9,6 +9,7 @@ import {
   filterVisibleCues,
   formatTimeMs,
 } from './waveformMath';
+import { FOUR_POINT_CUE_CONFIG, type PerformanceCueSlot } from '../../features/track/cues/fourPointCues';
 
 export interface CanvasHoverInfo {
   timeMs: number;
@@ -20,6 +21,7 @@ export interface CanvasHoverInfo {
     colorHex: string;
     timeMs: number;
     loopEndMs?: number | null;
+    isSuggested?: boolean;
   } | null;
   segment?: {
     label: string;
@@ -46,6 +48,7 @@ export interface WaveformCanvasProps {
   onPan: (newStartTimeMs: number) => void;
   onZoomAtTime: (newZoomLevel: number, anchorTimeMs: number) => void;
   zoomLevel: number;
+  isCuesOverridden?: boolean;
   className?: string;
 }
 
@@ -68,6 +71,7 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
   onPan,
   onZoomAtTime,
   zoomLevel,
+  isCuesOverridden = false,
   className = '',
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -319,33 +323,51 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
       }
     }
 
-    // ── 5. CUE MARKERS A TO H ────────────────────────────────────────────────
+    // ── 5. CUE MARKERS A TO H (CANONICAL FOUR-POINT + REGISTERS) ───────────
     for (const cue of visibleCues) {
       const cx = timeToPixel(cue.time_ms, startTimeMs, visibleDurationMs, width);
       const letter = String.fromCharCode(65 + cue.index); // 'A', 'B', 'C'...
+      const slot = (['A', 'B', 'C', 'D'] as PerformanceCueSlot[])[cue.index];
+      const cfg = slot ? FOUR_POINT_CUE_CONFIG[slot] : null;
+      const color = cfg ? cfg.colorHex : cue.color_hex;
 
-      // Vertical Cue Line
-      ctx.strokeStyle = cue.color_hex;
-      ctx.lineWidth = 1.5;
+      // Vertical Cue Line: Solid line if confirmed by user; dashed if suggested by analysis
+      ctx.strokeStyle = color;
+      ctx.lineWidth = isCuesOverridden ? 2 : 1.5;
+      if (isCuesOverridden) {
+        ctx.setLineDash([]);
+      } else {
+        ctx.setLineDash([4, 3]);
+      }
       ctx.beginPath();
       ctx.moveTo(cx, segmentBarHeight);
       ctx.lineTo(cx, height);
       ctx.stroke();
+      ctx.setLineDash([]); // Reset dash
 
       // Cue Flag / Badge
-      const flagW = 20;
+      const flagW = 22;
       const flagH = 18;
       const flagX = cx - flagW / 2;
       const flagY = segmentBarHeight + 2;
 
       // Flag Pill Background
-      ctx.fillStyle = cue.color_hex;
+      ctx.fillStyle = isCuesOverridden ? color : 'rgba(10, 10, 10, 0.9)';
       ctx.beginPath();
-      ctx.roundRect(flagX, flagY, flagW, flagH, 4);
+      ctx.roundRect(flagX, flagY, flagW, flagH, 3);
       ctx.fill();
 
+      // Flag border
+      ctx.strokeStyle = color;
+      ctx.lineWidth = isCuesOverridden ? 1.5 : 1;
+      if (!isCuesOverridden) {
+        ctx.setLineDash([2, 2]);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
       // Cue Letter
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = isCuesOverridden ? '#ffffff' : color;
       ctx.font = 'bold 10px ui-sans-serif, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -483,13 +505,17 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
       const dist = Math.abs(mouseX - cx);
       if (dist < minCueDist) {
         minCueDist = dist;
+        const letter = String.fromCharCode(65 + c.index);
+        const slot = (['A', 'B', 'C', 'D'] as PerformanceCueSlot[])[c.index];
+        const cfg = slot ? FOUR_POINT_CUE_CONFIG[slot] : null;
         matchedCue = {
-          letter: String.fromCharCode(65 + c.index),
-          label: c.label,
+          letter,
+          label: cfg ? `${letter}: ${cfg.role}` : c.label,
           kind: c.kind,
-          colorHex: c.color_hex,
+          colorHex: cfg ? cfg.colorHex : c.color_hex,
           timeMs: c.time_ms,
           loopEndMs: c.loop_end_ms,
+          isSuggested: !isCuesOverridden,
         };
       }
     }
@@ -619,6 +645,15 @@ export const WaveformCanvas: React.FC<WaveformCanvasProps> = ({
                 <span className="flex items-center gap-1 font-bold" style={{ color: hoverInfo.cue.colorHex }}>
                   <span>CUE {hoverInfo.cue.letter}</span>
                   <span className="text-[#a8a8a8] font-normal">[{hoverInfo.cue.label}]</span>
+                  <span
+                    className={`text-xs uppercase px-1.5 py-0.5 rounded-none font-mono font-bold border ${
+                      hoverInfo.cue.isSuggested
+                        ? 'border-cyan-500/40 text-cyan-300 bg-cyan-950/20'
+                        : 'border-emerald-500/50 text-emerald-300 bg-emerald-950/30'
+                    }`}
+                  >
+                    {hoverInfo.cue.isSuggested ? 'SUGGESTED' : 'CONFIRMED'}
+                  </span>
                 </span>
               ) : hoverInfo.segment ? (
                 <span className="flex items-center gap-1">

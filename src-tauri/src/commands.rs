@@ -27,24 +27,32 @@ pub fn ping() -> &'static str {
 
 /// Core implementation of folder scanning and analysis.
 ///
+/// Core implementation of path scanning (folders or files) and analysis.
+///
 /// Accepts an event callback for progress reporting, allowing headless testing
 /// as well as Tauri IPC event emission.
 ///
 /// # Errors
-/// Returns error text if the directory is missing, scanning fails, or database persistence fails.
-pub async fn scan_folder_core<F>(
+/// Returns error text if scanning fails or database persistence fails.
+pub async fn scan_paths_core<F>(
     state: &AppState,
-    folder_path: PathBuf,
+    paths: Vec<PathBuf>,
     mut on_progress: F,
 ) -> Result<Vec<Track>, String>
 where
     F: FnMut(ProgressEvent) + Send + 'static,
 {
-    if !folder_path.is_dir() {
-        return Err(format!(
-            "Directory does not exist or is not a folder: {}",
-            folder_path.display()
-        ));
+    if paths.is_empty() {
+        return Err("No paths provided for scanning".to_string());
+    }
+
+    for path in &paths {
+        if !path.exists() {
+            return Err(format!(
+                "Directory or file does not exist: {}",
+                path.display()
+            ));
+        }
     }
 
     let scan_guard = state.job_queue.start_scan()?;
@@ -85,7 +93,8 @@ where
                         current: processed,
                         total: total_found,
                         message: Some(format!("Discovered {file_name}")),
-                        track_id: None,
+                        file_name: Some(file_name),
+                        ..Default::default()
                     });
                 }
                 ScanEvent::Started { path } => {
@@ -99,10 +108,19 @@ where
                         current: processed,
                         total: total_found.max(processed + 1),
                         message: Some(format!("Analyzing {file_name}...")),
-                        track_id: None,
+                        file_name: Some(file_name),
+                        ..Default::default()
                     });
                 }
-                ScanEvent::Done { path, track_id } => {
+                ScanEvent::Done {
+                    path,
+                    track_id,
+                    bpm,
+                    key,
+                    camelot,
+                    energy,
+                    lufs,
+                } => {
                     processed += 1;
                     let file_name = path
                         .file_name()
@@ -115,6 +133,12 @@ where
                         total: total_found.max(processed),
                         message: Some(format!("Completed {file_name}")),
                         track_id: Some(track_id),
+                        bpm,
+                        key,
+                        camelot,
+                        energy: energy.map(|e| e as f64),
+                        lufs,
+                        file_name: Some(file_name),
                     });
                 }
                 ScanEvent::Skipped { path } => {
@@ -129,7 +153,8 @@ where
                         current: processed,
                         total: total_found.max(processed),
                         message: Some(format!("Skipped (already analyzed) {file_name}")),
-                        track_id: None,
+                        file_name: Some(file_name),
+                        ..Default::default()
                     });
                 }
                 ScanEvent::Failed { path, error } => {
@@ -144,7 +169,8 @@ where
                         current: processed,
                         total: total_found.max(processed),
                         message: Some(format!("Failed {file_name}: {error}")),
-                        track_id: None,
+                        file_name: Some(file_name),
+                        ..Default::default()
                     });
                 }
             }
@@ -155,7 +181,7 @@ where
     // Execute scan in blocking thread with appropriate database connection
     let db_path_opt = state.db_path.clone();
     let db_mutex = Arc::clone(&state.db);
-    let folder_clone = folder_path.clone();
+    let paths_clone = paths.clone();
 
     let scan_result = tauri::async_runtime::spawn_blocking(move || {
         if let Some(db_file) = db_path_opt {
@@ -167,9 +193,9 @@ where
                  PRAGMA busy_timeout = 5000;",
             )
             .map_err(|e| format!("failed to set db pragmas: {e}"))?;
-            library_db::scan_folder(
+            library_db::scan_paths(
                 &conn,
-                &folder_clone,
+                &paths_clone,
                 analyzer,
                 &config,
                 Some(cancel_token),
@@ -180,9 +206,9 @@ where
             let conn = db_mutex
                 .lock()
                 .map_err(|e| format!("database mutex error: {e}"))?;
-            library_db::scan_folder(
+            library_db::scan_paths(
                 &conn,
-                &folder_clone,
+                &paths_clone,
                 analyzer,
                 &config,
                 Some(cancel_token),
@@ -210,6 +236,30 @@ where
         .lock()
         .map_err(|e| format!("database mutex error: {e}"))?;
     library_db::list_tracks(&conn, &TrackFilter::new()).map_err(|e| e.to_string())
+}
+
+/// Core implementation of folder scanning and analysis.
+///
+/// Accepts an event callback for progress reporting, allowing headless testing
+/// as well as Tauri IPC event emission.
+///
+/// # Errors
+/// Returns error text if the directory is missing, scanning fails, or database persistence fails.
+pub async fn scan_folder_core<F>(
+    state: &AppState,
+    folder_path: PathBuf,
+    on_progress: F,
+) -> Result<Vec<Track>, String>
+where
+    F: FnMut(ProgressEvent) + Send + 'static,
+{
+    if !folder_path.is_dir() {
+        return Err(format!(
+            "Directory does not exist or is not a folder: {}",
+            folder_path.display()
+        ));
+    }
+    scan_paths_core(state, vec![folder_path], on_progress).await
 }
 
 /// Recursively scans an audio directory, extracts metadata and full DSP analysis,
@@ -244,7 +294,43 @@ pub async fn scan_folder(
             current: 0,
             total: 0,
             message: Some("Folder scan complete".to_string()),
-            track_id: None,
+            ..Default::default()
+        },
+    );
+
+    result
+}
+
+/// Scans multiple filesystem paths (folders or individual audio files) in a batch,
+/// persists records to SQLite, and emits progress events over the `"progress"` IPC channel.
+///
+/// # Errors
+/// Returns error text if any path is missing or scanning fails.
+#[tauri::command]
+pub async fn scan_paths(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<Vec<Track>, String> {
+    if paths.is_empty() {
+        return Err("Missing 'paths' parameter".to_string());
+    }
+    let path_bufs: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+
+    let app_handle = app.clone();
+    let result = scan_paths_core(&state, path_bufs, move |evt| {
+        let _ = app_handle.emit("progress", evt);
+    })
+    .await;
+
+    let _ = app.emit(
+        "progress",
+        ProgressEvent {
+            stage: ProgressStage::Analyzing,
+            current: 0,
+            total: 0,
+            message: Some("Scan complete".to_string()),
+            ..Default::default()
         },
     );
 
@@ -384,6 +470,7 @@ where
             active_profile
         )),
         track_id: None,
+        ..Default::default()
     });
 
     // Partition into analyzed and unanalyzed tracks.
@@ -481,6 +568,7 @@ where
         total,
         message: Some("Setlist sequencing complete".to_string()),
         track_id: None,
+        ..Default::default()
     });
 
     Ok(entries)
@@ -635,6 +723,7 @@ where
         total,
         message: Some(format!("Exporting setlist to {target:?}...")),
         track_id: None,
+        ..Default::default()
     });
 
     if let Some(parent) = dest_path.parent() {
@@ -674,6 +763,7 @@ where
         total,
         message: Some(format!("Exported to {}", dest_path.display())),
         track_id: None,
+        ..Default::default()
     });
 
     Ok(ExportResult {

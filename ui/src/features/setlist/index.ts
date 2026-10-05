@@ -3,6 +3,15 @@ export { EnergyChart } from './EnergyChart';
 export { SortableTrackItem } from './SortableTrackItem';
 export { TransitionCostBadge } from './TransitionCostBadge';
 export { TransitionAdviceModal } from './TransitionAdviceModal';
+export { ConstraintCockpit } from './ConstraintCockpit';
+export { TrackSelectionDrawer } from './TrackSelectionDrawer';
+export { BridgeFinderModal } from './BridgeFinderModal';
+export {
+  computeTrackRole,
+  computeCumulativeTimeline,
+  formatDurationMs,
+  classifyTransitionCost,
+} from './roles';
 export {
   arrayMove,
   validatePins,
@@ -21,4 +30,11 @@ export {
   computePhiEnergy,
   computeTransitionCost,
 } from './costModel';
-export type { SetlistPins, TransitionModalState, EnergyPoint } from './types';
+export type {
+  SetlistPins,
+  TransitionModalState,
+  EnergyPoint,
+  SetRole,
+  TransitionVerdict,
+  PreferredTransitionPreset,
+} from './types';

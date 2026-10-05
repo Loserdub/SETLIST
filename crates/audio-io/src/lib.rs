@@ -1,6 +1,5 @@
-//! Audio decoding, resampling, loudness calculation, and metadata extraction.
-
 use core_types::{AudioBuffer, DecodedAudio, LoudnessInfo, TrackTags};
+pub use lofty;
 use lofty::file::TaggedFileExt;
 use lofty::probe::Probe;
 use lofty::tag::Accessor;
@@ -61,6 +60,55 @@ pub fn extract_tags<P: AsRef<Path>>(path: P) -> TrackTags {
     } else {
         TrackTags::default()
     }
+}
+
+/// Extracts embedded BPM and musical key metadata from container tags, if present.
+///
+/// Returns `(Option<f64>, Option<String>)` containing parsed BPM and raw initial key string.
+#[must_use]
+pub fn extract_metadata_bpm_and_key<P: AsRef<Path>>(path: P) -> (Option<f64>, Option<String>) {
+    let probe = match Probe::open(path) {
+        Ok(probe) => probe,
+        Err(_) => return (None, None),
+    };
+    let tagged_file = match probe.read() {
+        Ok(tagged_file) => tagged_file,
+        Err(_) => return (None, None),
+    };
+
+    let mut bpm = None;
+    let mut key = None;
+
+    for t in tagged_file.tags() {
+        for item in t.items() {
+            let key_str = format!("{:?}", item.key());
+            if key_str.to_lowercase().contains("bpm") {
+                if let Some(text) = item.value().text() {
+                    let s = text.trim();
+                    let s = s
+                        .strip_suffix("BPM")
+                        .or_else(|| s.strip_suffix("bpm"))
+                        .unwrap_or(s)
+                        .trim();
+                    if let Ok(val) = s.parse::<f64>() {
+                        if (30.0..=400.0).contains(&val) {
+                            bpm = Some(val);
+                        }
+                    }
+                }
+            }
+            if key_str.to_lowercase().contains("key") {
+                if let Some(text) = item.value().text() {
+                    let s = text.trim();
+                    if !s.is_empty() {
+                        key = Some(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    (bpm, key)
 }
 
 /// Resamples mono audio samples from `source_rate` to `target_rate` using rubato.
@@ -632,6 +680,48 @@ mod tests {
         assert_eq!(tags.title.as_deref(), Some("Resonance"));
         assert_eq!(tags.artist.as_deref(), Some("HOME"));
         assert_eq!(tags.album.as_deref(), Some("Odyssey"));
+    }
+
+    #[test]
+    fn test_extract_metadata_bpm_and_key() {
+        use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
+        let (_guard, path) = temp_wav_path("with_bpm_key");
+        let spec = WavSpec {
+            channels: 2,
+            sample_rate: 44100,
+            bits_per_sample: 16,
+            sample_format: SampleFormat::Int,
+        };
+        let mut writer = WavWriter::create(&path, spec).unwrap();
+        for _ in 0..1000 {
+            writer.write_sample(0i16).unwrap();
+            writer.write_sample(0i16).unwrap();
+        }
+        writer.finalize().unwrap();
+
+        let mut tag = Tag::new(TagType::Id3v2);
+        let item = TagItem::new(ItemKey::IntegerBpm, ItemValue::Text("128".into()));
+        tag.insert(item);
+        tag.insert(TagItem::new(
+            ItemKey::InitialKey,
+            ItemValue::Text("8A".into()),
+        ));
+        tag.save_to_path(&path, lofty::config::WriteOptions::default())
+            .unwrap();
+
+        let (bpm, key) = extract_metadata_bpm_and_key(&path);
+        assert_eq!(bpm, Some(128.0));
+        assert_eq!(key.as_deref(), Some("8A"));
+
+        // Missing tags return (None, None)
+        let (_guard2, path2) = temp_wav_path("without_bpm_key");
+        let mut writer2 = WavWriter::create(&path2, spec).unwrap();
+        writer2.write_sample(0i16).unwrap();
+        writer2.write_sample(0i16).unwrap();
+        writer2.finalize().unwrap();
+        let (bpm2, key2) = extract_metadata_bpm_and_key(&path2);
+        assert_eq!(bpm2, None);
+        assert_eq!(key2, None);
     }
 
     #[test]

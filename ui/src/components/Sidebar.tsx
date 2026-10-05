@@ -102,21 +102,24 @@ export function Sidebar() {
                 title={tooltip}
                 aria-label={ariaLabel}
                 onClick={() => setRoute(item.route)}
-                className={`w-full flex items-center justify-between px-4 py-2 text-xs font-mono tracking-wider uppercase transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+                className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-mono tracking-wider uppercase text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] hw-btn active:translate-y-[1px] ${
                   isTrackDisabled
                     ? 'border-l-2 border-l-transparent text-[#666666] opacity-40 cursor-not-allowed'
                     : isActive
-                    ? 'border-l-2 border-l-[#e5e5e5] bg-[#141414] text-[#ffffff] font-semibold cursor-pointer'
-                    : 'border-l-2 border-l-transparent text-[#a8a8a8] hover:text-[#ffffff] hover:bg-[#0e0e0e] cursor-pointer'
+                    ? 'border-l-2 border-l-[#38bdf8] bg-[#121218] text-[#ffffff] font-semibold cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
+                    : 'border-l-2 border-l-transparent text-[#a8a8a8] hover:text-[#ffffff] hover:bg-[#0e0e12] hover:border-l-[#38bdf8]/40 cursor-pointer'
                 }`}
                 data-testid={`nav-${item.route}`}
               >
-                <span>{item.label}</span>
+                <div className="flex items-center gap-2">
+                  {isActive && <span className="hw-led hw-led-cyan" />}
+                  <span>{item.label}</span>
+                </div>
                 {item.badge !== undefined && (
                   <span
                     className={`px-1.5 py-0.5 text-xs font-mono border ${
                       isActive
-                        ? 'bg-[#1e1e1e] text-[#ededed] border-[#333333]'
+                        ? 'bg-[#1e1e24] text-[#ededed] border-[#38bdf8]/40'
                         : 'bg-[#111111] text-[#a8a8a8] border-[#1e1e1e]'
                     }`}
                   >
@@ -135,7 +138,7 @@ export function Sidebar() {
               onClick={enterStageMode}
               title="Enter full-screen live performance mode"
               aria-label="Stage Mode - Enter full-screen live performance mode"
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono font-semibold tracking-wider text-[#ededed] bg-[#141414] hover:bg-[#1a1a1a] hover:text-white border border-[#2b2b2b] uppercase transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono font-semibold tracking-wider text-[#ededed] bg-[#141414] hover:bg-[#1a1a1a] hover:text-white border border-[#2b2b2b] uppercase cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] hw-btn"
               data-testid="nav-stage-btn"
             >
               <span>[ STAGE MODE ]</span>

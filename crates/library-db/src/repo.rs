@@ -11,6 +11,7 @@ use core_types::{
     TransitionType, Waveform3Band, WaveformBand,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction};
+use std::collections::HashMap;
 
 /// Inserts or updates a track in the library database.
 ///
@@ -689,14 +690,203 @@ pub fn get_track_with_overrides(
     }
 }
 
-/// Lists tracks matching the given filter criteria (BPM range, Camelot keys, energy range, text search).
-///
-/// # Errors
-/// Returns `DbError` on database query execution failure.
-pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>, DbError> {
-    let mut sql =
-        "SELECT t.id FROM tracks t LEFT JOIN track_overrides o ON o.track_id = t.id WHERE 1=1"
-            .to_string();
+fn parse_segment_label(s: &str) -> Result<SegmentLabel, DbError> {
+    match s {
+        "intro" => Ok(SegmentLabel::Intro),
+        "verse" => Ok(SegmentLabel::Verse),
+        "buildup" => Ok(SegmentLabel::Buildup),
+        "drop" => Ok(SegmentLabel::Drop),
+        "breakdown" => Ok(SegmentLabel::Breakdown),
+        "outro" => Ok(SegmentLabel::Outro),
+        other => Err(DbError::DataIntegrity(format!(
+            "unknown segment label {other}"
+        ))),
+    }
+}
+
+fn parse_cue_kind(s: &str) -> Result<CueKind, DbError> {
+    match s {
+        "HotCue" => Ok(CueKind::HotCue),
+        "MemoryCue" => Ok(CueKind::MemoryCue),
+        "Loop" => Ok(CueKind::Loop),
+        other => Err(DbError::DataIntegrity(format!("unknown cue kind {other}"))),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_analysis_blobs(
+    points_per_sec: u32,
+    low_peak: Vec<u8>,
+    low_rms: Vec<u8>,
+    mid_peak: Vec<u8>,
+    mid_rms: Vec<u8>,
+    high_peak: Vec<u8>,
+    high_rms: Vec<u8>,
+    energy_blob: Vec<u8>,
+    dynamics_json: Option<String>,
+    bpm_alternates_json: Option<String>,
+) -> Result<(Waveform3Band, EnergyCurve, DynamicsAnalysis, Vec<f64>), DbError> {
+    let waveform = Waveform3Band {
+        points_per_sec,
+        low: WaveformBand {
+            peak: low_peak,
+            rms: low_rms,
+        },
+        mid: WaveformBand {
+            peak: mid_peak,
+            rms: mid_rms,
+        },
+        high: WaveformBand {
+            peak: high_peak,
+            rms: high_rms,
+        },
+    };
+    let energy_curve = EnergyCurve {
+        per_bar: decode_f32_blob(&energy_blob),
+    };
+    let dynamics: DynamicsAnalysis = match dynamics_json {
+        Some(ref s) => serde_json::from_str(s)?,
+        None => DynamicsAnalysis {
+            frame_rate: 0.0,
+            rms_curve: Vec::new(),
+            low_ratio_curve: Vec::new(),
+            centroid_curve: Vec::new(),
+        },
+    };
+    let bpm_alternates: Vec<f64> = match bpm_alternates_json {
+        Some(ref s) => serde_json::from_str(s)?,
+        None => Vec::new(),
+    };
+    Ok((waveform, energy_curve, dynamics, bpm_alternates))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assemble_track_analysis(
+    lufs: Option<f32>,
+    lra: Option<f32>,
+    true_peak: Option<f32>,
+    first_downbeat_ms: Option<f64>,
+    bpm: Option<f64>,
+    steady: Option<i64>,
+    beats_json: Option<&str>,
+    downbeat_flags_json: Option<&str>,
+    pitch_class: Option<u8>,
+    mode_str: Option<&str>,
+    camelot_num: Option<u8>,
+    camelot_letter_str: Option<&str>,
+    tuning_cents: Option<f32>,
+    energy_score: Option<u8>,
+    segments: Vec<Segment>,
+    cue_points: Vec<CuePoint>,
+    waveform: Waveform3Band,
+    energy_curve: EnergyCurve,
+    dynamics: DynamicsAnalysis,
+    bpm_alternates: Vec<f64>,
+) -> Result<TrackAnalysis, DbError> {
+    let loudness = LoudnessInfo {
+        integrated_lufs: lufs.unwrap_or(0.0),
+        loudness_range: lra.unwrap_or(0.0),
+        true_peak: true_peak.unwrap_or(0.0),
+    };
+
+    let beats_ms: Vec<f64> = match beats_json {
+        Some(s) => serde_json::from_str(s)?,
+        None => Vec::new(),
+    };
+
+    let downbeat_flags: Vec<bool> = match downbeat_flags_json {
+        Some(s) => serde_json::from_str(s)?,
+        None => vec![false; beats_ms.len()],
+    };
+
+    let grid = BeatGrid {
+        first_downbeat_ms: first_downbeat_ms.unwrap_or(0.0),
+        bpm: bpm.unwrap_or(0.0),
+        beats_ms,
+        downbeat_flags,
+        steady: steady.unwrap_or(0) != 0,
+    };
+
+    let mode = match mode_str {
+        Some("Major") => Mode::Major,
+        _ => Mode::Minor,
+    };
+
+    let camelot_letter = match camelot_letter_str {
+        Some("B") => CamelotLetter::B,
+        _ => CamelotLetter::A,
+    };
+
+    let camelot = Camelot::new(camelot_num.unwrap_or(1), camelot_letter)
+        .map_err(|e| DbError::DataIntegrity(format!("invalid camelot key: {e}")))?;
+
+    let key = Key {
+        pitch_class: pitch_class.unwrap_or(0),
+        mode,
+        camelot,
+        tuning_cents: tuning_cents.unwrap_or(0.0),
+    };
+
+    let rhythm = RhythmAnalysis {
+        grid,
+        bpm_alternates,
+    };
+
+    Ok(TrackAnalysis {
+        loudness,
+        rhythm,
+        key,
+        dynamics,
+        energy_score: energy_score.unwrap_or(5),
+        energy_curve,
+        segments,
+        cue_points,
+        waveform,
+    })
+}
+
+struct IntermediateTrackRow {
+    id: String,
+    path: String,
+    hash: String,
+    title: Option<String>,
+    artist: Option<String>,
+    album: Option<String>,
+    duration_ms: f64,
+    lufs: Option<f32>,
+    lra: Option<f32>,
+    true_peak: Option<f32>,
+    first_downbeat_ms: Option<f64>,
+    bpm: Option<f64>,
+    steady: Option<i64>,
+    beats_json: Option<String>,
+    downbeat_flags_json: Option<String>,
+    pitch_class: Option<u8>,
+    mode_str: Option<String>,
+    camelot_num: Option<u8>,
+    camelot_letter_str: Option<String>,
+    tuning_cents: Option<f32>,
+    energy_score: Option<u8>,
+    analyzed_at: Option<String>,
+    analysis_version: Option<String>,
+    ovr: Option<crate::overrides::TrackOverride>,
+}
+
+fn list_tracks_internal(
+    conn: &Connection,
+    filter: &TrackFilter,
+) -> Result<Vec<(Track, crate::overrides::TrackOverrideFlags)>, DbError> {
+    let mut sql = "SELECT
+            t.id, t.path, t.hash, t.title, t.artist, t.album, t.duration_ms,
+            t.integrated_lufs, t.loudness_range, t.true_peak,
+            t.first_downbeat_ms, t.bpm, t.steady, t.beats_json, t.downbeat_flags_json,
+            t.pitch_class, t.mode, t.camelot_number, t.camelot_letter, t.tuning_cents,
+            t.energy_score, t.analyzed_at, t.analysis_version,
+            o.track_id, o.bpm, o.first_downbeat_ms, o.key_camelot, o.cues_json, o.updated_at, o.title, o.artist
+        FROM tracks t
+        LEFT JOIN track_overrides o ON o.track_id = t.id
+        WHERE 1=1"
+        .to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if let Some((min_bpm, max_bpm)) = filter.bpm_range {
@@ -753,21 +943,308 @@ pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
     let mut stmt = conn.prepare(&sql)?;
-    let track_ids: Vec<String> = stmt
-        .query_map(param_refs.as_slice(), |row| row.get(0))?
+    let raw_tracks: Vec<IntermediateTrackRow> = stmt
+        .query_map(param_refs.as_slice(), |row| {
+            let ovr_id: Option<String> = row.get(23)?;
+            let ovr = if let Some(track_id) = ovr_id {
+                Some(crate::overrides::TrackOverride {
+                    track_id,
+                    bpm: row.get(24)?,
+                    first_downbeat_ms: row.get(25)?,
+                    key_camelot: row.get(26)?,
+                    cues_json: row.get(27)?,
+                    updated_at: row.get::<_, Option<String>>(28)?,
+                    title: row.get(29)?,
+                    artist: row.get(30)?,
+                })
+            } else {
+                None
+            };
+
+            Ok(IntermediateTrackRow {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                hash: row.get(2)?,
+                title: row.get(3)?,
+                artist: row.get(4)?,
+                album: row.get(5)?,
+                duration_ms: row.get(6)?,
+                lufs: row.get(7)?,
+                lra: row.get(8)?,
+                true_peak: row.get(9)?,
+                first_downbeat_ms: row.get(10)?,
+                bpm: row.get(11)?,
+                steady: row.get(12)?,
+                beats_json: row.get(13)?,
+                downbeat_flags_json: row.get(14)?,
+                pitch_class: row.get(15)?,
+                mode_str: row.get(16)?,
+                camelot_num: row.get(17)?,
+                camelot_letter_str: row.get(18)?,
+                tuning_cents: row.get(19)?,
+                energy_score: row.get(20)?,
+                analyzed_at: row.get(21)?,
+                analysis_version: row.get(22)?,
+                ovr,
+            })
+        })?
         .collect::<Result<Vec<_>, _>>()?;
 
-    let mut tracks = Vec::with_capacity(track_ids.len());
-    for id in track_ids {
-        if let Some(track) = get_track(conn, &id)? {
-            tracks.push(track);
+    if raw_tracks.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let analyzed_ids: Vec<&str> = raw_tracks
+        .iter()
+        .filter(|t| t.analyzed_at.is_some() && t.bpm.is_some())
+        .map(|t| t.id.as_str())
+        .collect();
+
+    let mut segment_map: HashMap<String, Vec<Segment>> = HashMap::new();
+    let mut cue_map: HashMap<String, Vec<CuePoint>> = HashMap::new();
+    let mut blob_map: HashMap<String, (Waveform3Band, EnergyCurve, DynamicsAnalysis, Vec<f64>)> =
+        HashMap::new();
+
+    const CHUNK_SIZE: usize = 500;
+    for chunk in analyzed_ids.chunks(CHUNK_SIZE) {
+        let placeholders = vec!["?"; chunk.len()].join(", ");
+        let chunk_param_refs: Vec<&dyn rusqlite::ToSql> =
+            chunk.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+
+        // 1. Structural segments
+        let seg_sql = format!(
+            "SELECT track_id, label, start_ms, end_ms, energy FROM structural_segments WHERE track_id IN ({placeholders}) ORDER BY track_id, start_ms ASC"
+        );
+        let mut seg_stmt = conn.prepare(&seg_sql)?;
+        let seg_rows = seg_stmt.query_map(chunk_param_refs.as_slice(), |row| {
+            let track_id: String = row.get(0)?;
+            let label_str: String = row.get(1)?;
+            let start_ms: f64 = row.get(2)?;
+            let end_ms: f64 = row.get(3)?;
+            let energy: u8 = row.get(4)?;
+            Ok((track_id, label_str, start_ms, end_ms, energy))
+        })?;
+
+        for seg in seg_rows {
+            let (track_id, label_str, start_ms, end_ms, energy) = seg?;
+            let label = parse_segment_label(&label_str)?;
+            segment_map.entry(track_id).or_default().push(Segment {
+                label,
+                start_ms,
+                end_ms,
+                energy,
+            });
+        }
+
+        // 2. Cue points
+        let cue_sql = format!(
+            "SELECT track_id, cue_index, time_ms, label, color_hex, kind, loop_end_ms FROM cue_points WHERE track_id IN ({placeholders}) ORDER BY track_id, cue_index ASC"
+        );
+        let mut cue_stmt = conn.prepare(&cue_sql)?;
+        let cue_rows = cue_stmt.query_map(chunk_param_refs.as_slice(), |row| {
+            let track_id: String = row.get(0)?;
+            let index: u8 = row.get(1)?;
+            let time_ms: f64 = row.get(2)?;
+            let label: String = row.get(3)?;
+            let color_hex: String = row.get(4)?;
+            let kind_str: String = row.get(5)?;
+            let loop_end_ms: Option<f64> = row.get(6)?;
+            Ok((
+                track_id,
+                index,
+                time_ms,
+                label,
+                color_hex,
+                kind_str,
+                loop_end_ms,
+            ))
+        })?;
+
+        for cue in cue_rows {
+            let (track_id, index, time_ms, label, color_hex, kind_str, loop_end_ms) = cue?;
+            let kind = parse_cue_kind(&kind_str)?;
+            cue_map.entry(track_id).or_default().push(CuePoint {
+                index,
+                time_ms,
+                label,
+                color_hex,
+                kind,
+                loop_end_ms,
+            });
+        }
+
+        // 3. Analysis blobs
+        let blob_sql = format!(
+            "SELECT
+                track_id,
+                waveform_points_per_sec,
+                waveform_low_peak, waveform_low_rms,
+                waveform_mid_peak, waveform_mid_rms,
+                waveform_high_peak, waveform_high_rms,
+                energy_curve_per_bar,
+                dynamics_json,
+                bpm_alternates_json
+             FROM analysis_blobs WHERE track_id IN ({placeholders})"
+        );
+        let mut blob_stmt = conn.prepare(&blob_sql)?;
+        let blob_rows = blob_stmt.query_map(chunk_param_refs.as_slice(), |row| {
+            let track_id: String = row.get(0)?;
+            let points_per_sec: u32 = row.get(1)?;
+            let low_peak: Vec<u8> = row.get(2)?;
+            let low_rms: Vec<u8> = row.get(3)?;
+            let mid_peak: Vec<u8> = row.get(4)?;
+            let mid_rms: Vec<u8> = row.get(5)?;
+            let high_peak: Vec<u8> = row.get(6)?;
+            let high_rms: Vec<u8> = row.get(7)?;
+            let energy_blob: Vec<u8> = row.get(8)?;
+            let dynamics_json: Option<String> = row.get(9)?;
+            let bpm_alternates_json: Option<String> = row.get(10)?;
+            Ok((
+                track_id,
+                points_per_sec,
+                low_peak,
+                low_rms,
+                mid_peak,
+                mid_rms,
+                high_peak,
+                high_rms,
+                energy_blob,
+                dynamics_json,
+                bpm_alternates_json,
+            ))
+        })?;
+
+        for blob_res in blob_rows {
+            let (
+                track_id,
+                points_per_sec,
+                low_peak,
+                low_rms,
+                mid_peak,
+                mid_rms,
+                high_peak,
+                high_rms,
+                energy_blob,
+                dynamics_json,
+                bpm_alternates_json,
+            ) = blob_res?;
+
+            let parsed = parse_analysis_blobs(
+                points_per_sec,
+                low_peak,
+                low_rms,
+                mid_peak,
+                mid_rms,
+                high_peak,
+                high_rms,
+                energy_blob,
+                dynamics_json,
+                bpm_alternates_json,
+            )?;
+            blob_map.insert(track_id, parsed);
         }
     }
 
-    Ok(tracks)
+    let mut results = Vec::with_capacity(raw_tracks.len());
+
+    for raw in raw_tracks {
+        let id = raw.id;
+        let tags = TrackTags {
+            title: raw.title,
+            artist: raw.artist,
+            album: raw.album,
+        };
+
+        let analysis = if raw.analyzed_at.is_some() && raw.bpm.is_some() {
+            let segments = segment_map.remove(&id).unwrap_or_default();
+            let cue_points = cue_map.remove(&id).unwrap_or_default();
+
+            let (waveform, energy_curve, dynamics, bpm_alternates) =
+                if let Some(blob_data) = blob_map.remove(&id) {
+                    blob_data
+                } else {
+                    return Err(DbError::DataIntegrity(format!(
+                        "analysis_blobs missing for analyzed track {id}"
+                    )));
+                };
+
+            let analysis = assemble_track_analysis(
+                raw.lufs,
+                raw.lra,
+                raw.true_peak,
+                raw.first_downbeat_ms,
+                raw.bpm,
+                raw.steady,
+                raw.beats_json.as_deref(),
+                raw.downbeat_flags_json.as_deref(),
+                raw.pitch_class,
+                raw.mode_str.as_deref(),
+                raw.camelot_num,
+                raw.camelot_letter_str.as_deref(),
+                raw.tuning_cents,
+                raw.energy_score,
+                segments,
+                cue_points,
+                waveform,
+                energy_curve,
+                dynamics,
+                bpm_alternates,
+            )?;
+
+            Some(analysis)
+        } else {
+            None
+        };
+
+        let override_flags = match raw.ovr {
+            Some(ref o) => crate::overrides::TrackOverrideFlags {
+                bpm: o.bpm.is_some(),
+                first_downbeat_ms: o.first_downbeat_ms.is_some(),
+                key_camelot: o.key_camelot.is_some(),
+                cues: o.cues_json.is_some(),
+                title: o.title.is_some(),
+                artist: o.artist.is_some(),
+            },
+            None => crate::overrides::TrackOverrideFlags::default(),
+        };
+
+        let mut track = Track {
+            id,
+            path: raw.path,
+            hash: raw.hash,
+            tags,
+            duration_ms: raw.duration_ms,
+            analysis,
+            analyzed_at: raw.analyzed_at,
+            analysis_version: raw.analysis_version,
+        };
+
+        if let Some(ref ovr) = raw.ovr {
+            crate::overrides::apply_overrides_to_track(&mut track, ovr)?;
+        }
+
+        results.push((track, override_flags));
+    }
+
+    Ok(results)
+}
+
+/// Lists tracks matching the given filter criteria (BPM range, Camelot keys, energy range, text search).
+///
+/// Executes a batch-optimized query pipeline (eliminating N+1 query overhead by joining
+/// overrides and chunk-fetching child segments, cue points, and analysis blobs).
+///
+/// # Errors
+/// Returns `DbError` on database query execution failure.
+pub fn list_tracks(conn: &Connection, filter: &TrackFilter) -> Result<Vec<Track>, DbError> {
+    let items = list_tracks_internal(conn, filter)?;
+    Ok(items.into_iter().map(|(track, _)| track).collect())
 }
 
 /// Lists tracks matching filter criteria along with active override flags.
+///
+/// Uses the batch-optimized query pipeline and returns effective overrides and flags
+/// in a single pass without extra database round-trips.
 ///
 /// # Errors
 /// Returns `DbError` on query execution error.
@@ -775,16 +1252,11 @@ pub fn list_tracks_with_overrides(
     conn: &Connection,
     filter: &TrackFilter,
 ) -> Result<Vec<crate::overrides::TrackWithOverrides>, DbError> {
-    let tracks = list_tracks(conn, filter)?;
-    let mut result = Vec::with_capacity(tracks.len());
-    for track in tracks {
-        let flags = crate::overrides::get_override_flags(conn, &track.id)?;
-        result.push(crate::overrides::TrackWithOverrides {
-            track,
-            overrides: flags,
-        });
-    }
-    Ok(result)
+    let items = list_tracks_internal(conn, filter)?;
+    Ok(items
+        .into_iter()
+        .map(|(track, overrides)| crate::overrides::TrackWithOverrides { track, overrides })
+        .collect())
 }
 
 /// Deletes a track from the library. Cascades to delete segments, cue points, and analysis blobs.
