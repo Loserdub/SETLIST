@@ -1,6 +1,5 @@
 import { isTauriEnvironment } from '../api';
 import { useAppStore, type Route } from '../store/useAppStore';
-import { getStartSteps } from '../features/start';
 
 interface NavItem {
   route: Route;
@@ -12,16 +11,12 @@ interface NavItem {
 export function Sidebar() {
   const currentRoute = useAppStore((s) => s.currentRoute);
   const setRoute = useAppStore((s) => s.setRoute);
-  const tracks = useAppStore((s) => s.tracks);
-  const tracksLength = tracks.length;
-  const setlist = useAppStore((s) => s.setlist);
-  const setlistLength = setlist.length;
+  const tracksLength = useAppStore((s) => s.tracks.length);
+  const setlistLength = useAppStore((s) => s.setlist.length);
   const useMockBackend = useAppStore((s) => s.useMockBackend);
   const setUseMockBackend = useAppStore((s) => s.setUseMockBackend);
   const isLoadingTracks = useAppStore((s) => s.isLoadingTracks);
   const isSuggestingOrder = useAppStore((s) => s.isSuggestingOrder);
-  const isStageMode = useAppStore((s) => s.isStageMode);
-  const exportStatus = useAppStore((s) => s.exportStatus);
   const progress = useAppStore((s) => s.progress);
   const enterStageMode = useAppStore((s) => s.enterStageMode);
   const selectedTrackId = useAppStore((s) => s.selectedTrackId);
@@ -29,24 +24,7 @@ export function Sidebar() {
 
   const hasSelectedTrack = Boolean(selectedTrackId || selectedTrack);
 
-  const startSteps = getStartSteps({
-    tracks,
-    setlist,
-    isLoadingTracks,
-    progress,
-    isSuggestingOrder,
-    isStageMode,
-    exportStatus,
-  });
-  const allStepsDone = startSteps.length > 0 && startSteps.every((s) => s.status === 'done');
-
   const navItems: NavItem[] = [
-    {
-      route: 'start',
-      label: 'Start',
-      description: 'Follow guided steps to scan music, review, and build your set',
-      badge: allStepsDone ? '✓' : undefined,
-    },
     {
       route: 'library',
       label: 'My Music',
@@ -136,7 +114,6 @@ export function Sidebar() {
                 <span>{item.label}</span>
                 {item.badge !== undefined && (
                   <span
-                    data-testid={item.route === 'start' && item.badge === '✓' ? 'start-all-done-badge' : undefined}
                     className={`px-1.5 py-0.5 text-xs font-mono border ${
                       isActive
                         ? 'bg-[#1e1e1e] text-[#ededed] border-[#333333]'
@@ -157,11 +134,11 @@ export function Sidebar() {
               type="button"
               onClick={enterStageMode}
               title="Enter full-screen live performance mode"
-              aria-label="Play set - Enter full-screen live performance mode"
+              aria-label="Stage Mode - Enter full-screen live performance mode"
               className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono font-semibold tracking-wider text-[#ededed] bg-[#141414] hover:bg-[#1a1a1a] hover:text-white border border-[#2b2b2b] uppercase transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
               data-testid="nav-stage-btn"
             >
-              <span>Play set</span>
+              <span>[ STAGE MODE ]</span>
             </button>
           </div>
         )}

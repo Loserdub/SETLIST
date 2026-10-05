@@ -27,7 +27,7 @@ import {
 } from '../features/setlist/reorder';
 import type { SetlistPins } from '../features/setlist/types';
 
-export type Route = 'start' | 'library' | 'discovery' | 'track' | 'setlist' | 'settings' | 'stage';
+export type Route = 'library' | 'discovery' | 'track' | 'setlist' | 'settings' | 'stage';
 
 export interface SetlistSnapshot {
   setlist: SetlistEntry[];

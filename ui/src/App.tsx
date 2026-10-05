@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { isTauriEnvironment } from './api';
 import { Sidebar } from './components/Sidebar';
 import { LibraryRoute } from './components/routes/LibraryRoute';
@@ -7,24 +7,17 @@ import { TrackRoute } from './components/routes/TrackRoute';
 import { SetlistRoute } from './components/routes/SetlistRoute';
 import { SettingsRoute } from './components/routes/SettingsRoute';
 import { StageRoute } from './components/routes/StageRoute';
-import { StartScreen } from './features/start';
-import { openLibraryWithReviewFilter } from './features/library';
-import { QuickSetModal } from './features/setlist/QuickSetModal';
 import { ToastContainer } from './components/ToastContainer';
 import { GlobalTransportBar } from './components/transport/GlobalTransportBar';
 import { useAppStore } from './store/useAppStore';
 
 export function App() {
   const currentRoute = useAppStore((state) => state.currentRoute);
-  const setRoute = useAppStore((state) => state.setRoute);
   const isStageMode = useAppStore((state) => state.isStageMode);
   const hasLoadedTracks = useAppStore((state) => state.hasLoadedTracks);
   const loadTracks = useAppStore((state) => state.loadTracks);
   const hasLoadedActiveSetlist = useAppStore((state) => state.hasLoadedActiveSetlist);
   const loadActiveSetlist = useAppStore((state) => state.loadActiveSetlist);
-
-  const [isQuickSetOpen, setIsQuickSetOpen] = useState(false);
-  const hasLandedRef = useRef(false);
 
   useEffect(() => {
     // Inside the desktop app, force useMockBackend to false at startup
@@ -33,32 +26,14 @@ export function App() {
     }
   }, []);
 
-  // Landing route resolution:
-  // Open on Start when the library is empty. Otherwise open on My Music (library).
-  // Do not use localStorage for this.
   useEffect(() => {
-    if (!hasLoadedTracks && !hasLandedRef.current) {
-      void (async () => {
-        await loadTracks();
-        hasLandedRef.current = true;
-        const current = useAppStore.getState().currentRoute;
-        if (current === 'library' || current === 'start') {
-          const currentTracks = useAppStore.getState().tracks;
-          if (currentTracks.length === 0) {
-            setRoute('start');
-          } else {
-            setRoute('library');
-          }
-        }
-      })();
+    if (!hasLoadedTracks) {
+      void loadTracks();
     }
-  }, [hasLoadedTracks, loadTracks, setRoute]);
-
-  useEffect(() => {
     if (!hasLoadedActiveSetlist) {
       void loadActiveSetlist();
     }
-  }, [hasLoadedActiveSetlist, loadActiveSetlist]);
+  }, [hasLoadedTracks, loadTracks, hasLoadedActiveSetlist, loadActiveSetlist]);
 
   const auditionTrackId = useAppStore((state) => state.auditionTrackId);
   const auditionState = useAppStore((state) => state.auditionState);
@@ -73,12 +48,6 @@ export function App() {
         }`}
         data-testid="app-main"
       >
-        {currentRoute === 'start' && (
-          <StartScreen
-            onOpenFilteredLibrary={openLibraryWithReviewFilter}
-            onQuickSet={() => setIsQuickSetOpen(true)}
-          />
-        )}
         {currentRoute === 'library' && <LibraryRoute />}
         {currentRoute === 'discovery' && <DiscoveryRoute />}
         {currentRoute === 'track' && <TrackRoute />}
@@ -86,10 +55,6 @@ export function App() {
         {currentRoute === 'settings' && <SettingsRoute />}
         {currentRoute === 'stage' && <StageRoute />}
       </main>
-      <QuickSetModal
-        isOpen={isQuickSetOpen}
-        onClose={() => setIsQuickSetOpen(false)}
-      />
       {!isStageMode && currentRoute !== 'stage' && currentRoute !== 'track' && (
         <GlobalTransportBar />
       )}
