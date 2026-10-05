@@ -1,60 +1,189 @@
+@import "@fontsource-variable/archivo/index.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/ibm-plex-mono/700.css";
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    --bg-base: #080808;
-    --bg-surface: #101010;
-    --bg-surface-elevated: #161616;
-    --border-subtle: #1c1c1c;
-    --border-base: #242424;
-    --border-focus: #383838;
-    --text-primary: #ededed;
-    --text-secondary: #a8a8a8;
-    --text-muted: #a8a8a8;
-  }
+@theme {
+  --color-surface-app: var(--surface-app);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-hairline: var(--surface-hairline);
+  --color-surface-strong: var(--surface-strong);
 
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-pressed: var(--accent-pressed);
+  --color-accent-text: var(--accent-text);
+
+  --color-status-success: var(--status-success);
+  --color-status-warning: var(--status-warning);
+  --color-status-danger: var(--status-danger);
+  --color-status-info: var(--status-info);
+
+  --font-sans: "Archivo Variable", Archivo, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --text-caption: 12px;
+  --text-body: 14px;
+  --text-subhead: 16px;
+  --text-title: 20px;
+  --text-readout: 32px;
+  --text-stage-readout: 48px;
+
+  --radius-control: 2px;
+  --radius-panel: 4px;
+}
+
+:root {
+  /* Surfaces: Warm neutral charcoal, no blue tint */
+  --surface-app: #121212;
+  --surface-panel: #1a1a1a;
+  --surface-raised: #232323;
+  --surface-hairline: #2e2e2e;
+  --surface-strong: #454545;
+
+  /* Typography text tokens (all meet WCAG AA >= 4.5:1) */
+  --text-primary: #ececec;
+  --text-secondary: #b4b4b4;
+  --text-muted: #8e8e8e;
+
+  /* Hot hardware orange accent: exclusively for primary action, playhead, selection, focus */
+  --accent: #ff5500;
+  --accent-hover: #ff6a22;
+  --accent-pressed: #e04a00;
+  --accent-text: #0e0e0e;
+
+  /* Live status */
+  --status-success: #5cd68a;
+  --status-warning: #f5c542;
+  --status-danger: #ff4d4d;
+  --status-info: #5aa9ff;
+
+  /* 12 Camelot wheel hues (A deeper, B lighter; no accent orange) */
+  --camelot-1a: #0c7c8c;
+  --camelot-1b: #22c1d6;
+  --camelot-2a: #0d6b9e;
+  --camelot-2b: #29a8e8;
+  --camelot-3a: #1e52b5;
+  --camelot-3b: #437eed;
+  --camelot-4a: #3f3cb0;
+  --camelot-4b: #6b67e8;
+  --camelot-5a: #6728a3;
+  --camelot-5b: #9a52de;
+  --camelot-6a: #8c1b8c;
+  --camelot-6b: #c738c7;
+  --camelot-7a: #a81d68;
+  --camelot-7b: #e6399b;
+  --camelot-8a: #b31b3b;
+  --camelot-8b: #e63b5e;
+  --camelot-9a: #b8231f;
+  --camelot-9b: #e64233;
+  --camelot-10a: #8c600d;
+  --camelot-10b: #c9941a;
+  --camelot-11a: #5e7a13;
+  --camelot-11b: #9abf1f;
+  --camelot-12a: #0d7d52;
+  --camelot-12b: #24ba80;
+
+  /* 10-step energy ramp (dim blue-gray to bright yellow; no accent orange) */
+  --energy-1: #3a444c;
+  --energy-2: #41505c;
+  --energy-3: #455c6d;
+  --energy-4: #3d697d;
+  --energy-5: #357788;
+  --energy-6: #36878e;
+  --energy-7: #439b8d;
+  --energy-8: #69af7b;
+  --energy-9: #9ec35e;
+  --energy-10: #e6d638;
+
+  /* Backward-compatible aliases for unstyled views during incremental transition */
+  --bg-base: var(--surface-app);
+  --bg-surface: var(--surface-panel);
+  --bg-surface-elevated: var(--surface-raised);
+  --border-subtle: var(--surface-hairline);
+  --border-base: var(--surface-hairline);
+  --border-focus: var(--accent);
+}
+
+@layer base {
   body {
     margin: 0;
     min-height: 100vh;
-    background-color: #080808;
-    color: #ededed;
+    background-color: var(--surface-app);
+    color: var(--text-primary);
     font-size: 14px;
     line-height: 1.5;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
   }
 
-  /* Accessible high-contrast focus rings on every button, input, row, and interactive element */
+  /* Hardware focus ring: 2px accent outline, 1px offset on all interactive elements */
   button:focus-visible,
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible,
   [role="row"]:focus-visible,
+  [role="button"]:focus-visible,
   [tabindex]:focus-visible {
-    outline: 2px solid #38bdf8 !important;
-    outline-offset: 1px;
+    outline: 2px solid var(--accent) !important;
+    outline-offset: 1px !important;
   }
 
-  /* Minimalist dark technical scrollbars */
+  /* Flat hardware scrollbars */
   ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 4px;
+    height: 4px;
   }
   ::-webkit-scrollbar-track {
-    background: #080808;
+    background: var(--surface-app);
   }
   ::-webkit-scrollbar-thumb {
-    background: #242424;
+    background: var(--surface-hairline);
     border-radius: 0px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #383838;
+    background: var(--surface-strong);
   }
 
   ::selection {
-    background-color: #2a2a2a;
-    color: #ffffff;
+    background-color: var(--accent);
+    color: var(--accent-text);
+  }
+}
+
+/* Silkscreen caption utility: 12px, uppercase, 600, 0.08em tracking */
+.silkscreen {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* Hardware transition: 100ms hover and open/close; LEDs are instant */
+.hw-transition {
+  transition: color 100ms ease-out, background-color 100ms ease-out, border-color 100ms ease-out;
+}
+
+.led-instant {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
