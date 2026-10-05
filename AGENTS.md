@@ -27,29 +27,32 @@ Do not change these without a note in `docs/handoffs/`.
 
 | Path | Purpose | Workgroup |
 |---|---|---|
-| `crates/core-types` | Shared types, Camelot logic, ts-rs bindings | Foundation |
+| `crates/core-types` | Shared types, Camelot logic, Song/SetlistItem models, CostModelConfig, ts-rs bindings | Foundation |
 | `crates/audio-io` | Decode, downmix, resample, loudness, tags | C |
 | `crates/audio-analysis/src/rhythm` | Onset, tempo, beats, downbeats | A |
 | `crates/audio-analysis/src/tonal` | Chroma, key, tuning | B |
 | `crates/audio-analysis/src/dynamics` | Spectral features, energy | B |
 | `crates/audio-analysis/src/structure` | Segments, cue placement | B |
 | `crates/audio-analysis/src/waveform` | 3-band waveform | B |
-| `crates/library-db` | SQLite repo, scanner, job queue | C |
+| `crates/library-db` | SQLite repo, scanner, job queue, setlist persistence, track overrides | C |
 | `crates/playback` | Pure Rust audio player, state machine, clock, beat click generator | K |
-| `crates/sequencer` | Cost model, solvers, transition advisor | D |
+| `crates/sequencer` | Cost model, solvers, transition advisor, catalog relationship engine | D |
 | `crates/exporters` | Rekordbox XML, M3U8, set sheet | E |
 | `tools/validate` | Ground-truth accuracy validation harness and Rekordbox verification CLI | G |
 | `scripts/` | Desktop run scripts, release automation, and desktop shortcuts | Integration |
-| `src-tauri/src/commands.rs` | Tauri IPC commands for library, scan, setlist, and exports | Integration |
-| `src-tauri/src/overrides.rs` | Track analysis override commands and database bridging | L |
+| `src-tauri/src/commands.rs` | Tauri IPC commands for library, scan, setlist, songs, relationships, and exports | Integration |
+| `src-tauri/src/overrides.rs` | Track analysis override commands (BPM, key, cues, title, artist) and database bridging | L |
 | `src-tauri/src/playback.rs` | Audio playback IPC commands and position event bridge | K |
+| `src-tauri/src/diagnostics.rs` | Diagnostics IPC commands, log directory access, privacy redaction | Integration |
 | `src-tauri/src/state.rs` | Application state, SQLite connection pool, and background scanner job queue | Integration |
 | `src-tauri/` | Tauri commands and app state | Integration |
+| `ui/src/features/start` | 4-step guided onboarding workflow (add, review, build, export/play) | F |
 | `ui/src/features/library` | Virtualized track table, filtering, search, and harmonic sorting | F |
 | `ui/src/features/track` | Track inspection, waveform display, audio transport, and analysis overrides | F |
 | `ui/src/features/setlist` | Setlist builder, drag-and-drop reordering, transition badges, and energy curves | F |
 | `ui/src/features/stage` | Full-screen live performance stage mode, wake lock, and performance timers | F |
 | `ui/src/features/discovery` | Catalog graph explorer, set discovery, pathfinder, and outlier detector | W |
+| `ui/src/features/diagnostics` | System diagnostics panel, scan summary report, friendly error toast mapping | F |
 | `ui/` | React frontend | F |
 | `docs/handoffs/` | One handoff note per finished task | All |
 
@@ -127,11 +130,12 @@ Shift math: a change of `s` semitones moves the Camelot number by `(7 * s) mod 1
 | Half-step lift | +1 | +7 | High dissonance, avoid long overlap |
 | Tritone | +6 | +6 | Maximum dissonance |
 
-### 6.3 Cost model
+### 6.3 Cost model & CostModelConfig
 
 `C_ij = w_tempo * Phi_tempo + w_key * Phi_key + w_energy * Phi_energy + w_timbre * Phi_timbre`
 
 Every term is clamped to [0, 1]. Default weights: tempo 0.30, key 0.35, energy 0.35, timbre 0.00.
+Weights are configurable via `CostModelConfig` (stored in `crates/core-types` and persisted in SQLite `app_settings` table via `crates/library-db`).
 
 - `Phi_tempo = min(|BPM_i - BPM_j| / 6, 1)`. Before scoring, test for an octave relation (x2 or x0.5, within 3 percent). If found, compare against the octave-adjusted BPM.
 - `Phi_key` uses circular distance `d` on the number ring (0 to 6) and whether the mode flips. Starting values, user tunable:
@@ -181,6 +185,86 @@ If a section does not exist, skip that cue. Never invent one.
 ### 6.7 Segment labels
 
 `intro`, `verse`, `buildup`, `drop`, `breakdown`, `outro`. The research schema omitted `buildup`. This repo includes it. Segment edges snap to bar boundaries.
+
+### 6.8 Song and SetlistItem Domain Models
+
+To separate physical audio files from acoustic performance entities:
+- `Song`: Independent performance entity in `crates/core-types` containing musical identity (`id`, `title`, `artist`, `bpm`, `key`, `energy_rating`, `duration_seconds`, `tuning`, `capo`, `lead_performer`, `tags`, `notes`). Validated by domain rules (positive duration, valid BPM range, energy 1-10, valid Camelot/key notation).
+- `SetlistItem`: Ordered item in a setlist supporting diverse performance types via `SetlistItemType`:
+  - `Song`: Musical track linking to an analyzed audio track or manual song entry.
+  - `Banter`: Spoken host or performer announcements.
+  - `Intermission`: Scheduled stage breaks or intermissions.
+  - `TuningChange`: Dedicated instrument tuning or capo adjustments.
+  - `Custom`: Arbitrary stage directions or cue notes.
+- Bidirectional conversions map between legacy `Track`/`SetlistEntry` and normalized `Song`/`SetlistItem`.
+
+### 6.9 Catalog Relationship Engine & Graph Intelligence
+
+`crates/sequencer/src/relationship.rs` implements a multi-dimensional relationship calculation engine:
+- Evaluators: `evaluate_bpm_relationship` (tempo shifts, half-time, double-time), `evaluate_harmonic_relationship` (Camelot distances, mode flips, fifths, relative switches), `evaluate_energy_relationship` (smooth ramps, intentional resets, high-energy contrasts), `evaluate_tuning_relationship` (capo offsets, guitar tunings), and `evaluate_style_relationship` (Jaccard tag similarity).
+- Preserves distinct dimensional scores and produces structured human-readable explanations (`RelationshipExplanation`).
+- `CatalogGraph`: In-memory graph builder providing incoming/outgoing relationships, strongest/weakest transitions, multi-role bridge discovery (`BridgeCandidateAnalysis` for tempo, harmonic, energy, and style bridges), natural cluster detection via BFS connected components, opener/closer candidate ranking, and outlier detection.
+
+### 6.10 Audio Playback Crate (`crates/playback`)
+
+Pure Rust audio playback subsystem providing responsive audio preview and metronome click:
+- Built with `rodio` and `cpal` for low-latency CPU-based audio playback.
+- State machine managing playback states: `Playing`, `Paused`, `Stopped`.
+- Precise high-resolution clock with real-time playhead reporting and seek support.
+- Beat-synchronous metronome click generator emitting distinct tick sounds on analyzed downbeats and beats.
+- Variable playback rate (speed multiplier) and volume control.
+- Bridged to Tauri frontend via `src-tauri/src/playback.rs` commands and event listeners.
+
+### 6.11 Track Overrides (Including Title and Artist)
+
+User edits to track metadata and analysis are persisted in SQLite (`track_overrides` table) and bridged via `src-tauri/src/overrides.rs`:
+- Overridable fields: `bpm`, `key`, `cues`, `title`, and `artist`.
+- Overrides are preserved across background rescanning and re-analysis.
+- Effective overridden values are returned transparently across all library queries, exports (Rekordbox XML, M3U8, set sheets), and text search.
+- Overrides can be inspected via `get_track_override_flags` and cleared individually or completely.
+
+### 6.12 Setlist Persistence Architecture
+
+Durable setlists are persisted in SQLite in WAL mode (`crates/library-db`):
+- Tables: `setlists`, `setlist_items`, and `active_setlist`.
+- Working setlist is automatically hydrated on desktop startup via `get_active_setlist`.
+- Mutations in the UI execute 300ms debounced persistence to SQLite to eliminate data loss across app restarts.
+- Fine-grained atomic mutations (`add_setlist_item`, `remove_setlist_item`, `move_setlist_item`, `update_setlist_item`) execute within SQLite transactions with automatic position re-indexing.
+
+### 6.13 Stage Mode Live Performance HUD
+
+Full-screen live performance interface (`ui/src/features/stage`):
+- High-contrast, glanceable UI designed for dim stage environments with minimum 14px typography and WCAG AA contrast.
+- Prevents screen sleep during live performances using the Screen Wake Lock API.
+- Integrated performance timers: elapsed set time, track remaining time, and pace warnings.
+- Real-time display of current track Camelot key, BPM, energy level, and upcoming transition advice.
+
+### 6.14 Start Screen Guided Onboarding
+
+A four-step guided onboarding workflow (`ui/src/features/start`):
+- **Step 1: Add Music** — Folder selection and background scan progress with live track counts.
+- **Step 2: Review Analysis** — Quality audit flagging tracks missing BPM, key, or requiring manual review.
+- **Step 3: Build a Set** — Direct navigation to My Set and one-click Quick Set generation.
+- **Step 4: Play or Export** — Direct launch of live Stage Mode or setlist export dialog.
+- Responsive status badges (`not_started`, `in_progress`, `done`) tracking user library and setlist state.
+
+### 6.15 System Diagnostics & Error Handling
+
+Robust diagnostics and error handling across backend and frontend:
+- Structured domain errors (`AppError`) in `crates/core-types/src/error.rs` replacing arbitrary error strings.
+- Frontend error mapping (`ui/src/utils/errors.ts`) converting backend error codes into plain words with actionable next steps.
+- Native error dialogs for fatal startup panics (`rfd`) scoped strictly to the main thread.
+- System diagnostics report (`src-tauri/src/diagnostics.rs` and `ui/src/features/diagnostics`) capturing app version, database path, log file path, OS, architecture, and track counts.
+- Strict privacy redaction: diagnostics reports redact paths outside the app data folder and strictly contain zero user audio data, samples, or cue points.
+- One-click "Open Log Folder" action navigating directly to `%APPDATA%\com.setlist.desktop`.
+
+### 6.16 Validation Harness Tool (`tools/validate`)
+
+Offline CLI harness for benchmarking audio DSP accuracy against ground truth:
+- Command: `cargo run --release -p validate -- <AUDIO_FOLDER> [OPTIONS]`
+- Flags: `-g, --ground-truth <FILE>` (CSV with columns `file,bpm,key`), `-o, --output <FILE>` (CSV destination).
+- Accuracy metrics: tracks within ±0.5 BPM, octave-correct BPM (x1, x2, x0.5), exact Camelot key matches, Camelot-adjacent keys (`d <= 1`), and harmonic breakdown.
+- Automatically ranks and outputs the 10 worst tracks by composite error penalty.
 
 ## 7. Agent rules
 
