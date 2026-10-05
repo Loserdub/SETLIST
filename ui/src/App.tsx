@@ -8,7 +8,6 @@ import { SetlistRoute } from './components/routes/SetlistRoute';
 import { SettingsRoute } from './components/routes/SettingsRoute';
 import { StageRoute } from './components/routes/StageRoute';
 import { ToastContainer } from './components/ToastContainer';
-import { GlobalTransportBar } from './components/transport/GlobalTransportBar';
 import { useAppStore } from './store/useAppStore';
 
 export function App() {
@@ -35,17 +34,11 @@ export function App() {
     }
   }, [hasLoadedTracks, loadTracks, hasLoadedActiveSetlist, loadActiveSetlist]);
 
-  const auditionTrackId = useAppStore((state) => state.auditionTrackId);
-  const auditionState = useAppStore((state) => state.auditionState);
-  const isAuditioning = Boolean(auditionTrackId && auditionState !== 'stopped');
-
   return (
     <div className="flex h-screen w-screen bg-[#080808] text-[#e2e2e2] overflow-hidden font-sans relative">
       {!isStageMode && currentRoute !== 'stage' && <Sidebar />}
       <main
-        className={`flex-1 flex flex-col h-full overflow-hidden bg-[#080808] transition-all duration-150 ${
-          isAuditioning && !isStageMode && currentRoute !== 'track' ? 'pb-14' : ''
-        }`}
+        className="flex-1 flex flex-col h-full overflow-hidden bg-[#080808]"
         data-testid="app-main"
       >
         {currentRoute === 'library' && <LibraryRoute />}
@@ -55,9 +48,6 @@ export function App() {
         {currentRoute === 'settings' && <SettingsRoute />}
         {currentRoute === 'stage' && <StageRoute />}
       </main>
-      {!isStageMode && currentRoute !== 'stage' && currentRoute !== 'track' && (
-        <GlobalTransportBar />
-      )}
       {!isStageMode && <ToastContainer />}
 
       {/* Corner Professional Software Stamp & IP Notice (Out of sight, but present) */}
@@ -81,5 +71,3 @@ export function App() {
 }
 
 export default App;
-
-
