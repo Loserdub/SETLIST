@@ -166,6 +166,42 @@ pub fn order_tracks_with_config(
     seed: u64,
     config: Option<&CostModelConfig>,
 ) -> Result<OrderedSetlist, SequencerError> {
+    order_tracks_with_options(
+        tracks,
+        weights,
+        profile,
+        pins,
+        seed,
+        config,
+        None,
+        None::<fn(f32)>,
+    )
+}
+
+/// Orders candidate tracks with support for optional cancellation and progress reporting.
+///
+/// # Errors
+/// Returns [`SequencerError::Cancelled`] if the operation was cancelled,
+/// or [`SequencerError::InvalidParameter`] if parameters are invalid.
+pub fn order_tracks_with_options<F>(
+    tracks: &[TrackAnalysis],
+    weights: &CostWeights,
+    profile: EnergyProfile,
+    pins: &TrackPins,
+    seed: u64,
+    config: Option<&CostModelConfig>,
+    cancel: Option<Arc<AtomicBool>>,
+    mut progress: Option<F>,
+) -> Result<OrderedSetlist, SequencerError>
+where
+    F: FnMut(f32),
+{
+    if let Some(ref c) = cancel {
+        if c.load(Ordering::Relaxed) {
+            return Err(SequencerError::Cancelled);
+        }
+    }
+
     let n = tracks.len();
     validate_pins(n, pins)?;
 
@@ -174,6 +210,9 @@ pub fn order_tracks_with_config(
     let m = active.len();
 
     if m == 0 {
+        if let Some(ref mut p) = progress {
+            p(1.0);
+        }
         return Ok(OrderedSetlist {
             order: vec![],
             total_cost: 0.0,
@@ -182,6 +221,9 @@ pub fn order_tracks_with_config(
     }
 
     if m == 1 {
+        if let Some(ref mut p) = progress {
+            p(1.0);
+        }
         return Ok(OrderedSetlist {
             order: active,
             total_cost: 0.0,
@@ -190,11 +232,38 @@ pub fn order_tracks_with_config(
     }
 
     let matrix = build_cost_matrix_with_config(tracks, weights, profile, config);
-    let mut order = solve_open_hamiltonian_path(&matrix, &active, pins, seed)?;
+    let mut order = solve_open_hamiltonian_path_with_options(
+        &matrix,
+        &active,
+        pins,
+        seed,
+        cancel.as_deref(),
+        progress.as_mut().map(|p| p as &mut dyn FnMut(f32)),
+    )?;
+
+    if let Some(ref c) = cancel {
+        if c.load(Ordering::Relaxed) {
+            return Err(SequencerError::Cancelled);
+        }
+    }
 
     // Refine order with dynamic trajectory scoring for non-linear energy profiles
     if profile != EnergyProfile::LinearRamp && m > 2 {
-        refine_dynamic_trajectory(&mut order, tracks, weights, profile, pins, config);
+        refine_dynamic_trajectory(
+            &mut order,
+            tracks,
+            weights,
+            profile,
+            pins,
+            config,
+            cancel.as_deref(),
+        );
+    }
+
+    if let Some(ref c) = cancel {
+        if c.load(Ordering::Relaxed) {
+            return Err(SequencerError::Cancelled);
+        }
     }
 
     // Compute exact per-edge costs along the sequenced path with dynamic profile slopes
@@ -208,6 +277,10 @@ pub fn order_tracks_with_config(
         let edge_cost = transition_cost_with_config(&tracks[u], &tracks[v], weights, slope, config);
         total_cost += edge_cost.total;
         edge_costs.push(edge_cost);
+    }
+
+    if let Some(ref mut p) = progress {
+        p(1.0);
     }
 
     Ok(OrderedSetlist {
