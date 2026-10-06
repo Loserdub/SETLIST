@@ -17,7 +17,8 @@ export function CatalogClustersView({
   onSelectSong,
   onFilterByCluster,
 }: CatalogClustersViewProps) {
-  const { useMockBackend, addToast } = useAppStore();
+  const useMockBackend = useAppStore((s) => s.useMockBackend);
+  const addToast = useAppStore((s) => s.addToast);
   const [clusters, setClusters] = useState<CatalogCluster[]>([]);
   const [outliers, setOutliers] = useState<CatalogOutlier[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -52,7 +53,7 @@ export function CatalogClustersView({
   return (
     <div className="space-y-6 animate-in fade-in duration-150" data-testid="catalog-clusters-view">
       {isLoading && (
-        <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
+        <div className="py-12 text-center text-xs font-mono text-content-muted">
           Analyzing catalog cluster structure and outlier songs...
         </div>
       )}
@@ -62,17 +63,17 @@ export function CatalogClustersView({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-white font-sans">Natural Song Clusters</h3>
-            <p className="text-xs font-mono text-[#a8a8a8]">
+            <p className="text-xs font-mono text-content-muted">
               Groups of songs with mutual high harmonic, tempo, and energy cohesion.
             </p>
           </div>
-          <span className="text-xs font-mono text-[#a8a8a8]">
+          <span className="text-xs font-mono text-content-muted">
             {clusters.length} Cluster{clusters.length === 1 ? '' : 's'} Identified
           </span>
         </div>
 
         {clusters.length === 0 && !isLoading && (
-          <div className="p-6 bg-[#111111] border border-[#222222] text-center text-xs font-mono text-[#a8a8a8]">
+          <div className="p-6 bg-surface-raised border border-border-base text-center text-xs font-mono text-content-muted">
             No cohesive clusters found in the current catalog. Add more analyzed tracks.
           </div>
         )}
@@ -86,18 +87,18 @@ export function CatalogClustersView({
             return (
               <div
                 key={cluster.id}
-                className="bg-[#121212] border border-[#242424] hover:border-[#3a3a3a] p-3.5 space-y-3 transition-all"
+                className="bg-surface-raised border border-border-base hover:border-border-strong p-3.5 space-y-3 transition-all"
                 data-testid={`cluster-card-${cluster.id}`}
               >
                 {/* Cluster Header */}
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h4 className="text-xs font-semibold text-white truncate">{cluster.label}</h4>
-                    <p className="text-xs font-mono text-[#a8a8a8] pt-0.5">
+                    <p className="text-xs font-mono text-content-muted pt-0.5">
                       {cluster.description}
                     </p>
                   </div>
-                  <span className="px-2 py-0.5 text-xs font-mono font-bold bg-[#1a281a] text-[#88ee88] border border-[#2b4d2b] shrink-0">
+                  <span className="px-2 py-0.5 text-xs font-mono font-bold bg-status-success-dim text-status-success border border-status-success shrink-0">
                     {Math.round(cluster.cohesion_score * 100)}% Cohesion
                   </span>
                 </div>
@@ -105,12 +106,12 @@ export function CatalogClustersView({
                 {/* Cluster Key & Tempo Badges */}
                 <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
                   {cluster.center_bpm && (
-                    <span className="px-2 py-0.5 bg-[#181818] border border-[#2a2a2a] text-[#cfcfcf]">
+                    <span className="px-2 py-0.5 bg-surface-elevated border border-border-base text-content-secondary">
                       ~{cluster.center_bpm.toFixed(1)} BPM
                     </span>
                   )}
                   {cluster.average_energy && (
-                    <span className="px-2 py-0.5 bg-[#181818] border border-[#2a2a2a] text-[#a8a8a8]">
+                    <span className="px-2 py-0.5 bg-surface-elevated border border-border-base text-content-muted">
                       Avg Energy {cluster.average_energy.toFixed(1)}
                     </span>
                   )}
@@ -129,8 +130,8 @@ export function CatalogClustersView({
                 </div>
 
                 {/* Member Songs Chips */}
-                <div className="space-y-1 pt-1 border-t border-[#1c1c1c]">
-                  <span className="text-xs font-mono text-[#a8a8a8] uppercase font-bold block">
+                <div className="space-y-1 pt-1 border-t border-border-subtle">
+                  <span className="text-xs font-mono text-content-muted uppercase font-bold block">
                     MEMBER TRACKS ({memberSongs.length})
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -139,11 +140,11 @@ export function CatalogClustersView({
                         key={s.id}
                         type="button"
                         onClick={() => onSelectSong(s)}
-                        className="px-2 py-1 bg-[#181818] hover:bg-[#242424] border border-[#2a2a2a] hover:border-[#444444] text-xs font-mono text-[#cfcfcf] hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                        className="px-2 py-1 bg-surface-elevated hover:bg-surface-hover border border-border-base hover:border-border-strong text-xs font-mono text-content-secondary hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                       >
                         <span>{s.title}</span>
                         {s.camelot_code && (
-                          <span className="text-xs text-[#a8a8a8]">({s.camelot_code})</span>
+                          <span className="text-xs text-content-muted">({s.camelot_code})</span>
                         )}
                       </button>
                     ))}
@@ -156,7 +157,7 @@ export function CatalogClustersView({
                     <button
                       type="button"
                       onClick={() => onFilterByCluster(cluster.id)}
-                      className="text-xs font-mono text-[#a8a8a8] hover:text-white uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                      className="text-xs font-mono text-content-muted hover:text-white uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     >
                       [Filter Catalog to this Cluster →]
                     </button>
@@ -169,24 +170,24 @@ export function CatalogClustersView({
       </div>
 
       {/* Section 2: Catalog Outliers / Low-Connection Songs */}
-      <div className="space-y-3 pt-4 border-t border-[#1f1f1f]">
+      <div className="space-y-3 pt-4 border-t border-border-subtle">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-white font-sans">
               Low-Connection Songs / Catalog Outliers
             </h3>
-            <p className="text-xs font-mono text-[#a8a8a8]">
+            <p className="text-xs font-mono text-content-muted">
               Songs with few strong connections in the catalog. Framed as creative contrast
               opportunities.
             </p>
           </div>
-          <span className="text-xs font-mono text-[#a8a8a8]">
+          <span className="text-xs font-mono text-content-muted">
             {outliers.length} Outlier{outliers.length === 1 ? '' : 's'}
           </span>
         </div>
 
         {outliers.length === 0 && !isLoading && (
-          <div className="p-6 bg-[#111111] border border-[#222222] text-center text-xs font-mono text-[#88ee88]">
+          <div className="p-6 bg-surface-raised border border-border-base text-center text-xs font-mono text-status-success">
             ✓ All catalog songs have healthy connections across the library.
           </div>
         )}
@@ -198,21 +199,21 @@ export function CatalogClustersView({
             return (
               <div
                 key={outlier.song_id}
-                className="bg-[#121212] border border-[#242424] hover:border-[#3a3a3a] p-3.5 space-y-2.5 transition-all"
+                className="bg-surface-raised border border-border-base hover:border-border-strong p-3.5 space-y-2.5 transition-all"
                 data-testid={`outlier-card-${outlier.song_id}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h4 className="text-xs font-semibold text-white">{outlier.title}</h4>
-                    <p className="text-xs text-[#a8a8a8]">{outlier.artist}</p>
+                    <p className="text-xs text-content-muted">{outlier.artist}</p>
                   </div>
 
-                  <span className="px-2 py-0.5 text-xs font-mono font-bold bg-[#261515] text-[#ee8888] border border-[#4d2626]">
+                  <span className="px-2 py-0.5 text-xs font-mono font-bold bg-status-danger-dim text-status-danger border border-border-base">
                     Max Match: {Math.round(outlier.max_compatibility_score * 100)}%
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs font-mono text-[#a8a8a8]">
+                <div className="flex items-center gap-2 text-xs font-mono text-content-muted">
                   {outlier.camelot_code && (
                     <span
                       className="px-1.5 py-0.2 text-xs font-bold rounded-[2px]"
@@ -224,18 +225,18 @@ export function CatalogClustersView({
                       {outlier.camelot_code}
                     </span>
                   )}
-                  {outlier.bpm && <span className="text-[#cfcfcf]">{outlier.bpm.toFixed(1)} BPM</span>}
+                  {outlier.bpm && <span className="text-content-secondary">{outlier.bpm.toFixed(1)} BPM</span>}
                   {outlier.energy_rating && <span>Energy {outlier.energy_rating}/10</span>}
                   <span>•</span>
                   <span>{outlier.strong_connection_count} strong connections</span>
                 </div>
 
                 {/* Reasons List */}
-                <div className="bg-[#0b0b0b] p-2 border border-[#1a1a1a] space-y-1">
-                  <span className="text-xs font-mono text-[#a8a8a8] uppercase font-bold block">
+                <div className="bg-surface-panel p-2 border border-border-subtle space-y-1">
+                  <span className="text-xs font-mono text-content-muted uppercase font-bold block">
                     OUTLIER DIAGNOSTICS &amp; REASONING:
                   </span>
-                  <ul className="text-xs font-mono text-[#cfcfcf] space-y-0.5 list-disc list-inside">
+                  <ul className="text-xs font-mono text-content-secondary space-y-0.5 list-disc list-inside">
                     {outlier.reasons.map((r, i) => (
                       <li key={i}>{r}</li>
                     ))}
@@ -247,7 +248,7 @@ export function CatalogClustersView({
                     <button
                       type="button"
                       onClick={() => onSelectSong(fullSong)}
-                      className="px-2.5 py-1 text-xs font-mono bg-[#1a1a1a] hover:bg-[#252525] text-[#cfcfcf] hover:text-white border border-[#333333] uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                      className="px-2.5 py-1 text-xs font-mono bg-surface-elevated hover:bg-surface-hover text-content-secondary hover:text-white border border-border-strong uppercase cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     >
                       Inspect Relationships →
                     </button>

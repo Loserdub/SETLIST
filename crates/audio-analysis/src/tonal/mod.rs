@@ -289,11 +289,44 @@ mod tests {
             KeyProfile::KrumhanslKessler,
             KeyProfile::Temperley,
             KeyProfile::Edma,
+            KeyProfile::Shaath,
         ] {
             let res =
                 analyze_key_detailed(&buffer, profile).expect("Profile analysis should succeed");
             assert_eq!(res.key.pitch_class, 0, "Expected C major");
             assert_eq!(res.key.mode, Mode::Major, "Expected C major");
+            assert!(res.confidence > 0.0, "Confidence score should be positive");
+        }
+    }
+
+    #[test]
+    fn test_key_confidence_score_exposure() {
+        let sample_rate = 44100;
+        // Strong tonal triad has high confidence
+        let clear_triad = synthesize_additive_triad(60, Mode::Major, 1.0, sample_rate, 440.0);
+        let (key, conf) = analyze_key_with_confidence(&clear_triad).unwrap();
+        assert_eq!(key.pitch_class, 0);
+        assert!(conf > 0.3, "Clear triad should have confident correlation");
+
+        // Noisy/weak signal has lower confidence
+        let mut noisy_samples = vec![0.0f32; 44100];
+        let mut rng = 123456789u32;
+        for s in &mut noisy_samples {
+            rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
+            *s = ((rng as f32 / u32::MAX as f32) - 0.5) * 0.05;
+        }
+        let noisy_buffer = AudioBuffer {
+            sample_rate: 44100,
+            samples: noisy_samples,
+        };
+        let noisy_res = analyze_key_with_confidence(&noisy_buffer);
+        if let Ok((_, noisy_conf)) = noisy_res {
+            assert!(
+                noisy_conf < conf,
+                "Noisy buffer confidence ({}) should be lower than clear triad ({})",
+                noisy_conf,
+                conf
+            );
         }
     }
 }

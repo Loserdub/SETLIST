@@ -48,15 +48,15 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
   return (
     <div
       data-testid="empty-library-view"
-      className="max-w-2xl mx-auto my-8 p-6 sm:p-8 border border-[#27272a] bg-[#0c0c0f] text-center flex flex-col items-center font-mono select-none relative overflow-hidden"
+      className="max-w-2xl mx-auto my-8 p-6 sm:p-8 border border-border-base bg-surface-panel text-center flex flex-col items-center font-mono select-none relative overflow-hidden"
     >
       {/* Boutique Status Beacon */}
-      <div className="flex items-center gap-2 px-3 py-1 bg-[#121215] border border-[#27272a] text-xs text-amber-300 uppercase tracking-widest font-bold font-mono">
+      <div className="flex items-center gap-2 px-3 py-1 bg-surface-raised border border-border-base text-xs text-amber-300 uppercase tracking-widest font-bold font-mono">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block shadow-[0_0_4px_rgba(245,158,11,0.6)]" />
         <span>STANDBY · READY FOR INGESTION</span>
       </div>
 
-      <h3 className="text-base font-bold tracking-widest text-[#f8fafc] uppercase mt-4">
+      <h3 className="text-base font-bold tracking-widest text-content-primary uppercase mt-4">
         Your library is empty
       </h3>
 
@@ -67,7 +67,7 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
       </div>
 
       {/* 4-Step Producer Workflow Pipeline Strip */}
-      <div className="w-full my-5 py-2 px-3 bg-[#08080a] border border-[#27272a] flex flex-wrap items-center justify-center gap-2 text-xs font-bold tracking-wider font-mono">
+      <div className="w-full my-5 py-2 px-3 bg-surface-deep border border-border-base flex flex-wrap items-center justify-center gap-2 text-xs font-bold tracking-wider font-mono">
         <span className="text-zinc-200">1. DROP AUDIO</span>
         <span className="text-zinc-600">→</span>
         <span className="text-zinc-300">2. ANALYZE DSP</span>
@@ -82,7 +82,7 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
         <button
           type="button"
           onClick={onChooseFolder}
-          className="flex-1 min-w-[160px] px-5 py-2.5 bg-[#18181b] hover:bg-[#27272a] border border-zinc-600 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer rounded-none flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none hw-btn active:translate-y-[1px]"
+          className="flex-1 min-w-[160px] px-5 py-2.5 bg-surface-elevated hover:bg-surface-hover border border-zinc-600 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer rounded-none flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none hw-btn active:translate-y-[1px]"
           data-testid="empty-choose-folder-btn"
           aria-label="Choose Music Folder"
         >
@@ -93,7 +93,7 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
         <button
           type="button"
           onClick={() => void handleChooseFiles()}
-          className="flex-1 min-w-[160px] px-5 py-2.5 bg-[#121215] hover:bg-[#1a1a1f] border border-[#27272a] text-zinc-200 hover:text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer rounded-none flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none hw-btn active:translate-y-[1px]"
+          className="flex-1 min-w-[160px] px-5 py-2.5 bg-surface-raised hover:bg-surface-elevated border border-border-base text-zinc-200 hover:text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer rounded-none flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none hw-btn active:translate-y-[1px]"
           aria-label="Choose Audio Files"
         >
           <span className="text-sm" aria-hidden="true">🎵</span>
@@ -109,14 +109,14 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
           onChange={(e) => setFolderPathInput(e.target.value)}
           placeholder="C:/Music or /path/to/tracks"
           aria-label="Music folder path"
-          className="flex-1 w-full px-3 py-1.5 bg-[#09090b] border border-[#27272a] text-xs text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 placeholder-zinc-600 font-mono"
+          className="flex-1 w-full px-3 py-1.5 bg-surface-deep border border-border-base text-xs text-zinc-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 placeholder-zinc-600 font-mono"
         />
         <button
           type="button"
           onClick={() => onScanFolder(folderPathInput)}
           disabled={isLoading || !folderPathInput.trim()}
           aria-label="Scan Folder"
-          className="w-full sm:w-auto px-4 py-1.5 bg-[#18181b] hover:bg-[#222226] disabled:opacity-40 border border-[#27272a] text-zinc-200 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none hw-btn active:translate-y-[1px]"
+          className="w-full sm:w-auto px-4 py-1.5 bg-surface-elevated hover:bg-surface-hover disabled:opacity-40 border border-border-base text-zinc-200 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none hw-btn active:translate-y-[1px]"
         >
           {isLoading ? 'Scanning...' : 'Scan Folder'}
         </button>
@@ -157,15 +157,15 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
       {/* Supported Audio Codecs Strip */}
       <div className="flex flex-wrap items-center justify-center gap-1 mt-4 text-xs text-zinc-500 font-mono">
         {['WAV', 'FLAC', 'MP3', 'AIFF', 'M4A', 'OGG'].map((ext) => (
-          <span key={ext} className="px-2 py-0.5 border border-[#27272a] bg-[#09090b]">
+          <span key={ext} className="px-2 py-0.5 border border-border-base bg-surface-deep">
             {ext}
           </span>
         ))}
       </div>
 
       {/* Feature Highlights Grid (Preserves exact test labels) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full mt-6 text-left border-t border-[#27272a] pt-5">
-        <div className="p-3 bg-[#09090b] border border-[#27272a]">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full mt-6 text-left border-t border-border-base pt-5">
+        <div className="p-3 bg-surface-deep border border-border-base">
           <div className="text-zinc-200 font-bold text-xs uppercase tracking-wider">
             Local & Read-Only
           </div>
@@ -174,7 +174,7 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
           </p>
         </div>
 
-        <div className="p-3 bg-[#09090b] border border-[#27272a]">
+        <div className="p-3 bg-surface-deep border border-border-base">
           <div className="text-zinc-200 font-bold text-xs uppercase tracking-wider">
             Pure Rust DSP
           </div>
@@ -183,7 +183,7 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
           </p>
         </div>
 
-        <div className="p-3 bg-[#09090b] border border-[#27272a]">
+        <div className="p-3 bg-surface-deep border border-border-base">
           <div className="text-zinc-200 font-bold text-xs uppercase tracking-wider">
             Hardware Ready
           </div>

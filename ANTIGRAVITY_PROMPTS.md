@@ -28,6 +28,37 @@ Wave 2  Integration (1 agent, sequential)
           G1 -> G2 -> G3 -> G4
 ```
 
+## Completion Status & Handoff Directory
+
+All original prompts across Wave 0, Wave 1, and Wave 2 are **COMPLETED** with corresponding handoff notes in `docs/handoffs/`:
+
+| Wave | Workgroup | Prompt | Description | Status | Handoff Note |
+|---|---|---|---|:---:|---|
+| Wave 0 | Foundation | P0.1 | Workspace scaffold | **DONE** | [`docs/handoffs/p0.1-workspace-skeleton.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/p0.1-workspace-skeleton.md) |
+| Wave 0 | Foundation | P0.2 | Contracts, Camelot, and schema | **DONE** | [`docs/handoffs/p0.2-contracts-v1.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/p0.2-contracts-v1.md) |
+| Wave 1 | WG-A Rhythm | A1 | Onset and global tempo | **DONE** | [`docs/handoffs/a1-onset-and-global-tempo.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/a1-onset-and-global-tempo.md) |
+| Wave 1 | WG-A Rhythm | A2 | Beat tracking and downbeats | **DONE** | [`docs/handoffs/a2-beat-tracking-downbeats.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/a2-beat-tracking-downbeats.md) |
+| Wave 1 | WG-B Tonal | B1 | Key detection | **DONE** | [`docs/handoffs/b1-key-and-tuning.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/b1-key-and-tuning.md) |
+| Wave 1 | WG-B Tonal | B2 | Dynamics and energy | **DONE** | [`docs/handoffs/b2-dynamics-and-energy.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/b2-dynamics-and-energy.md) |
+| Wave 1 | WG-B Tonal | B3 | Segmentation and cue placement | **DONE** | [`docs/handoffs/b3-structure-cues.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/b3-structure-cues.md) |
+| Wave 1 | WG-B Tonal | B4 | Multi-band waveform | **DONE** | [`docs/handoffs/b4-waveform-3band.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/b4-waveform-3band.md) |
+| Wave 1 | WG-C Library | C1 | Decode and loudness | **DONE** | [`docs/handoffs/c1-audio-io-decode.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/c1-audio-io-decode.md) |
+| Wave 1 | WG-C Library | C2 | SQLite repository | **DONE** | [`docs/handoffs/c2-library-db-persistence.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/c2-library-db-persistence.md) |
+| Wave 1 | WG-C Library | C3 | Folder scanner and job queue | **DONE** | [`docs/handoffs/c3-folder-scanner-job-queue.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/c3-folder-scanner-job-queue.md) |
+| Wave 1 | WG-D Sequencer | D1 | Scoring functions | **DONE** | [`docs/handoffs/d1-cost-model.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/d1-cost-model.md) |
+| Wave 1 | WG-D Sequencer | D2 | Order solver | **DONE** | [`docs/handoffs/d2-sequencer-solver.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/d2-sequencer-solver.md) |
+| Wave 1 | WG-D Sequencer | D3 | Transition advisor | **DONE** | [`docs/handoffs/d3-transition-advisor.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/d3-transition-advisor.md) |
+| Wave 1 | WG-E Export | E1 | Rekordbox XML writer | **DONE** | [`docs/handoffs/e1-rekordbox-export.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/e1-rekordbox-export.md) |
+| Wave 1 | WG-E Export | E2 | Setlist export and CLI | **DONE** | [`docs/handoffs/e2-setlist-export-cli.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/e2-setlist-export-cli.md) |
+| Wave 1 | WG-F UI | F1 | Shell and mock backend | **DONE** | [`docs/handoffs/f1-ui-shell-mock-backend.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/f1-ui-shell-mock-backend.md) |
+| Wave 1 | WG-F UI | F2 | Library view | **DONE** | [`docs/handoffs/f2-library-view.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/f2-library-view.md) |
+| Wave 1 | WG-F UI | F3 | Waveform component | **DONE** | [`docs/handoffs/f3-waveform-component.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/f3-waveform-component.md) |
+| Wave 1 | WG-F UI | F4 | Setlist builder | **DONE** | [`docs/handoffs/f4-setlist-builder.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/f4-setlist-builder.md) |
+| Wave 2 | Integration | G1 | Pipeline and Tauri commands | **DONE** | [`docs/handoffs/g1-pipeline-and-tauri-commands.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/g1-pipeline-and-tauri-commands.md) |
+| Wave 2 | Integration | G2 | Wire the UI | **DONE** | [`docs/handoffs/g2-wire-the-ui.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/g2-wire-the-ui.md) |
+| Wave 2 | Integration | G3 | Validation harness | **DONE** | [`docs/handoffs/g3-validation-harness.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/g3-validation-harness.md) |
+| Wave 2 | Integration | G4 | Packaging and settings | **DONE** | [`docs/handoffs/g4-packaging-and-settings.md`](file:///c:/Users/User/Documents/%F0%9F%93%82%202_Coding_and_Development/SETLIST/docs/handoffs/g4-packaging-and-settings.md) |
+
 ---
 
 ## Wave 0: Foundation

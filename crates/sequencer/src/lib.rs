@@ -38,7 +38,7 @@ pub use scoring::{
     TransitionCost,
 };
 pub use solve::{
-    evaluate_path_cost, order_tracks, order_tracks_with_config,
+    evaluate_path_cost, order_tracks, order_tracks_with_config, order_tracks_with_options,
     solve_open_hamiltonian_path, OrderedSetlist, TrackPins,
 };
 

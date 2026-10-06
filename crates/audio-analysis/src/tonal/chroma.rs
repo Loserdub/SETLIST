@@ -177,15 +177,16 @@ pub fn compute_chromagram(buffer: &AudioBuffer) -> Result<ChromagramResult, Anal
         ));
     }
 
-    // Step 1: Compute STFT and collect harmonic spectral peaks for each frame
-    let mut frames_peaks = Vec::new();
-    let mut fft_scratch = vec![Complex::new(0.0f32, 0.0f32); FFT_SIZE];
-
     let num_frames = if total_samples < WINDOW_SIZE {
         1
     } else {
         (total_samples - WINDOW_SIZE) / HOP_SIZE + 1
     };
+
+    // Step 1: Compute STFT and collect harmonic spectral peaks for each frame
+    let mut frames_peaks = Vec::with_capacity(num_frames);
+    let mut fft_scratch = vec![Complex::new(0.0f32, 0.0f32); FFT_SIZE];
+    let mut mags = vec![0.0f32; FFT_SIZE / 2 + 1];
 
     let mut any_signal = false;
 
@@ -208,8 +209,7 @@ pub fn compute_chromagram(buffer: &AudioBuffer) -> Result<ChromagramResult, Anal
 
         fft.process(&mut fft_scratch);
 
-        // Magnitude spectrum
-        let mut mags = vec![0.0f32; FFT_SIZE / 2 + 1];
+        // Magnitude spectrum (reuse preallocated buffer)
         let mut frame_peak_max = 0.0f32;
         for k in 0..=FFT_SIZE / 2 {
             let mag = fft_scratch[k].norm();
@@ -290,7 +290,16 @@ pub fn compute_chromagram(buffer: &AudioBuffer) -> Result<ChromagramResult, Anal
             let w0 = angle.cos().powi(2);
             let w1 = angle.sin().powi(2);
 
-            let energy = peak.mag * peak.mag;
+            // Bass-weighted chroma: prioritize fundamental frequencies (60-280 Hz)
+            // to emphasize root notes and suppress overtone fifth confusion.
+            let freq_weight = if peak.freq < 280.0 {
+                1.35
+            } else if peak.freq < 1200.0 {
+                1.0
+            } else {
+                0.70
+            };
+            let energy = (peak.mag * peak.mag) * freq_weight;
             frame_chroma[b0] += energy * w0;
             frame_chroma[b1] += energy * w1;
         }

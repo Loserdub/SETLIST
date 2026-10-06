@@ -35,7 +35,8 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
   onJumpToCue,
   className = '',
 }) => {
-  const { addToast, refreshTrackInSetlist } = useAppStore();
+  const addToast = useAppStore((s) => s.addToast);
+  const refreshTrackInSetlist = useAppStore((s) => s.refreshTrackInSetlist);
   const [isSaving, setIsSaving] = useState(false);
 
   const cuesRecord = resolveFourPointCues(track);
@@ -239,27 +240,27 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
 
   return (
     <div
-      className={`bg-[#080808] border border-[#1c1c1c] p-4 font-mono select-none ${className}`}
+      className={`bg-surface-deep border border-border-subtle p-4 font-mono select-none ${className}`}
       data-testid="four-point-cue-deck"
       role="region"
       aria-label="Hardware Performance Cue Deck"
     >
       {/* ── Deck Header & Global Management ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-[#181818]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-border-subtle">
         <div>
           <div className="flex items-center gap-2">
             <span className="hw-led hw-led-cyan w-2 h-2 rounded-full shrink-0" />
             <h3 className="text-xs font-bold tracking-wider uppercase text-white">
               PERFORMANCE CUES (A – D)
             </h3>
-            <span className="text-xs text-[#64748b]">|</span>
-            <span className="text-xs text-[#94a3b8] font-semibold">
+            <span className="text-xs text-content-dim">|</span>
+            <span className="text-xs text-content-muted font-semibold">
               {totalCuesPresent}/4 ACTIVE
               {confirmedCount > 0 && ` • ${confirmedCount} CONFIRMED`}
               {suggestedCount > 0 && ` • ${suggestedCount} SUGGESTED`}
             </span>
           </div>
-          <p className="text-xs text-[#71717a] mt-0.5">
+          <p className="text-xs text-content-muted mt-0.5">
             Standard four-point hardware framework: A (Intro) • B (Breakdown) • C (Drop) • D (Mix Out)
           </p>
         </div>
@@ -283,7 +284,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
             type="button"
             onClick={handleRegenerateAll}
             disabled={isSaving}
-            className="hw-btn px-2.5 py-1 text-xs font-bold uppercase tracking-wider bg-[#121212] hover:bg-[#1c1c1c] border border-[#2b2b2b] text-[#cfcfcf] hover:text-white transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none disabled:opacity-50 active:translate-y-[1px]"
+            className="hw-btn px-2.5 py-1 text-xs font-bold uppercase tracking-wider bg-surface-raised hover:bg-surface-elevated border border-border-base text-content-secondary hover:text-white transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none disabled:opacity-50 active:translate-y-[1px]"
             title="Recalculate all 4 canonical cues from underlying DSP audio segments"
             data-testid="btn-regenerate-all-cues"
           >
@@ -295,7 +296,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
               type="button"
               onClick={() => void handleRevertAll()}
               disabled={isSaving}
-              className="hw-btn px-2 py-1 text-xs font-medium uppercase tracking-wider bg-[#141414] hover:bg-[#1e1e1e] border border-[#282828] text-[#888888] hover:text-[#cfcfcf] transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none disabled:opacity-50 active:translate-y-[1px]"
+              className="hw-btn px-2 py-1 text-xs font-medium uppercase tracking-wider bg-surface-raised hover:bg-surface-elevated border border-border-base text-content-muted hover:text-content-secondary transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none disabled:opacity-50 active:translate-y-[1px]"
               title="Revert user overrides and restore pure analysis suggestions"
               data-testid="btn-revert-cues"
             >
@@ -327,11 +328,11 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
               className={`relative flex flex-col justify-between p-3 border transition-all duration-150 cursor-pointer select-none ${
                 isPresent
                   ? isNearPlayhead
-                    ? 'border-white bg-[#141414] ring-2 ring-white/40 shadow-lg'
+                    ? 'border-white bg-surface-raised ring-2 ring-white/40 shadow-lg'
                     : cue.isConfirmed
-                    ? 'border-[#2c323c] bg-[#0c1015] hover:border-[#3d4554]'
-                    : 'border-[#1e2025] bg-[#0a0c0e] hover:border-[#2b2f38]'
-                  : 'border-[#181818] bg-[#070707] opacity-75 hover:opacity-100 hover:border-[#242424]'
+                    ? 'border-border-base bg-surface-panel hover:border-border-strong'
+                    : 'border-border-subtle bg-surface-panel hover:border-border-base'
+                  : 'border-border-subtle bg-surface-deep opacity-75 hover:opacity-100 hover:border-border-base'
               }`}
               style={{
                 borderTopWidth: isPresent ? '3px' : '1px',
@@ -374,9 +375,9 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                       <span className="text-xs font-bold text-white tracking-wider">
                         {cfg.role}
                       </span>
-                      <span className="text-xs text-[#666666]">[{cfg.shortcutKey}]</span>
+                      <span className="text-xs text-content-dim">[{cfg.shortcutKey}]</span>
                     </div>
-                    <div className="text-xs text-[#888888] truncate">
+                    <div className="text-xs text-content-muted truncate">
                       {cfg.description}
                     </div>
                   </div>
@@ -395,7 +396,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                       </span>
                     ) : (
                       <span
-                        className="px-1.5 py-0.5 text-xs font-medium uppercase tracking-wider bg-[#141414] text-cyan-300/80 border border-dashed border-cyan-500/40 select-none"
+                        className="px-1.5 py-0.5 text-xs font-medium uppercase tracking-wider bg-surface-raised text-cyan-300/80 border border-dashed border-cyan-500/40 select-none"
                         title="Automatically suggested by audio DSP analysis"
                         data-testid={`badge-suggested-${slot}`}
                       >
@@ -407,27 +408,27 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
               </div>
 
               {/* Pad Center: Timestamp & Location Display */}
-              <div className="my-2.5 py-1.5 px-2 bg-[#060606] border border-[#161616]">
+              <div className="my-2.5 py-1.5 px-2 bg-surface-deep border border-border-subtle">
                 {isPresent ? (
                   <div className="flex items-baseline justify-between">
                     <span className="font-mono text-sm font-bold text-white tabular-nums tracking-wide">
                       {formatCueTime(cue.timeMs)}
                     </span>
-                    <span className="text-xs text-[#888888] font-mono">
+                    <span className="text-xs text-content-muted font-mono">
                       {calculateBarNumber(cue.timeMs, grid)
                         ? `Bar ${calculateBarNumber(cue.timeMs, grid)}`
                         : `${cue.kind}`}
                     </span>
                   </div>
                 ) : (
-                  <div className="text-center py-0.5 text-xs text-[#555555] italic">
+                  <div className="text-center py-0.5 text-xs text-content-dim italic">
                     Slot Empty
                   </div>
                 )}
               </div>
 
               {/* Pad Action Controls Footer */}
-              <div className="pt-2 border-t border-[#141414] flex items-center justify-between gap-1 text-xs">
+              <div className="pt-2 border-t border-border-subtle flex items-center justify-between gap-1 text-xs">
                 {isPresent ? (
                   <>
                     {/* Audition & Nudge */}
@@ -435,7 +436,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                       <button
                         type="button"
                         onClick={() => onJumpToCue(cue.timeMs, true)}
-                        className="hw-btn px-2 py-0.5 bg-[#141414] hover:bg-[#202020] text-emerald-400 border border-[#262626] font-bold text-xs transition-colors cursor-pointer rounded-none focus-visible:ring-1 focus-visible:ring-emerald-400 focus-visible:outline-none active:translate-y-[1px]"
+                        className="hw-btn px-2 py-0.5 bg-surface-raised hover:bg-surface-hover text-emerald-400 border border-border-base font-bold text-xs transition-colors cursor-pointer rounded-none focus-visible:ring-1 focus-visible:ring-emerald-400 focus-visible:outline-none active:translate-y-[1px]"
                         title="Audition / Rehearse: Jump and Play"
                         data-testid={`btn-audition-${slot}`}
                       >
@@ -446,7 +447,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                       <button
                         type="button"
                         onClick={() => handleNudgeBeat(slot, -1)}
-                        className="hw-btn px-1.5 py-0.5 bg-[#121212] hover:bg-[#1a1a1a] text-[#888888] hover:text-white border border-[#222222] text-xs cursor-pointer rounded-none active:translate-y-[1px]"
+                        className="hw-btn px-1.5 py-0.5 bg-surface-raised hover:bg-surface-elevated text-content-muted hover:text-white border border-border-base text-xs cursor-pointer rounded-none active:translate-y-[1px]"
                         title="Nudge -1 Beat"
                         data-testid={`btn-nudge-prev-${slot}`}
                       >
@@ -457,7 +458,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                       <button
                         type="button"
                         onClick={() => handleNudgeBeat(slot, 1)}
-                        className="hw-btn px-1.5 py-0.5 bg-[#121212] hover:bg-[#1a1a1a] text-[#888888] hover:text-white border border-[#222222] text-xs cursor-pointer rounded-none active:translate-y-[1px]"
+                        className="hw-btn px-1.5 py-0.5 bg-surface-raised hover:bg-surface-elevated text-content-muted hover:text-white border border-border-base text-xs cursor-pointer rounded-none active:translate-y-[1px]"
                         title="Nudge +1 Beat"
                         data-testid={`btn-nudge-next-${slot}`}
                       >
@@ -482,7 +483,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                       <button
                         type="button"
                         onClick={() => handleSetCueAtPlayhead(slot)}
-                        className="hw-btn px-1.5 py-0.5 bg-[#141414] hover:bg-[#222222] text-cyan-400 border border-[#242424] text-xs cursor-pointer rounded-none active:translate-y-[1px]"
+                        className="hw-btn px-1.5 py-0.5 bg-surface-raised hover:bg-surface-hover text-cyan-400 border border-border-base text-xs cursor-pointer rounded-none active:translate-y-[1px]"
                         title="Snap to current playhead position"
                         data-testid={`btn-set-playhead-${slot}`}
                       >
@@ -492,7 +493,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDeleteCue(slot)}
-                        className="hw-btn px-1.5 py-0.5 bg-[#141414] hover:bg-rose-950/40 text-[#666666] hover:text-rose-400 border border-[#222222] hover:border-rose-500/30 text-xs cursor-pointer rounded-none active:translate-y-[1px]"
+                        className="hw-btn px-1.5 py-0.5 bg-surface-raised hover:bg-rose-950/40 text-content-dim hover:text-rose-400 border border-border-base hover:border-rose-500/30 text-xs cursor-pointer rounded-none active:translate-y-[1px]"
                         title="Delete cue"
                         data-testid={`btn-delete-${slot}`}
                       >
@@ -504,7 +505,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSetCueAtPlayhead(slot)}
-                    className="hw-btn w-full py-1 text-xs font-bold uppercase tracking-wider bg-[#101010] hover:bg-[#181818] border border-[#222222] hover:border-[#38bdf8] text-[#888888] hover:text-white transition-colors cursor-pointer rounded-none flex items-center justify-center gap-1.5 active:translate-y-[1px]"
+                    className="hw-btn w-full py-1 text-xs font-bold uppercase tracking-wider bg-surface-panel hover:bg-surface-elevated border border-border-base hover:border-accent-blue text-content-muted hover:text-white transition-colors cursor-pointer rounded-none flex items-center justify-center gap-1.5 active:translate-y-[1px]"
                     data-testid={`btn-set-empty-${slot}`}
                   >
                     <span>⊕</span>
@@ -520,8 +521,8 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
       {/* ── Extended Cue Registers (E – H) if present on track ── */}
       {track.analysis?.cue_points &&
         track.analysis.cue_points.filter((c) => c.index >= 4).length > 0 && (
-          <div className="mt-3.5 pt-3 border-t border-[#181818]" data-testid="extended-cues-list">
-            <div className="text-xs text-[#64748b] font-bold uppercase tracking-wider mb-2">
+          <div className="mt-3.5 pt-3 border-t border-border-subtle" data-testid="extended-cues-list">
+            <div className="text-xs text-content-dim font-bold uppercase tracking-wider mb-2">
               EXTENDED REGISTERS (E – H)
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -533,7 +534,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                     <div
                       key={c.index}
                       onClick={() => onJumpToCue(c.time_ms, false)}
-                      className="p-2 border border-[#1c1c1c] bg-[#0c0c0c] hover:bg-[#141414] flex items-center justify-between cursor-pointer select-none transition-colors"
+                      className="p-2 border border-border-subtle bg-surface-panel hover:bg-surface-raised flex items-center justify-between cursor-pointer select-none transition-colors"
                       data-testid={`cue-card-${letter}`}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -543,7 +544,7 @@ export const FourPointCueDeck: React.FC<FourPointCueDeckProps> = ({
                         >
                           {letter}
                         </span>
-                        <span className="text-xs text-[#cfcfcf] truncate font-mono">
+                        <span className="text-xs text-content-secondary truncate font-mono">
                           {c.label}
                         </span>
                       </div>

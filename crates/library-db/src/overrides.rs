@@ -300,6 +300,8 @@ pub fn set_override(
         ],
     );
 
+    crate::repo::bump_catalog_revision(conn)?;
+
     Ok(())
 }
 
@@ -428,6 +430,8 @@ pub fn clear_override<S: AsRef<str>>(
          WHERE track_id = ?1 OR id = ?1",
         [track_id],
     );
+
+    crate::repo::bump_catalog_revision(conn)?;
 
     Ok(())
 }

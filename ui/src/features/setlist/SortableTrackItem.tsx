@@ -97,8 +97,8 @@ export function SortableTrackItem({
   const bpm = track?.analysis?.rhythm.grid.bpm ? Math.round(track.analysis.rhythm.grid.bpm) : 0;
   const energy = track?.analysis?.energy_score ?? entry.target_energy ?? 5;
 
-  const bg = keyStr !== '-' ? camelotColor(keyStr) : '#22222a';
-  const fg = keyStr !== '-' ? camelotTextColor(keyStr) : '#9898a4';
+  const bg = keyStr !== '-' ? camelotColor(keyStr) : 'var(--color-surface-hover)';
+  const fg = keyStr !== '-' ? camelotTextColor(keyStr) : 'var(--color-content-muted)';
 
   // Compute musical role in sequence
   const roleInfo = computeTrackRole(
@@ -131,14 +131,14 @@ export function SortableTrackItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative flex items-center justify-between px-3.5 py-2.5 bg-[#0b0b0b] border-b border-[#181818] hw-track-card select-none ${
+      className={`group relative flex items-center justify-between px-3.5 py-2.5 bg-surface-panel border-b border-border-subtle hw-track-card select-none ${
         isDragging
-          ? 'z-40 bg-[#14141e] border border-[#38bdf8] shadow-[0_12px_28px_rgba(0,0,0,0.85)] scale-[1.01] ring-1 ring-[#38bdf8]/40'
+          ? 'z-40 bg-surface-raised border border-accent-blue shadow-[0_12px_28px_rgba(0,0,0,0.85)] scale-[1.01] ring-1 ring-accent-blue/40'
           : isLocked
-          ? 'border-l-3 border-l-amber-500 bg-[#0e0e12]'
+          ? 'border-l-3 border-l-amber-500 bg-surface-panel'
           : isExcluded
-          ? 'opacity-40 border-l-3 border-l-neutral-600 bg-[#080808]'
-          : 'border-l-3 border-l-transparent hover:border-l-[#38bdf8]/40 hover:bg-[#111116]'
+          ? 'opacity-40 border-l-3 border-l-neutral-600 bg-surface-deep'
+          : 'border-l-3 border-l-transparent hover:border-l-accent-blue/40 hover:bg-surface-raised'
       }`}
     >
       {/* Left: Drag Handle, Position Badge, Role & Track Identity */}
@@ -147,12 +147,12 @@ export function SortableTrackItem({
         <div
           {...attributes}
           {...listeners}
-          className={`flex items-center justify-center p-1 text-[#a8a8a8] hover:text-white transition-colors select-none ${
+          className={`flex items-center justify-center p-1 text-content-muted hover:text-white transition-colors select-none ${
             isLocked ? 'cursor-not-allowed opacity-30' : 'cursor-grab active:cursor-grabbing'
           }`}
           title={isLocked ? 'Track is pinned/locked in place' : 'Drag to reorder track position'}
         >
-          <IconGripVertical size={13} className="text-[#a8a8a8] hover:text-white" />
+          <IconGripVertical size={13} className="text-content-muted hover:text-white" />
         </div>
 
         {/* Visually Meaningful Position Badge & Timeline Window */}
@@ -162,7 +162,7 @@ export function SortableTrackItem({
           </span>
           {timelineInterval && (
             <span
-              className="text-xs text-[#71717a] te-num tabular-nums leading-none tracking-tight"
+              className="text-xs text-content-muted te-num tabular-nums leading-none tracking-tight"
               title={`Active from ${timelineInterval.startFormatted} to ${timelineInterval.endFormatted}`}
             >
               {timelineInterval.startFormatted}
@@ -175,10 +175,10 @@ export function SortableTrackItem({
           <button
             type="button"
             onClick={onToggleLockFirst}
-            className={`px-1.5 py-0.5 text-xs font-mono tracking-wider uppercase cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] shrink-0 hw-btn ${
+            className={`px-1.5 py-0.5 text-xs font-mono tracking-wider uppercase cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue shrink-0 hw-btn ${
               lockFirst
                 ? 'border-amber-500/70 bg-amber-500/15 text-amber-300 font-semibold'
-                : 'border-[#262626] bg-[#121212] text-[#a8a8a8] hover:text-[#ededed]'
+                : 'border-border-base bg-surface-raised text-content-muted hover:text-content-primary'
             }`}
             title="Lock opening track as fixed setlist anchor"
           >
@@ -190,10 +190,10 @@ export function SortableTrackItem({
           <button
             type="button"
             onClick={onToggleLockLast}
-            className={`px-1.5 py-0.5 text-xs font-mono tracking-wider uppercase cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] shrink-0 hw-btn ${
+            className={`px-1.5 py-0.5 text-xs font-mono tracking-wider uppercase cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue shrink-0 hw-btn ${
               lockLast
                 ? 'border-amber-500/70 bg-amber-500/15 text-amber-300 font-semibold'
-                : 'border-[#262626] bg-[#121212] text-[#a8a8a8] hover:text-[#ededed]'
+                : 'border-border-base bg-surface-raised text-content-muted hover:text-content-primary'
             }`}
             title="Lock closing track as fixed setlist anchor"
           >
@@ -209,7 +209,7 @@ export function SortableTrackItem({
             className={`p-1 text-xs font-mono border transition-colors cursor-pointer rounded-none shrink-0 ${
               isPinned
                 ? 'border-amber-500/70 bg-amber-500/15 text-amber-300'
-                : 'border-transparent text-[#555555] hover:text-[#aaaaaa]'
+                : 'border-transparent text-content-dim hover:text-content-secondary'
             }`}
             title={isPinned ? 'Unpin track position' : 'Pin track at this position during re-sequencing'}
           >
@@ -231,7 +231,7 @@ export function SortableTrackItem({
           className="flex flex-col min-w-0 cursor-pointer pr-2 hover:opacity-90 transition-opacity"
         >
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-white hover:text-[#38bdf8] truncate transition-colors">
+            <span className="text-xs font-bold text-white hover:text-accent-blue truncate transition-colors">
               {track?.tags.title ?? 'Untitled Track'}
             </span>
             {isFieldOverridden(track, 'title') && (
@@ -244,7 +244,7 @@ export function SortableTrackItem({
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-[#a8a8a8] truncate font-normal">
+            <span className="text-xs text-content-muted truncate font-normal">
               {track?.tags.artist ?? 'Unknown Artist'}
             </span>
             {isFieldOverridden(track, 'artist') && (
@@ -286,10 +286,10 @@ export function SortableTrackItem({
           {bpm > 0 ? (
             <>
               <span className="font-semibold text-white">{bpm}</span>
-              <span className="te-unit text-[#71717a]">BPM</span>
+              <span className="te-unit text-content-muted">BPM</span>
             </>
           ) : (
-            <span className="text-[#646472]">-</span>
+            <span className="text-content-dim">-</span>
           )}
           {isFieldOverridden(track, 'bpm') && (
             <EditedBadge field="bpm" title="BPM analysis overridden" />
@@ -301,7 +301,7 @@ export function SortableTrackItem({
           className="flex items-center gap-1.5 min-w-16 shrink-0"
           title={`Energy Rating: ${energy}/10 (Target: ${entry.target_energy?.toFixed(1) ?? '-'})`}
         >
-          <span className="font-mono text-xs font-bold text-[#e0e0e0] te-num w-3 text-right tabular-nums">
+          <span className="font-mono text-xs font-bold text-content-primary te-num w-3 text-right tabular-nums">
             {energy}
           </span>
           <div className="w-10 h-1.5 flex items-center gap-[2px]">
@@ -317,7 +317,7 @@ export function SortableTrackItem({
                         : energy >= 5
                         ? 'bg-amber-400'
                         : 'bg-emerald-400'
-                      : 'bg-[#222228]'
+                      : 'bg-surface-hover'
                   }`}
                 />
               );
@@ -326,7 +326,7 @@ export function SortableTrackItem({
         </div>
 
         {/* DURATION */}
-        <span className="font-mono text-xs text-[#9898a4] te-num w-11 text-right tabular-nums">
+        <span className="font-mono text-xs text-content-muted te-num w-11 text-right tabular-nums">
           {track ? formatDurationMs(track.duration_ms) : '-'}
         </span>
 
@@ -335,10 +335,10 @@ export function SortableTrackItem({
           <button
             type="button"
             onClick={() => void toggleAudition(entry.track_id)}
-            className={`p-1 text-xs font-mono tracking-wider uppercase border cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] flex items-center justify-center w-6 h-6 hw-btn ${
+            className={`p-1 text-xs font-mono tracking-wider uppercase border cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue flex items-center justify-center w-6 h-6 hw-btn ${
               isAuditioning
-                ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold shadow-[0_0_8px_rgba(56,189,248,0.3)]'
-                : 'border-[#262626] bg-[#121212] hover:bg-[#1e1e1e] text-[#cfcfcf] hover:text-white'
+                ? 'border-accent-blue bg-accent-blue-subtle text-accent-blue font-bold shadow-[0_0_8px_rgba(56,189,248,0.3)]'
+                : 'border-border-base bg-surface-raised hover:bg-surface-elevated text-content-secondary hover:text-white'
             }`}
             title={isAuditioning ? 'Pause audition' : 'Audition track audio'}
             data-testid={`audition-setlist-btn-${entry.track_id}`}
@@ -354,7 +354,7 @@ export function SortableTrackItem({
               type="button"
               onClick={onMoveUp}
               disabled={isFirst || lockFirst}
-              className="p-1 text-[#888888] hover:text-white disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed hw-btn"
+              className="p-1 text-content-muted hover:text-white disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed hw-btn"
               title="Move track up one position"
               aria-label="Move track up"
             >
@@ -366,7 +366,7 @@ export function SortableTrackItem({
               type="button"
               onClick={onMoveDown}
               disabled={isLast || lockLast}
-              className="p-1 text-[#888888] hover:text-white disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed hw-btn"
+              className="p-1 text-content-muted hover:text-white disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed hw-btn"
               title="Move track down one position"
               aria-label="Move track down"
             >
@@ -380,7 +380,7 @@ export function SortableTrackItem({
           <button
             type="button"
             onClick={onResequenceFromHere}
-            className="hidden xl:inline-block px-1.5 py-0.5 text-xs font-mono uppercase text-[#a8a8a8] hover:text-[#38bdf8] border border-transparent hover:border-[#38bdf8]/40 transition-colors cursor-pointer hw-btn"
+            className="hidden xl:inline-block px-1.5 py-0.5 text-xs font-mono uppercase text-content-muted hover:text-accent-blue border border-transparent hover:border-accent-blue/40 transition-colors cursor-pointer hw-btn"
             title="Keep tracks up to this position locked and re-sequence remaining set"
           >
             Solve From Here →
@@ -395,7 +395,7 @@ export function SortableTrackItem({
             className={`text-xs font-mono px-1.5 py-0.5 border cursor-pointer transition-colors hw-btn ${
               isExcluded
                 ? 'border-neutral-600 bg-neutral-800 text-neutral-300'
-                : 'border-transparent text-[#666666] hover:text-[#a8a8a8]'
+                : 'border-transparent text-content-dim hover:text-content-muted'
             }`}
             title={isExcluded ? 'Include track in solver' : 'Exclude track from solver sequence'}
           >
@@ -407,7 +407,7 @@ export function SortableTrackItem({
         <button
           type="button"
           onClick={() => onRemove(entry.position)}
-          className="text-[#a8a8a8] hover:text-rose-400 p-1 cursor-pointer text-xs font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 flex items-center justify-center hw-btn"
+          className="text-content-muted hover:text-rose-400 p-1 cursor-pointer text-xs font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 flex items-center justify-center hw-btn"
           title="Remove track from setlist"
           aria-label="Remove track"
         >

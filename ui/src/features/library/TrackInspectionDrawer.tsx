@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { Track } from '../../bindings/Track';
 import { camelotColor, camelotTextColor } from '../../utils/camelotColor';
 import { useAppStore } from '../../store/useAppStore';
+import { useShallow } from 'zustand/react/shallow';
 import { SEGMENT_COLORS } from './StructuralMiniMap';
 
 interface TrackInspectionDrawerProps {
@@ -32,7 +33,17 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
     setlist,
     trackTitleOverrides,
     trackArtistOverrides,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((s) => ({
+      auditionTrackId: s.auditionTrackId,
+      auditionState: s.auditionState,
+      toggleAudition: s.toggleAudition,
+      addToSetlist: s.addToSetlist,
+      setlist: s.setlist,
+      trackTitleOverrides: s.trackTitleOverrides,
+      trackArtistOverrides: s.trackArtistOverrides,
+    }))
+  );
 
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -118,10 +129,10 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
       role="complementary"
       aria-label="Track Inspection Panel"
       data-testid="track-inspection-drawer"
-      className="w-80 sm:w-96 border-l border-[#27272a] bg-[#0c0c0f] flex flex-col h-full overflow-hidden select-text font-mono z-30 shrink-0 shadow-2xl"
+      className="w-80 sm:w-96 border-l border-border-base bg-surface-panel flex flex-col h-full overflow-hidden select-text font-mono z-30 shrink-0 shadow-2xl"
     >
       {/* Top Header */}
-      <div className="p-3.5 border-b border-[#27272a] bg-[#09090b] flex items-start justify-between gap-2">
+      <div className="p-3.5 border-b border-border-base bg-surface-deep flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 text-xs text-amber-400 uppercase tracking-wider font-bold">
             <span>● TRACK INSPECTOR</span>
@@ -138,7 +149,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white border border-[#27272a] bg-[#121215] hover:bg-[#1a1a1f] text-xs transition-colors cursor-pointer shrink-0 rounded-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none"
+          className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white border border-border-base bg-surface-raised hover:bg-surface-elevated text-xs transition-colors cursor-pointer shrink-0 rounded-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none"
           aria-label="Close inspector"
           title="Close (Esc)"
         >
@@ -147,14 +158,14 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
       </div>
 
       {/* Action Toolbar */}
-      <div className="px-3.5 py-2.5 border-b border-[#27272a] bg-[#09090b] flex items-center gap-2">
+      <div className="px-3.5 py-2.5 border-b border-border-base bg-surface-deep flex items-center gap-2">
         <button
           type="button"
           onClick={() => void toggleAudition(track.id)}
           className={`hw-btn px-2.5 py-1 text-xs font-mono font-bold uppercase tracking-wider border transition-colors cursor-pointer rounded-none flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none active:translate-y-[1px] ${
             isAuditioning
               ? 'border-amber-500 bg-amber-950/40 text-amber-300 font-bold'
-              : 'border-[#27272a] bg-[#121215] hover:bg-[#1a1a1f] text-zinc-300 hover:text-white'
+              : 'border-border-base bg-surface-raised hover:bg-surface-elevated text-zinc-300 hover:text-white'
           }`}
           data-testid="inspector-audition-btn"
         >
@@ -168,8 +179,8 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
           disabled={isInSetlist}
           className={`hw-btn px-2.5 py-1 text-xs font-mono font-bold uppercase tracking-wider border transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none active:translate-y-[1px] ${
             isInSetlist
-              ? 'border-[#1e1e24] bg-[#101014] text-zinc-600 cursor-default'
-              : 'border-[#27272a] bg-[#121215] hover:bg-[#1a1a1f] text-zinc-300 hover:text-white'
+              ? 'border-border-subtle bg-surface-panel text-zinc-600 cursor-default'
+              : 'border-border-base bg-surface-raised hover:bg-surface-elevated text-zinc-300 hover:text-white'
           }`}
           data-testid="inspector-add-setlist-btn"
         >
@@ -179,7 +190,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
         <button
           type="button"
           onClick={() => onOpenFullDetail(track.id)}
-          className="hw-btn ml-auto px-2 py-1 text-xs font-mono font-bold uppercase tracking-wider border border-[#27272a] bg-[#121215] hover:bg-[#1a1a1f] text-zinc-300 hover:text-white transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none active:translate-y-[1px]"
+          className="hw-btn ml-auto px-2 py-1 text-xs font-mono font-bold uppercase tracking-wider border border-border-base bg-surface-raised hover:bg-surface-elevated text-zinc-300 hover:text-white transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none active:translate-y-[1px]"
           title="Open in full Track Editor view"
         >
           Editor ↗
@@ -194,7 +205,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
             <span>3-BAND OVERVIEW WAVEFORM</span>
             <span className="text-zinc-200 te-num tabular-nums">{formatDuration(track.duration_ms)}</span>
           </div>
-          <div className="h-16 w-full bg-[#08080a] border border-[#27272a] overflow-hidden relative">
+          <div className="h-16 w-full bg-surface-deep border border-border-base overflow-hidden relative">
             <canvas
               ref={waveformCanvasRef}
               width={340}
@@ -211,7 +222,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-2">
             {/* BPM */}
-            <div className="p-2.5 bg-[#09090b] border border-[#27272a]">
+            <div className="p-2.5 bg-surface-deep border border-border-base">
               <span className="text-xs text-zinc-400 uppercase font-mono">BPM</span>
               <div className="text-base font-bold text-zinc-100 mt-0.5 tabular-nums te-num font-mono">
                 {bpm ? bpm.toFixed(1) : '-'}
@@ -222,7 +233,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
             </div>
 
             {/* Key & Camelot */}
-            <div className="p-2.5 bg-[#09090b] border border-[#27272a]">
+            <div className="p-2.5 bg-surface-deep border border-border-base">
               <span className="text-xs text-zinc-400 uppercase font-mono">Key / Camelot</span>
               <div className="mt-1 flex items-center gap-1.5 font-mono">
                 {camelotStr ? (
@@ -245,7 +256,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
             </div>
 
             {/* Energy */}
-            <div className="p-2.5 bg-[#09090b] border border-[#27272a]">
+            <div className="p-2.5 bg-surface-deep border border-border-base">
               <span className="text-xs text-zinc-400 uppercase font-mono">Energy Rating</span>
               <div className="text-base font-bold text-zinc-100 mt-0.5 tabular-nums te-num font-mono">
                 {energy !== null ? `${energy} / 10` : '-'}
@@ -256,7 +267,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
             </div>
 
             {/* Loudness LUFS */}
-            <div className="p-2.5 bg-[#09090b] border border-[#27272a]">
+            <div className="p-2.5 bg-surface-deep border border-border-base">
               <span className="text-xs text-zinc-400 uppercase font-mono">Loudness (LUFS)</span>
               <div className="text-base font-bold text-zinc-100 mt-0.5 tabular-nums te-num font-mono">
                 {lufs !== null && lufs > -90 ? `${lufs.toFixed(1)} dB` : '-'}
@@ -275,11 +286,11 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
             <span>{`STRUCTURAL SEGMENTS (${segments.length})`}</span>
           </div>
           {segments.length === 0 ? (
-            <div className="p-2.5 bg-[#09090b] border border-[#27272a] text-xs text-zinc-400 font-mono">
+            <div className="p-2.5 bg-surface-deep border border-border-base text-xs text-zinc-400 font-mono">
               No structural segments detected.
             </div>
           ) : (
-            <div className="space-y-1 bg-[#09090b] border border-[#27272a] p-2 font-mono">
+            <div className="space-y-1 bg-surface-deep border border-border-base p-2 font-mono">
               {segments.map((s, idx) => {
                 const conf = SEGMENT_COLORS[s.label] ?? {
                   bg: '#334155',
@@ -288,7 +299,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
                 return (
                   <div
                     key={idx}
-                    className="flex items-center justify-between text-xs py-0.5 border-b border-[#18181b] last:border-b-0"
+                    className="flex items-center justify-between text-xs py-0.5 border-b border-border-subtle last:border-b-0"
                   >
                     <div className="flex items-center gap-1.5">
                       <span
@@ -313,7 +324,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
             <span>{`HOT CUE REGISTERS (${cues.length})`}</span>
           </div>
           {cues.length === 0 ? (
-            <div className="p-2.5 bg-[#09090b] border border-[#27272a] text-xs text-zinc-400 font-mono">
+            <div className="p-2.5 bg-surface-deep border border-border-base text-xs text-zinc-400 font-mono">
               No hot cues placed.
             </div>
           ) : (
@@ -321,7 +332,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
               {cues.map((cue) => (
                 <div
                   key={cue.index}
-                  className="p-1.5 bg-[#09090b] border border-[#27272a] flex items-center justify-between"
+                  className="p-1.5 bg-surface-deep border border-border-base flex items-center justify-between"
                 >
                   <div className="flex items-center gap-1.5 truncate">
                     <span
@@ -346,7 +357,7 @@ export const TrackInspectionDrawer: React.FC<TrackInspectionDrawerProps> = ({
           <div className="text-xs text-zinc-400 font-bold uppercase tracking-wider font-mono">
             FILE SPECIFICATIONS
           </div>
-          <div className="p-2.5 bg-[#09090b] border border-[#27272a] space-y-1 text-xs text-zinc-400 break-all font-mono">
+          <div className="p-2.5 bg-surface-deep border border-border-base space-y-1 text-xs text-zinc-400 break-all font-mono">
             <div>
               <span className="text-zinc-500">PATH:</span> {track.path}
             </div>

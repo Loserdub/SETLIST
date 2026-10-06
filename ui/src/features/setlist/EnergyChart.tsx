@@ -55,7 +55,7 @@ export function EnergyChart({ points, profile }: EnergyChartProps) {
 
   if (n === 0) {
     return (
-      <div className="h-24 flex items-center justify-center bg-[#0a0a0a] border border-[#1a1a1a] text-xs text-[#a8a8a8] font-mono rounded-none">
+      <div className="h-24 flex items-center justify-center bg-surface-panel border border-border-subtle text-xs text-content-muted font-mono rounded-none">
         Add tracks to chart energy progression
       </div>
     );
@@ -69,23 +69,23 @@ export function EnergyChart({ points, profile }: EnergyChartProps) {
       : 'Peak Plateau (Sustained)';
 
   return (
-    <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-3 space-y-1.5 select-none rounded-none">
+    <div className="bg-surface-panel border border-border-subtle p-3 space-y-1.5 select-none rounded-none">
       <div className="flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#cfcfcf]">
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-content-secondary">
             Energy Trajectory
           </span>
-          <span className="text-xs text-[#a8a8a8] font-mono">
-            Target: <span className="text-[#cfcfcf]">{profileLabel}</span>
+          <span className="text-xs text-content-muted font-mono">
+            Target: <span className="text-content-secondary">{profileLabel}</span>
           </span>
         </div>
         <div className="flex items-center gap-4 text-xs font-mono">
-          <span className="flex items-center gap-1.5 text-[#a8a8a8]">
-            <span className="w-3 h-0.5 bg-[#a8a8a8] inline-block border-t border-dashed" />
+          <span className="flex items-center gap-1.5 text-content-muted">
+            <span className="w-3 h-0.5 bg-content-muted inline-block border-t border-dashed" />
             <span>Target Arc</span>
           </span>
-          <span className="flex items-center gap-1.5 text-[#cfcfcf]">
-            <span className="w-2 h-0.5 bg-[#cfcfcf] inline-block" />
+          <span className="flex items-center gap-1.5 text-content-secondary">
+            <span className="w-2 h-0.5 bg-content-secondary inline-block" />
             <span>Actual Setlist</span>
           </span>
         </div>

@@ -1,5 +1,8 @@
 //! SQLite repository, track library scanner, and background job queue.
 
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
 pub mod blob;
 pub mod error;
 pub mod filter;
@@ -41,12 +44,12 @@ mod tests {
 
         // Verify version tracking
         let version = get_schema_version(&conn).expect("get schema version");
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
 
         // Verify idempotent application
         apply_migrations(&conn).expect("re-apply migrations cleanly");
         let version_after = get_schema_version(&conn).expect("get schema version");
-        assert_eq!(version_after, 6);
+        assert_eq!(version_after, 7);
 
         // Verify tracks insert with constant beat grid fields and optional beats_json
         conn.execute(

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -b --noEmit && node ../scripts/check-hex-tokens.js",
     "test": "vitest run",
     "lint": "oxlint",
     "preview": "vite preview"

@@ -55,11 +55,11 @@ export function MusicalTopologyCanvas({
 
   return (
     <div
-      className="relative flex-1 flex flex-col h-full bg-[#070707] overflow-hidden select-none border border-[#1a1a1a]"
+      className="relative flex-1 flex flex-col h-full bg-surface-deep overflow-hidden select-none border border-border-subtle"
       data-testid="musical-topology-canvas"
     >
       {/* Top Topology Canvas Bar / Controls */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-[#0d0d0d]/90 backdrop-blur-md px-3 py-1.5 border border-[#242424] text-xs font-mono">
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-surface-panel/90 backdrop-blur-md px-3 py-1.5 border border-border-base text-xs font-mono">
         <span className="text-zinc-400 uppercase tracking-widest text-xs font-bold">
           TOPOLOGY ORBITS:
         </span>
@@ -70,11 +70,11 @@ export function MusicalTopologyCanvas({
         <span className="text-rose-400">Outer: Contrasts</span>
       </div>
 
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-[#0d0d0d]/90 backdrop-blur-md p-1 border border-[#242424] text-xs font-mono">
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-surface-panel/90 backdrop-blur-md p-1 border border-border-base text-xs font-mono">
         <button
           type="button"
           onClick={() => handleZoom(-0.15)}
-          className="w-7 h-7 flex items-center justify-center bg-[#161616] hover:bg-[#222222] text-zinc-300 hover:text-white border border-[#2e2e2e] transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-400"
+          className="w-7 h-7 flex items-center justify-center bg-surface-raised hover:bg-surface-hover text-zinc-300 hover:text-white border border-border-base transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-400"
           title="Zoom out topology"
           aria-label="Zoom out"
         >
@@ -83,7 +83,7 @@ export function MusicalTopologyCanvas({
         <button
           type="button"
           onClick={handleResetZoom}
-          className="px-2 h-7 flex items-center justify-center bg-[#161616] hover:bg-[#222222] text-zinc-300 hover:text-white border border-[#2e2e2e] transition-colors cursor-pointer text-xs focus-visible:ring-2 focus-visible:ring-sky-400"
+          className="px-2 h-7 flex items-center justify-center bg-surface-raised hover:bg-surface-hover text-zinc-300 hover:text-white border border-border-base transition-colors cursor-pointer text-xs focus-visible:ring-2 focus-visible:ring-sky-400"
           title="Reset zoom"
         >
           {Math.round(zoomLevel * 100)}%
@@ -91,7 +91,7 @@ export function MusicalTopologyCanvas({
         <button
           type="button"
           onClick={() => handleZoom(0.15)}
-          className="w-7 h-7 flex items-center justify-center bg-[#161616] hover:bg-[#222222] text-zinc-300 hover:text-white border border-[#2e2e2e] transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-400"
+          className="w-7 h-7 flex items-center justify-center bg-surface-raised hover:bg-surface-hover text-zinc-300 hover:text-white border border-border-base transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-400"
           title="Zoom in topology"
           aria-label="Zoom in"
         >
@@ -490,10 +490,10 @@ export function MusicalTopologyCanvas({
       {/* Floating Hover Information Card */}
       {hoveredNode && (
         <div
-          className="absolute bottom-3 left-3 z-20 bg-[#0f0f0f]/95 border border-[#2d2d2d] p-3 text-xs font-mono shadow-2xl backdrop-blur-md max-w-sm pointer-events-none animate-in fade-in duration-75"
+          className="absolute bottom-4 left-4 z-30 bg-surface-panel/95 border border-border-base p-3 text-xs font-mono shadow-2xl backdrop-blur-md max-w-sm pointer-events-none animate-in fade-in duration-75"
           data-testid="topology-hover-card"
         >
-          <div className="flex items-center justify-between gap-2 border-b border-[#222222] pb-1.5 mb-1.5">
+          <div className="flex items-center justify-between gap-2 border-b border-border-base pb-1.5 mb-1.5">
             <span className="font-bold text-white truncate">{hoveredNode.title}</span>
             <span
               className="px-1.5 py-0.5 font-bold rounded-none text-xs"
@@ -506,7 +506,7 @@ export function MusicalTopologyCanvas({
             </span>
           </div>
           <div className="text-xs text-zinc-400 truncate mb-1">{hoveredNode.artist}</div>
-          <div className="grid grid-cols-3 gap-2 text-xs text-zinc-300 py-1 bg-[#141414] px-2 mb-1.5">
+          <div className="grid grid-cols-3 gap-2 text-xs text-zinc-300 py-1 bg-surface-raised px-2 mb-1.5">
             <div>
               <span className="text-zinc-500 block">KEY SHIFT</span>
               <span className="text-emerald-400 font-bold">
@@ -531,7 +531,7 @@ export function MusicalTopologyCanvas({
       )}
 
       {/* Center Track Navigation Helper HUD */}
-      <div className="absolute bottom-3 right-3 z-10 flex items-center gap-2 bg-[#0d0d0d]/90 backdrop-blur-md px-3 py-1.5 border border-[#242424] text-xs font-mono">
+      <div className="absolute bottom-3 right-3 z-10 flex items-center gap-2 bg-surface-panel/90 backdrop-blur-md px-3 py-1.5 border border-border-base text-xs font-mono">
         <span className="text-zinc-400">Anchor:</span>
         <span className="text-sky-300 font-semibold truncate max-w-[150px]">{anchorSong.title}</span>
         <button

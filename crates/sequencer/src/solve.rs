@@ -183,6 +183,7 @@ pub fn order_tracks_with_config(
 /// # Errors
 /// Returns [`SequencerError::Cancelled`] if the operation was cancelled,
 /// or [`SequencerError::InvalidParameter`] if parameters are invalid.
+#[allow(clippy::too_many_arguments)]
 pub fn order_tracks_with_options<F>(
     tracks: &[TrackAnalysis],
     weights: &CostWeights,
@@ -319,6 +320,7 @@ fn refine_dynamic_trajectory(
     profile: EnergyProfile,
     pins: &TrackPins,
     config: Option<&CostModelConfig>,
+    cancel: Option<&AtomicBool>,
 ) {
     let m = order.len();
     if m <= 2 {
@@ -387,6 +389,11 @@ fn refine_dynamic_trajectory(
     let mut candidate_edge_costs: Vec<f32> = Vec::with_capacity(m);
 
     while improved && passes < 10 {
+        if let Some(c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                return;
+            }
+        }
         improved = false;
         passes += 1;
 
@@ -491,11 +498,25 @@ pub fn solve_open_hamiltonian_path(
     pins: &TrackPins,
     seed: u64,
 ) -> Result<Vec<usize>, SequencerError> {
+    solve_open_hamiltonian_path_with_options(matrix, active, pins, seed, None, None)
+}
+
+/// Solves the open Hamiltonian path with optional cancellation and progress reporting.
+pub fn solve_open_hamiltonian_path_with_options(
+    matrix: &CostMatrix,
+    active: &[usize],
+    pins: &TrackPins,
+    seed: u64,
+    cancel: Option<&AtomicBool>,
+    progress: Option<&mut dyn FnMut(f32)>,
+) -> Result<Vec<usize>, SequencerError> {
     let m = active.len();
     if m <= 12 {
-        solve_held_karp(matrix, active, pins.first, pins.last)
+        solve_held_karp(matrix, active, pins.first, pins.last, cancel)
     } else {
-        solve_simulated_annealing(matrix, active, pins.first, pins.last, seed)
+        solve_simulated_annealing(
+            matrix, active, pins.first, pins.last, seed, cancel, progress,
+        )
     }
 }
 
@@ -505,6 +526,7 @@ fn solve_held_karp(
     active: &[usize],
     first_anchor: Option<usize>,
     last_anchor: Option<usize>,
+    cancel: Option<&AtomicBool>,
 ) -> Result<Vec<usize>, SequencerError> {
     let m = active.len();
     let s_local = first_anchor.and_then(|f| active.iter().position(|&x| x == f));
@@ -534,6 +556,11 @@ fn solve_held_karp(
 
     // Iterate through all bitmasks in ascending order
     for mask in 1..full_mask {
+        if let Some(c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                return Err(SequencerError::Cancelled);
+            }
+        }
         if let Some(s) = s_local {
             if (mask & (1 << s)) == 0 {
                 continue;
@@ -635,6 +662,8 @@ fn solve_simulated_annealing(
     first_anchor: Option<usize>,
     last_anchor: Option<usize>,
     seed: u64,
+    cancel: Option<&AtomicBool>,
+    mut progress: Option<&mut dyn FnMut(f32)>,
 ) -> Result<Vec<usize>, SequencerError> {
     let m = active.len();
     let mut rng = SimpleRng::new(seed);
@@ -667,6 +696,9 @@ fn solve_simulated_annealing(
 
     // If fewer than 2 mutable vertices, permutation is already constrained
     if start_idx >= end_idx {
+        if let Some(ref mut p) = progress {
+            p(1.0);
+        }
         return Ok(current);
     }
 
@@ -680,7 +712,17 @@ fn solve_simulated_annealing(
     let alpha = (t_min / t_init).powf(1.0 / (iterations as f32));
     let mut temp = t_init;
 
-    for _ in 0..iterations {
+    for iter in 0..iterations {
+        if iter % 500 == 0 {
+            if let Some(c) = cancel {
+                if c.load(Ordering::Relaxed) {
+                    return Err(SequencerError::Cancelled);
+                }
+            }
+            if let Some(ref mut p) = progress {
+                p(iter as f32 / iterations as f32);
+            }
+        }
         let move_type = rng.next_u64() % 2;
 
         if move_type == 0 {
@@ -816,6 +858,10 @@ fn solve_simulated_annealing(
         }
 
         temp *= alpha;
+    }
+
+    if let Some(ref mut p) = progress {
+        p(1.0);
     }
 
     Ok(best)
@@ -1003,7 +1049,7 @@ mod tests {
         for (n, pins) in test_configs {
             let active: Vec<usize> = (0..n).filter(|idx| !pins.exclude.contains(idx)).collect();
             let (brute_path, brute_cost) = solve_brute_force(&matrix, &active, &pins);
-            let hk_path = solve_held_karp(&matrix, &active, pins.first, pins.last).unwrap();
+            let hk_path = solve_held_karp(&matrix, &active, pins.first, pins.last, None).unwrap();
             let hk_cost = evaluate_path_cost(&hk_path, &matrix);
 
             assert_eq!(hk_path.len(), brute_path.len());
@@ -1249,7 +1295,7 @@ mod tests {
             let mut order: Vec<usize> = (0..n).collect();
             let initial_cost = evaluate_dynamic_cost(&order, &tracks, &weights, profile, None);
 
-            refine_dynamic_trajectory(&mut order, &tracks, &weights, profile, &pins, None);
+            refine_dynamic_trajectory(&mut order, &tracks, &weights, profile, &pins, None, None);
 
             let refined_cost = evaluate_dynamic_cost(&order, &tracks, &weights, profile, None);
 
@@ -1305,5 +1351,54 @@ mod tests {
             }
             assert!(result.total_cost >= 0.0 && result.total_cost.is_finite());
         }
+    }
+
+    #[test]
+    fn test_order_tracks_cancellation_returns_typed_cancelled_error() {
+        let tracks: Vec<TrackAnalysis> = (0..20)
+            .map(|i| make_dummy_analysis(120.0 + i as f64, ((i % 12) + 1) as u8, 5))
+            .collect();
+        let weights = CostWeights::default();
+        let pins = TrackPins::new();
+
+        // Cancellation flagged prior to solve
+        let cancel = Arc::new(AtomicBool::new(true));
+        let res = order_tracks_with_options(
+            &tracks,
+            &weights,
+            EnergyProfile::LinearRamp,
+            &pins,
+            42,
+            None,
+            Some(cancel),
+            None::<fn(f32)>,
+        );
+
+        assert!(matches!(res, Err(SequencerError::Cancelled)));
+    }
+
+    #[test]
+    fn test_order_tracks_progress_callback_called() {
+        let tracks: Vec<TrackAnalysis> = (0..20)
+            .map(|i| make_dummy_analysis(120.0 + i as f64, ((i % 12) + 1) as u8, 5))
+            .collect();
+        let weights = CostWeights::default();
+        let pins = TrackPins::new();
+
+        let mut reports = Vec::new();
+        let res = order_tracks_with_options(
+            &tracks,
+            &weights,
+            EnergyProfile::LinearRamp,
+            &pins,
+            42,
+            None,
+            None,
+            Some(|fraction: f32| reports.push(fraction)),
+        );
+
+        assert!(res.is_ok());
+        assert!(!reports.is_empty(), "Progress reports should not be empty");
+        assert_eq!(*reports.last().unwrap(), 1.0);
     }
 }

@@ -37,7 +37,8 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
   onOverrideSaved,
   className = '',
 }) => {
-  const { addToast, refreshTrackInSetlist } = useAppStore();
+  const addToast = useAppStore((s) => s.addToast);
+  const refreshTrackInSetlist = useAppStore((s) => s.refreshTrackInSetlist);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B'>('B'); // Default to incoming track B
   const [isSaving, setIsSaving] = useState(false);
 
@@ -170,14 +171,14 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
   };
 
   return (
-    <div className={`bg-[#0a0a0a] border border-[#1f1f1f] p-4 space-y-4 ${className}`}>
+    <div className={`bg-surface-panel border border-border-subtle p-4 space-y-4 ${className}`}>
       {/* Header and Deck Switcher */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1c1c1c] pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono font-bold tracking-wider text-[#ededed] uppercase">
+          <span className="text-xs font-mono font-bold tracking-wider text-content-primary uppercase">
             Non-Destructive Corrections & Overrides
           </span>
-          <span className="text-xs font-mono text-[#a8a8a8]">
+          <span className="text-xs font-mono text-content-muted">
             (Affects planning models only)
           </span>
         </div>
@@ -190,8 +191,8 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
             disabled={!trackA}
             className={`px-2.5 py-1 border transition-colors cursor-pointer ${
               activeDeck === 'A'
-                ? 'bg-[#1e3a5f] border-[#38bdf8] text-[#38bdf8] font-bold'
-                : 'bg-[#121212] border-[#242424] text-[#a8a8a8] hover:text-[#ededed]'
+                ? 'bg-accent-blue-dim border-accent-blue text-accent-blue font-bold'
+                : 'bg-surface-raised border-border-base text-content-muted hover:text-content-primary'
             }`}
           >
             DECK A {posA ? `(#${String(posA).padStart(2, '0')})` : ''}
@@ -202,8 +203,8 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
             disabled={!trackB}
             className={`px-2.5 py-1 border transition-colors cursor-pointer ${
               activeDeck === 'B'
-                ? 'bg-[#1e3a5f] border-[#38bdf8] text-[#38bdf8] font-bold'
-                : 'bg-[#121212] border-[#242424] text-[#a8a8a8] hover:text-[#ededed]'
+                ? 'bg-accent-blue-dim border-accent-blue text-accent-blue font-bold'
+                : 'bg-surface-raised border-border-base text-content-muted hover:text-content-primary'
             }`}
           >
             DECK B {posB ? `(#${String(posB).padStart(2, '0')})` : ''}
@@ -213,7 +214,7 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
             type="button"
             onClick={() => void handleResetOverrides()}
             disabled={isSaving || !selectedTrack}
-            className="ml-2 px-2 py-1 bg-[#1a1212] hover:bg-[#281515] border border-[#522020] text-[#f87171] text-xs cursor-pointer transition-colors"
+            className="ml-2 px-2 py-1 bg-surface-raised hover:bg-status-danger-dim border border-status-danger-dim text-status-danger text-xs cursor-pointer transition-colors"
             title="Clear all active overrides on this track"
           >
             Reset Overrides
@@ -222,7 +223,7 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
       </div>
 
       {/* Non-Destructive Banner */}
-      <div className="px-3 py-1.5 bg-[#0e1726]/60 border border-[#1e3a5f] text-[#38bdf8] text-xs font-mono flex items-center gap-2">
+      <div className="px-3 py-1.5 bg-surface-raised/60 border border-accent-blue-dim text-accent-blue text-xs font-mono flex items-center gap-2">
         <span>🛡️</span>
         <span>
           NON-DESTRUCTIVE: All adjustments modify metadata & analysis models. Source audio files are strictly read-only.
@@ -232,10 +233,10 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
       {/* Control Panels Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs font-mono">
         {/* Panel 1: BPM & Tempo Correction */}
-        <div className="p-3 bg-[#0d0d0d] border border-[#202020] space-y-2.5">
-          <div className="flex items-center justify-between border-b border-[#1c1c1c] pb-1.5">
-            <span className="font-bold text-[#cfcfcf] uppercase">BPM Override & Multipliers</span>
-            <span className="text-[#38bdf8] font-bold">{currentBpm.toFixed(1)} BPM</span>
+        <div className="p-3 bg-surface-panel border border-border-base space-y-2.5">
+          <div className="flex items-center justify-between border-b border-border-subtle pb-1.5">
+            <span className="font-bold text-content-secondary uppercase">BPM Override & Multipliers</span>
+            <span className="text-accent-blue font-bold">{currentBpm.toFixed(1)} BPM</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -245,21 +246,21 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
               onChange={(e) => setBpmInput(e.target.value)}
               onBlur={handleBpmCommit}
               onKeyDown={(e) => e.key === 'Enter' && handleBpmCommit()}
-              className="w-20 px-2 py-1 bg-[#141414] border border-[#2c2c2c] text-white text-xs font-mono focus:border-[#38bdf8] focus:outline-none"
+              className="w-20 px-2 py-1 bg-surface-raised border border-border-base text-white text-xs font-mono focus:border-accent-blue focus:outline-none"
             />
             <button
               type="button"
               onClick={handleBpmCommit}
               disabled={isSaving}
-              className="px-2 py-1 bg-[#181818] hover:bg-[#252525] border border-[#333333] text-[#ededed] cursor-pointer"
+              className="px-2 py-1 bg-surface-elevated hover:bg-surface-hover border border-border-strong text-content-primary cursor-pointer"
             >
               Set
             </button>
-            <div className="h-4 w-[1px] bg-[#242424] mx-1" />
+            <div className="h-4 w-[1px] bg-surface-hover mx-1" />
             <button
               type="button"
               onClick={handleHalfBpm}
-              className="px-2 py-1 bg-[#141414] hover:bg-[#202020] border border-[#27272a] text-[#a8a8a8] hover:text-white cursor-pointer"
+              className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-content-muted hover:text-white cursor-pointer"
               title="Halve tempo (x0.5)"
             >
               ÷2 (x0.5)
@@ -267,7 +268,7 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
             <button
               type="button"
               onClick={handleDoubleBpm}
-              className="px-2 py-1 bg-[#141414] hover:bg-[#202020] border border-[#27272a] text-[#a8a8a8] hover:text-white cursor-pointer"
+              className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-content-muted hover:text-white cursor-pointer"
               title="Double tempo (x2.0)"
             >
               ×2 (x2.0)
@@ -275,13 +276,13 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
           </div>
 
           <div className="flex items-center gap-1 text-xs font-mono">
-            <span className="text-[#a8a8a8] mr-1">Nudge:</span>
+            <span className="text-content-muted mr-1">Nudge:</span>
             {[-1.0, -0.5, -0.1, +0.1, +0.5, +1.0].map((d) => (
               <button
                 key={d}
                 type="button"
                 onClick={() => handleNudgeBpm(d)}
-                className="px-1.5 py-0.5 bg-[#141414] hover:bg-[#222222] border border-[#27272a] text-[#cfcfcf] cursor-pointer"
+                className="px-1.5 py-0.5 bg-surface-raised hover:bg-surface-hover border border-border-base text-content-secondary cursor-pointer"
               >
                 {d > 0 ? `+${d}` : d}
               </button>
@@ -290,20 +291,20 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
         </div>
 
         {/* Panel 2: Beat-Grid Alignment */}
-        <div className="p-3 bg-[#0d0d0d] border border-[#202020] space-y-2.5">
-          <div className="flex items-center justify-between border-b border-[#1c1c1c] pb-1.5">
-            <span className="font-bold text-[#cfcfcf] uppercase">Beat-Grid Downbeat Alignment</span>
-            <span className="text-[#a8a8a8]">{currentDownbeat.toFixed(1)} ms</span>
+        <div className="p-3 bg-surface-panel border border-border-base space-y-2.5">
+          <div className="flex items-center justify-between border-b border-border-subtle pb-1.5">
+            <span className="font-bold text-content-secondary uppercase">Beat-Grid Downbeat Alignment</span>
+            <span className="text-content-muted">{currentDownbeat.toFixed(1)} ms</span>
           </div>
 
           <div className="flex items-center gap-1.5 text-xs font-mono">
-            <span className="text-[#a8a8a8] mr-1">Nudge Downbeat:</span>
+            <span className="text-content-muted mr-1">Nudge Downbeat:</span>
             {[-20, -5, +5, +20].map((ms) => (
               <button
                 key={ms}
                 type="button"
                 onClick={() => handleNudgeDownbeat(ms)}
-                className="px-2 py-1 bg-[#141414] hover:bg-[#222222] border border-[#27272a] text-[#cfcfcf] cursor-pointer"
+                className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-content-secondary cursor-pointer"
               >
                 {ms > 0 ? `+${ms}ms` : `${ms}ms`}
               </button>
@@ -314,14 +315,14 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
             <button
               type="button"
               onClick={() => handleShiftBeat(-1)}
-              className="flex-1 px-2 py-1 bg-[#141414] hover:bg-[#202020] border border-[#27272a] text-[#cfcfcf] cursor-pointer text-center"
+              className="flex-1 px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-content-secondary cursor-pointer text-center"
             >
               ◀ Shift 1 Beat Back
             </button>
             <button
               type="button"
               onClick={() => handleShiftBeat(1)}
-              className="flex-1 px-2 py-1 bg-[#141414] hover:bg-[#202020] border border-[#27272a] text-[#cfcfcf] cursor-pointer text-center"
+              className="flex-1 px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-content-secondary cursor-pointer text-center"
             >
               Shift 1 Beat Forward ▶
             </button>
@@ -329,9 +330,9 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
         </div>
 
         {/* Panel 3: Key & Camelot Override */}
-        <div className="p-3 bg-[#0d0d0d] border border-[#202020] space-y-2.5">
-          <div className="flex items-center justify-between border-b border-[#1c1c1c] pb-1.5">
-            <span className="font-bold text-[#cfcfcf] uppercase">Camelot Harmonic Key</span>
+        <div className="p-3 bg-surface-panel border border-border-base space-y-2.5">
+          <div className="flex items-center justify-between border-b border-border-subtle pb-1.5">
+            <span className="font-bold text-content-secondary uppercase">Camelot Harmonic Key</span>
             <span
               className="px-2 py-0.5 rounded-none font-bold text-xs border border-black/30"
               style={{
@@ -395,10 +396,10 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
         </div>
 
         {/* Panel 4: Cue Point Adjustment */}
-        <div className="p-3 bg-[#0d0d0d] border border-[#202020] space-y-2.5">
-          <div className="flex items-center justify-between border-b border-[#1c1c1c] pb-1.5">
-            <span className="font-bold text-[#cfcfcf] uppercase">Cue Adjustment</span>
-            <span className="text-[#a8a8a8]">
+        <div className="p-3 bg-surface-panel border border-border-base space-y-2.5">
+          <div className="flex items-center justify-between border-b border-border-subtle pb-1.5">
+            <span className="font-bold text-content-secondary uppercase">Cue Adjustment</span>
+            <span className="text-content-muted">
               {activeCue ? `${formatTime(activeCue.time_ms)} (${activeCue.time_ms.toFixed(0)}ms)` : 'None'}
             </span>
           </div>
@@ -415,8 +416,8 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
                       onClick={() => setSelectedCueIndex(idx)}
                       className={`px-1.5 py-0.5 border text-xs font-mono cursor-pointer rounded-none ${
                         idx === selectedCueIndex
-                          ? 'bg-[#1e3a5f] border-[#38bdf8] text-[#38bdf8] font-bold'
-                          : 'bg-[#141414] border-[#262626] text-[#a8a8a8] hover:text-white'
+                          ? 'bg-accent-blue-dim border-accent-blue text-accent-blue font-bold'
+                          : 'bg-surface-raised border-border-base text-content-muted hover:text-white'
                       }`}
                     >
                       Cue {letter}
@@ -427,7 +428,7 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
 
               {activeCue && (
                 <div className="flex items-center justify-between pt-1 text-xs font-mono">
-                  <span className="text-[#a8a8a8] truncate max-w-[120px]">
+                  <span className="text-content-muted truncate max-w-[120px]">
                     {activeCue.label}
                   </span>
                   <div className="flex items-center gap-1">
@@ -436,7 +437,7 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
                         key={ms}
                         type="button"
                         onClick={() => handleNudgeCue(ms)}
-                        className="px-1.5 py-0.5 bg-[#141414] hover:bg-[#202020] border border-[#27272a] text-[#cfcfcf] cursor-pointer"
+                        className="px-1.5 py-0.5 bg-surface-raised hover:bg-surface-hover border border-border-base text-content-secondary cursor-pointer"
                       >
                         {ms > 0 ? `+${ms}ms` : `${ms}ms`}
                       </button>
@@ -446,7 +447,7 @@ export const NonDestructiveControls: React.FC<NonDestructiveControlsProps> = ({
               )}
             </div>
           ) : (
-            <div className="py-2 text-[#a8a8a8] text-xs">No cue points analyzed on this track.</div>
+            <div className="py-2 text-content-muted text-xs">No cue points analyzed on this track.</div>
           )}
         </div>
       </div>

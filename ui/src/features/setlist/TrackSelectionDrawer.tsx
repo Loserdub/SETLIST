@@ -93,19 +93,19 @@ export function TrackSelectionDrawer({
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-[#0a0a0a] border-l border-[#222222] shadow-2xl flex flex-col animate-slide-left text-[#ededed]">
+    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-surface-panel border-l border-border-base shadow-2xl flex flex-col animate-slide-left text-content-primary">
       {/* Drawer Header */}
-      <div className="p-4 border-b border-[#1c1c1c] flex items-center justify-between bg-[#0e0e0e] shrink-0">
+      <div className="p-4 border-b border-border-subtle flex items-center justify-between bg-surface-panel shrink-0">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[#38bdf8]">
+            <span className="text-accent-blue">
               <IconPlus size={16} />
             </span>
             <h3 className="text-xs font-mono font-bold tracking-widest uppercase text-white">
               Select Tracks • Library Pool
             </h3>
           </div>
-          <p className="text-xs font-mono text-[#a8a8a8] mt-0.5">
+          <p className="text-xs font-mono text-content-muted mt-0.5">
             Add tracks to the setlist and monitor target duration.
           </p>
         </div>
@@ -113,7 +113,7 @@ export function TrackSelectionDrawer({
         <button
           type="button"
           onClick={onClose}
-          className="text-[#a8a8a8] hover:text-white transition-colors cursor-pointer text-xs font-mono p-1.5 border border-transparent hover:border-[#2e2e2e] focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
+          className="text-content-muted hover:text-white transition-colors cursor-pointer text-xs font-mono p-1.5 border border-transparent hover:border-border-base focus-visible:ring-1 focus-visible:ring-accent-blue"
           aria-label="Close track selection drawer"
         >
           <IconClose size={14} />
@@ -121,17 +121,17 @@ export function TrackSelectionDrawer({
       </div>
 
       {/* Target Duration Meter */}
-      <div className="px-4 py-2.5 bg-[#111111] border-b border-[#1a1a1a] shrink-0">
+      <div className="px-4 py-2.5 bg-surface-raised border-b border-border-subtle shrink-0">
         <div className="flex items-center justify-between text-xs font-mono mb-1.5">
-          <span className="text-[#a8a8a8] uppercase">Set Duration Progress:</span>
+          <span className="text-content-muted uppercase">Set Duration Progress:</span>
           <span className="font-semibold text-white tabular-nums">
             {formatDurationMs(totalSetlistDurationMs)} / {targetDurationMinutes}:00
-            <span className="text-xs text-[#a8a8a8] ml-1.5">
+            <span className="text-xs text-content-muted ml-1.5">
               ({progressPercent.toFixed(0)}%)
             </span>
           </span>
         </div>
-        <div className="w-full bg-[#181818] h-1.5 overflow-hidden border border-[#242424]">
+        <div className="w-full bg-surface-elevated h-1.5 overflow-hidden border border-border-base">
           <div
             className={`h-full transition-all duration-300 ${
               progressPercent >= 100
@@ -144,25 +144,25 @@ export function TrackSelectionDrawer({
       </div>
 
       {/* Search & Filters */}
-      <div className="p-3 bg-[#0c0c0c] border-b border-[#1c1c1c] space-y-2 shrink-0">
+      <div className="p-3 bg-surface-panel border-b border-border-subtle space-y-2 shrink-0">
         {/* Search Input */}
         <div className="relative">
           <IconSearch
             size={13}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#777777]"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-content-muted"
           />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by title or artist..."
-            className="w-full bg-[#141414] border border-[#262626] focus:border-[#38bdf8] text-xs font-mono text-white pl-8 pr-3 py-1.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
+            className="w-full bg-surface-raised border border-border-base focus:border-accent-blue text-xs font-mono text-white pl-8 pr-3 py-1.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-blue"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#888888] hover:text-white text-xs cursor-pointer"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-content-muted hover:text-white text-xs cursor-pointer"
             >
               ✕
             </button>
@@ -174,7 +174,7 @@ export function TrackSelectionDrawer({
           <select
             value={selectedKey}
             onChange={(e) => setSelectedKey(e.target.value)}
-            className="bg-[#141414] border border-[#262626] text-xs font-mono text-[#cccccc] px-2 py-1 focus:outline-none focus:border-[#38bdf8] cursor-pointer"
+            className="bg-surface-raised border border-border-base text-xs font-mono text-content-secondary px-2 py-1 focus:outline-none focus:border-accent-blue cursor-pointer"
           >
             <option value="all">All Keys</option>
             {Array.from({ length: 12 }, (_, i) => i + 1).flatMap((num) => [
@@ -183,7 +183,7 @@ export function TrackSelectionDrawer({
             ])}
           </select>
 
-          <span className="text-[#a8a8a8] text-xs">
+          <span className="text-content-muted text-xs">
             Showing {filteredTracks.length} of {tracks.length} tracks
           </span>
         </div>
@@ -192,7 +192,7 @@ export function TrackSelectionDrawer({
       {/* Tracks Scrollable List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-1">
         {filteredTracks.length === 0 ? (
-          <div className="p-8 text-center text-xs font-mono text-[#a8a8a8] border border-[#1c1c1c] bg-[#0c0c0c] my-8">
+          <div className="p-8 text-center text-xs font-mono text-content-muted border border-border-subtle bg-surface-panel my-8">
             No tracks found matching query.
           </div>
         ) : (
@@ -201,8 +201,8 @@ export function TrackSelectionDrawer({
             const keyStr = t.analysis?.key.camelot
               ? `${t.analysis.key.camelot.number}${t.analysis.key.camelot.letter}`
               : '-';
-            const bg = keyStr !== '-' ? camelotColor(keyStr) : '#22222a';
-            const fg = keyStr !== '-' ? camelotTextColor(keyStr) : '#9898a4';
+            const bg = keyStr !== '-' ? camelotColor(keyStr) : 'var(--color-surface-hover)';
+            const fg = keyStr !== '-' ? camelotTextColor(keyStr) : 'var(--color-content-muted)';
             const bpm = t.analysis?.rhythm.grid.bpm ? Math.round(t.analysis.rhythm.grid.bpm) : 0;
             const energy = t.analysis?.energy_score ?? 5;
             const isPlaying = auditionTrackId === t.id && auditionState === 'playing';
@@ -212,8 +212,8 @@ export function TrackSelectionDrawer({
                 key={t.id}
                 className={`p-2.5 border transition-colors flex items-center justify-between gap-2.5 ${
                   isInSet
-                    ? 'bg-[#121c16] border-emerald-500/40 text-white'
-                    : 'bg-[#0e0e0e] hover:bg-[#141414] border-[#1e1e1e] text-[#ededed]'
+                    ? 'bg-surface-raised border-emerald-500/40 text-white'
+                    : 'bg-surface-panel hover:bg-surface-raised border-border-subtle text-content-primary'
                 }`}
               >
                 {/* Left: Play button, Camelot chip, Track details */}
@@ -223,8 +223,8 @@ export function TrackSelectionDrawer({
                     onClick={() => void toggleAudition(t.id)}
                     className={`p-1 text-xs font-mono border transition-colors cursor-pointer rounded-none shrink-0 ${
                       isPlaying
-                        ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8]'
-                        : 'border-[#262626] bg-[#161616] text-[#cccccc] hover:text-white'
+                        ? 'border-accent-blue bg-accent-blue-subtle text-accent-blue'
+                        : 'border-border-base bg-surface-raised text-content-secondary hover:text-white'
                     }`}
                     title={isPlaying ? 'Pause' : 'Audition'}
                   >
@@ -242,7 +242,7 @@ export function TrackSelectionDrawer({
                     <span className="text-xs font-semibold block truncate">
                       {t.tags.title ?? 'Untitled Track'}
                     </span>
-                    <span className="text-xs text-[#a8a8a8] block truncate">
+                    <span className="text-xs text-content-muted block truncate">
                       {t.tags.artist ?? 'Unknown Artist'}
                     </span>
                   </div>
@@ -250,25 +250,25 @@ export function TrackSelectionDrawer({
 
                 {/* Right: BPM, Energy, Duration & Add/Remove Button */}
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="font-mono text-xs text-[#ededed] te-num tabular-nums">
+                  <span className="font-mono text-xs text-content-primary te-num tabular-nums">
                     {bpm > 0 ? (
                       <>
                         <span className="font-medium">{bpm}</span>
-                        <span className="te-unit text-[#71717a]">BPM</span>
+                        <span className="te-unit text-content-muted">BPM</span>
                       </>
                     ) : (
-                      <span className="text-[#646472]">-</span>
+                      <span className="text-content-dim">-</span>
                     )}
                   </span>
 
                   <span
-                    className="font-mono text-xs text-[#a8a8a8] te-num tabular-nums"
+                    className="font-mono text-xs text-content-muted te-num tabular-nums"
                     title={`Energy Score: ${energy}/10`}
                   >
                     E{energy}
                   </span>
 
-                  <span className="font-mono text-xs text-[#9898a4] te-num tabular-nums w-10 text-right">
+                  <span className="font-mono text-xs text-content-muted te-num tabular-nums w-10 text-right">
                     {formatDurationMs(t.duration_ms)}
                   </span>
 
@@ -279,7 +279,7 @@ export function TrackSelectionDrawer({
                     className={`px-2 py-1 text-xs font-mono uppercase tracking-wider font-semibold border transition-colors cursor-pointer rounded-none ${
                       isInSet
                         ? 'border-emerald-500/60 bg-emerald-950/60 text-emerald-300 hover:bg-rose-950/60 hover:border-rose-500/60 hover:text-rose-300'
-                        : 'border-[#2c2c2c] bg-[#181818] hover:bg-[#222222] text-[#38bdf8] hover:border-[#38bdf8]'
+                        : 'border-border-base bg-surface-elevated hover:bg-surface-hover text-accent-blue hover:border-accent-blue'
                     }`}
                     title={isInSet ? 'Remove from setlist' : 'Add to setlist'}
                   >
@@ -301,14 +301,14 @@ export function TrackSelectionDrawer({
       </div>
 
       {/* Drawer Footer */}
-      <div className="p-3 border-t border-[#1c1c1c] bg-[#0c0c0c] flex items-center justify-between text-xs font-mono shrink-0">
-        <span className="text-[#a8a8a8]">
+      <div className="p-3 border-t border-border-subtle bg-surface-panel flex items-center justify-between text-xs font-mono shrink-0">
+        <span className="text-content-muted">
           {setlist.length} track{setlist.length === 1 ? '' : 's'} in active set
         </span>
         <button
           type="button"
           onClick={onClose}
-          className="px-3 py-1 bg-[#181818] hover:bg-[#222222] text-white border border-[#2b2b2b] uppercase tracking-wider cursor-pointer"
+          className="px-3 py-1 bg-surface-elevated hover:bg-surface-hover text-white border border-border-base uppercase tracking-wider cursor-pointer"
         >
           Done
         </button>

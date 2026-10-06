@@ -24,6 +24,9 @@ pub struct ClickTrackSource {
 
 impl ClickTrackSource {
     /// Creates a new click track source aligned with the given beat timestamps.
+    ///
+    /// Stops generating samples when the final beat in `beats_ms` finishes,
+    /// preventing unnecessary CPU cycles or premature truncation of mixed audio streams.
     #[must_use]
     pub fn new(
         beats_ms: Vec<f64>,
@@ -33,12 +36,26 @@ impl ClickTrackSource {
         total_frames: usize,
         enabled: Arc<AtomicBool>,
     ) -> Self {
+        let beat_end_frames = if beats_ms.is_empty() {
+            0
+        } else {
+            let last_beat_ms = beats_ms.last().copied().unwrap_or(0.0);
+            (((last_beat_ms + CLICK_DURATION_MS) / 1000.0) * f64::from(sample_rate)).ceil() as usize
+        };
+        let effective_frames = if total_frames == 0 {
+            beat_end_frames
+        } else if beat_end_frames > 0 {
+            total_frames.min(beat_end_frames)
+        } else {
+            0
+        };
+
         Self {
             beats_ms,
             downbeat_flags,
             sample_rate,
             channels: channels.max(1),
-            total_frames,
+            total_frames: effective_frames,
             current_frame: 0,
             channel_idx: 0,
             current_sample_val: 0.0,
@@ -103,7 +120,7 @@ impl Iterator for ClickTrackSource {
 
 impl Source for ClickTrackSource {
     fn current_frame_len(&self) -> Option<usize> {
-        Some(self.total_frames.saturating_sub(self.current_frame))
+        None
     }
 
     fn channels(&self) -> u16 {
@@ -133,6 +150,55 @@ impl Source for ClickTrackSource {
 mod tests {
     use super::*;
 
+    struct SyntheticAudioSource {
+        sample_rate: u32,
+        channels: u16,
+        total_samples: usize,
+        current_sample: usize,
+    }
+
+    impl SyntheticAudioSource {
+        fn new(sample_rate: u32, channels: u16, duration_secs: f64) -> Self {
+            let total_samples =
+                (duration_secs * sample_rate as f64 * channels as f64).round() as usize;
+            Self {
+                sample_rate,
+                channels,
+                total_samples,
+                current_sample: 0,
+            }
+        }
+    }
+
+    impl Iterator for SyntheticAudioSource {
+        type Item = f32;
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.current_sample < self.total_samples {
+                self.current_sample += 1;
+                Some(0.1)
+            } else {
+                None
+            }
+        }
+    }
+
+    impl Source for SyntheticAudioSource {
+        fn current_frame_len(&self) -> Option<usize> {
+            None
+        }
+        fn channels(&self) -> u16 {
+            self.channels
+        }
+        fn sample_rate(&self) -> u32 {
+            self.sample_rate
+        }
+        fn total_duration(&self) -> Option<Duration> {
+            Some(Duration::from_secs_f64(
+                (self.total_samples / self.channels as usize) as f64 / self.sample_rate as f64,
+            ))
+        }
+    }
+
     #[test]
     fn test_click_track_synthesis_and_toggling() {
         let beats = vec![0.0, 500.0, 1000.0];
@@ -148,8 +214,6 @@ mod tests {
             enabled.clone(),
         );
 
-        // Frame 0 (time 0 ms) should have an audible sample since it's at beat 0.0
-        // Wait, at dt = 0, sin(0) = 0.0. But at t > 0 (subsequent samples in the click window):
         let samples: Vec<f32> = (0..200).filter_map(|_| source.next()).collect();
         let max_amp = samples.iter().copied().fold(0.0f32, f32::max);
         assert!(
@@ -172,6 +236,36 @@ mod tests {
         assert!(
             max_amp_500 > 0.05,
             "expected click sound wave at beat 500ms"
+        );
+    }
+
+    #[test]
+    fn test_mix_of_10s_source_and_shorter_click_source_yields_10s() {
+        let sample_rate = 44100;
+        let channels = 2;
+        let audio_source = SyntheticAudioSource::new(sample_rate, channels, 10.0);
+
+        // Click track with beats up to only 2 seconds (shorter than 10s audio)
+        let beats = vec![500.0, 1000.0, 1500.0, 2000.0];
+        let downbeats = vec![true, false, false, false];
+        let enabled = Arc::new(AtomicBool::new(true));
+        let click_source = ClickTrackSource::new(
+            beats,
+            downbeats,
+            sample_rate,
+            channels,
+            sample_rate as usize * 10,
+            enabled,
+        );
+
+        let mixed = audio_source.mix(click_source);
+        let sample_count = mixed.count();
+
+        // 10 seconds * 44100 samples/sec * 2 channels = 882,000 samples
+        let expected_samples = 10 * sample_rate as usize * channels as usize;
+        assert_eq!(
+            sample_count, expected_samples,
+            "Mixed source must produce full 10 seconds of samples ({expected_samples}), got {sample_count}"
         );
     }
 }

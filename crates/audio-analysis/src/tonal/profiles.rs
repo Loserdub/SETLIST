@@ -12,6 +12,8 @@ pub enum KeyProfile {
     Temperley,
     /// EDMA (Empirical Distribution of Musical Associations / Aarden-Essen).
     Edma,
+    /// Sha'ath key profiles tuned for electronic and modern recorded music.
+    Shaath,
 }
 
 impl KeyProfile {
@@ -49,6 +51,12 @@ impl KeyProfile {
                     18.264, 0.737, 13.299, 12.797, 0.133, 11.221, 0.309, 13.818, 9.940, 0.434,
                     5.093, 13.955,
                 ],
+            ),
+            Self::Shaath => (
+                // Sha'ath Major: high tonic, 5th, 3rd; strongly penalizes out-of-scale intervals
+                [6.6, 1.8, 3.5, 1.5, 4.2, 3.8, 1.5, 5.2, 1.8, 3.6, 1.5, 3.6],
+                // Sha'ath Minor: sharp distinction on minor 3rd (5.0) and suppresses major 3rd (1.8)
+                [6.5, 1.8, 3.5, 5.0, 1.8, 3.8, 1.5, 5.0, 3.6, 1.8, 3.5, 1.8],
             ),
         }
     }

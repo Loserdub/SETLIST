@@ -191,7 +191,10 @@ mod tests {
             key: Key {
                 pitch_class: pc,
                 mode,
-                camelot: Camelot::new(camelot_num, camelot_let).unwrap(),
+                camelot: Camelot::new(camelot_num, camelot_let).unwrap_or(Camelot {
+                    number: 8,
+                    letter: CamelotLetter::A,
+                }),
                 tuning_cents: 0.0,
             },
             dynamics: DynamicsAnalysis {

@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use core_types::{Camelot, Mode, TrackAnalysis};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Error type for validation harness operations.
@@ -476,6 +477,75 @@ pub fn evaluate_accuracy(
     }
 }
 
+/// Baseline metrics persisted for regression gating.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BaselineMetrics {
+    /// Number of matched ground-truth tracks.
+    pub sample_size: usize,
+    /// Percentage of tracks within +/-0.5 BPM.
+    pub bpm_within_0_5_pct: f64,
+    /// Percentage of tracks correct up to an octave.
+    pub bpm_octave_correct_pct: f64,
+    /// Percentage of tracks with exact key match.
+    pub key_exact_match_pct: f64,
+    /// Percentage of tracks with Camelot-adjacent key.
+    pub key_adjacent_pct: f64,
+    /// Mean absolute BPM error.
+    pub mean_bpm_error: f64,
+}
+
+impl ValidationReport {
+    /// Converts the current report into persisted baseline metrics.
+    #[must_use]
+    pub fn to_baseline_metrics(&self) -> BaselineMetrics {
+        let total_f = self.total_matched.max(1) as f64;
+        BaselineMetrics {
+            sample_size: self.total_matched,
+            bpm_within_0_5_pct: (self.bpm_within_0_5_count as f64 / total_f) * 100.0,
+            bpm_octave_correct_pct: (self.bpm_octave_correct_count as f64 / total_f) * 100.0,
+            key_exact_match_pct: (self.exact_key_count as f64 / total_f) * 100.0,
+            key_adjacent_pct: (self.camelot_adjacent_count as f64 / total_f) * 100.0,
+            mean_bpm_error: self.mean_bpm_error,
+        }
+    }
+
+    /// Checks for accuracy regressions against a baseline.
+    ///
+    /// # Errors
+    /// Returns error string if BPM within +/-0.5% or key exact match% drops
+    /// by more than `tolerance_pct` relative to baseline.
+    pub fn check_regression(
+        &self,
+        baseline: &BaselineMetrics,
+        tolerance_pct: f64,
+    ) -> Result<(), String> {
+        let current = self.to_baseline_metrics();
+        let mut violations = Vec::new();
+
+        let bpm_drop = baseline.bpm_within_0_5_pct - current.bpm_within_0_5_pct;
+        if bpm_drop > tolerance_pct {
+            violations.push(format!(
+                "BPM within +/-0.5 accuracy dropped from {:.1}% to {:.1}% (drop: {:.1}%, tolerance: {:.1}%)",
+                baseline.bpm_within_0_5_pct, current.bpm_within_0_5_pct, bpm_drop, tolerance_pct
+            ));
+        }
+
+        let key_drop = baseline.key_exact_match_pct - current.key_exact_match_pct;
+        if key_drop > tolerance_pct {
+            violations.push(format!(
+                "Key exact match accuracy dropped from {:.1}% to {:.1}% (drop: {:.1}%, tolerance: {:.1}%)",
+                baseline.key_exact_match_pct, current.key_exact_match_pct, key_drop, tolerance_pct
+            ));
+        }
+
+        if violations.is_empty() {
+            Ok(())
+        } else {
+            Err(violations.join("; "))
+        }
+    }
+}
+
 impl fmt::Display for ValidationReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
@@ -500,6 +570,14 @@ impl fmt::Display for ValidationReport {
             "Ground-Truth Matched:  {} ({:.1}%)",
             self.total_matched, match_pct
         )?;
+        writeln!(f, "Sample Size:           {} tracks", self.total_matched)?;
+        if self.total_matched > 0 && self.total_matched < 20 {
+            writeln!(
+                f,
+                "⚠️  [CONFIDENCE FLAG: Sample size ({} tracks) is below 20 tracks. Accuracy statistics have high variance.]",
+                self.total_matched
+            )?;
+        }
         writeln!(f)?;
 
         if self.total_matched == 0 {
@@ -730,6 +808,190 @@ pub fn analyze_folder<P: AsRef<Path>>(folder: P) -> Result<Vec<AnalysisRow>, Val
     Ok(results)
 }
 
+/// Exports user-corrected ground truth from a SQLite database's `track_overrides` table.
+///
+/// Returns CSV text with columns: `file,bpm,key,source`.
+///
+/// # Errors
+/// Returns [`ValidateError`] if opening or querying the database fails.
+pub fn export_ground_truth_from_db<P: AsRef<Path>>(db_path: P) -> Result<String, ValidateError> {
+    let conn = rusqlite::Connection::open(db_path.as_ref())
+        .map_err(|e| ValidateError::CsvParse(format!("failed to open database: {e}")))?;
+
+    export_ground_truth_from_connection(&conn)
+}
+
+/// Helper that exports ground truth directly from an open SQLite connection.
+///
+/// # Errors
+/// Returns [`ValidateError`] on query failure.
+pub fn export_ground_truth_from_connection(
+    conn: &rusqlite::Connection,
+) -> Result<String, ValidateError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT t.path,
+                    coalesce(o.bpm, t.bpm) as effective_bpm,
+                    coalesce(o.key_camelot, printf('%d%s', t.camelot_number, t.camelot_letter)) as effective_key,
+                    CASE
+                        WHEN o.bpm IS NOT NULL AND o.key_camelot IS NOT NULL THEN 'user_override_both'
+                        WHEN o.bpm IS NOT NULL THEN 'user_override_bpm'
+                        WHEN o.key_camelot IS NOT NULL THEN 'user_override_key'
+                        ELSE 'user_override'
+                    END as source
+             FROM track_overrides o
+             JOIN tracks t ON o.track_id = t.id
+             WHERE o.bpm IS NOT NULL OR o.key_camelot IS NOT NULL
+             ORDER BY t.path ASC",
+        )
+        .map_err(|e| ValidateError::CsvParse(format!("failed to query track_overrides: {e}")))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            let path: String = row.get(0)?;
+            let bpm: Option<f64> = row.get(1)?;
+            let key: Option<String> = row.get(2)?;
+            let source: String = row.get(3)?;
+            Ok((path, bpm, key, source))
+        })
+        .map_err(|e| ValidateError::CsvParse(format!("query map error: {e}")))?;
+
+    let mut csv = String::from("file,bpm,key,source\n");
+    for row in rows {
+        let (path, bpm, key, source) = row.map_err(|e| ValidateError::CsvParse(e.to_string()))?;
+        if let (Some(bpm_val), Some(key_val)) = (bpm, key) {
+            csv.push_str(&format!(
+                "{},{:.2},{},{}\n",
+                escape_csv(&path),
+                bpm_val,
+                escape_csv(&key_val),
+                escape_csv(&source)
+            ));
+        }
+    }
+
+    Ok(csv)
+}
+
+/// Generates a stratified sample of unlabeled tracks from the library database
+/// across tempo, mode, and loudness dimensions for ground-truth annotation.
+///
+/// Returns CSV template with blank truth columns: `file,bpm,key,source`.
+///
+/// # Errors
+/// Returns [`ValidateError`] if database access or querying fails.
+pub fn sample_unlabeled_tracks_from_db<P: AsRef<Path>>(
+    db_path: P,
+    sample_size: usize,
+) -> Result<String, ValidateError> {
+    let conn = rusqlite::Connection::open(db_path.as_ref())
+        .map_err(|e| ValidateError::CsvParse(format!("failed to open database: {e}")))?;
+
+    sample_unlabeled_tracks_from_connection(&conn, sample_size)
+}
+
+/// Helper that samples unlabeled tracks directly from an open SQLite connection.
+///
+/// # Errors
+/// Returns [`ValidateError`] on query failure.
+pub fn sample_unlabeled_tracks_from_connection(
+    conn: &rusqlite::Connection,
+    sample_size: usize,
+) -> Result<String, ValidateError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT t.path, t.bpm, t.camelot_letter, t.integrated_lufs
+             FROM tracks t
+             LEFT JOIN track_overrides o ON t.id = o.track_id
+             WHERE o.track_id IS NULL AND t.bpm IS NOT NULL AND t.camelot_letter IS NOT NULL
+             ORDER BY t.id ASC",
+        )
+        .map_err(|e| ValidateError::CsvParse(format!("failed to query tracks: {e}")))?;
+
+    struct Candidate {
+        path: String,
+        bpm_stratum: usize,
+        mode_stratum: usize,
+        lufs_stratum: usize,
+    }
+
+    let candidates: Vec<Candidate> = stmt
+        .query_map([], |row| {
+            let path: String = row.get(0)?;
+            let bpm: f64 = row.get(1)?;
+            let letter: String = row.get(2)?;
+            let lufs: Option<f32> = row.get(3)?;
+
+            let bpm_s = if bpm < 115.0 {
+                0
+            } else if bpm <= 130.0 {
+                1
+            } else {
+                2
+            };
+            let mode_s = if letter.eq_ignore_ascii_case("A") {
+                0
+            } else {
+                1
+            };
+            let lufs_val = lufs.unwrap_or(-14.0);
+            let lufs_s = if lufs_val < -14.0 {
+                0
+            } else if lufs_val <= -9.0 {
+                1
+            } else {
+                2
+            };
+
+            Ok(Candidate {
+                path,
+                bpm_stratum: bpm_s,
+                mode_stratum: mode_s,
+                lufs_stratum: lufs_s,
+            })
+        })
+        .map_err(|e| ValidateError::CsvParse(format!("query error: {e}")))?
+        .filter_map(Result::ok)
+        .collect();
+
+    let mut buckets: std::collections::HashMap<(usize, usize, usize), Vec<String>> =
+        std::collections::HashMap::new();
+
+    for c in candidates {
+        buckets
+            .entry((c.bpm_stratum, c.mode_stratum, c.lufs_stratum))
+            .or_default()
+            .push(c.path);
+    }
+
+    let mut selected = Vec::new();
+    let mut keys: Vec<(usize, usize, usize)> = buckets.keys().copied().collect();
+    keys.sort();
+
+    let mut changed = true;
+    while selected.len() < sample_size && changed {
+        changed = false;
+        for key in &keys {
+            if selected.len() >= sample_size {
+                break;
+            }
+            if let Some(list) = buckets.get_mut(key) {
+                if !list.is_empty() {
+                    selected.push(list.remove(0));
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    let mut csv = String::from("file,bpm,key,source\n");
+    for path in selected {
+        csv.push_str(&format!("{},,,unlabeled_sample\n", escape_csv(&path)));
+    }
+
+    Ok(csv)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -855,5 +1117,118 @@ mod tests {
         assert!(rep_str.contains("Correct up to an Octave"));
         assert!(rep_str.contains("Exact Key Match"));
         assert!(rep_str.contains("Worst 10 Files"));
+        assert!(rep_str.contains("CONFIDENCE FLAG"));
+    }
+
+    #[test]
+    fn test_export_ground_truth_from_connection() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tracks (
+                id TEXT PRIMARY KEY,
+                path TEXT NOT NULL,
+                bpm REAL,
+                camelot_number INTEGER,
+                camelot_letter TEXT
+            );
+            CREATE TABLE track_overrides (
+                track_id TEXT PRIMARY KEY,
+                bpm REAL,
+                key_camelot TEXT
+            );
+            INSERT INTO tracks VALUES ('t1', '/music/track1.mp3', 128.0, 8, 'A');
+            INSERT INTO tracks VALUES ('t2', '/music/track2.mp3', 130.0, 9, 'B');
+            INSERT INTO tracks VALUES ('t3', '/music/track3.mp3', 120.0, 5, 'A');
+
+            -- User corrected track1 key and track2 bpm
+            INSERT INTO track_overrides VALUES ('t1', NULL, '8B');
+            INSERT INTO track_overrides VALUES ('t2', 132.5, NULL);",
+        )
+        .unwrap();
+
+        let csv = export_ground_truth_from_connection(&conn).unwrap();
+        assert!(csv.starts_with("file,bpm,key,source\n"));
+        let lines: Vec<&str> = csv.trim().lines().collect();
+        assert_eq!(lines.len(), 3); // 1 header + 2 overrides
+
+        assert!(csv.contains("/music/track1.mp3,128.00,8B,user_override_key"));
+        assert!(csv.contains("/music/track2.mp3,132.50,9B,user_override_bpm"));
+    }
+
+    #[test]
+    fn test_sample_unlabeled_tracks_from_connection() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tracks (
+                id TEXT PRIMARY KEY,
+                path TEXT NOT NULL,
+                bpm REAL,
+                camelot_letter TEXT,
+                integrated_lufs REAL
+            );
+            CREATE TABLE track_overrides (
+                track_id TEXT PRIMARY KEY
+            );
+            INSERT INTO tracks VALUES ('t1', '/music/1.mp3', 105.0, 'A', -16.0);
+            INSERT INTO tracks VALUES ('t2', '/music/2.mp3', 120.0, 'B', -12.0);
+            INSERT INTO tracks VALUES ('t3', '/music/3.mp3', 128.0, 'A', -7.0);
+            INSERT INTO tracks VALUES ('t4', '/music/4.mp3', 140.0, 'B', -10.0);
+            INSERT INTO tracks VALUES ('t5', '/music/5.mp3', 124.0, 'A', -14.0);",
+        )
+        .unwrap();
+
+        let csv = sample_unlabeled_tracks_from_connection(&conn, 3).unwrap();
+        assert!(csv.starts_with("file,bpm,key,source\n"));
+        let lines: Vec<&str> = csv.trim().lines().collect();
+        assert_eq!(lines.len(), 4); // 1 header + 3 sampled lines
+        for line in &lines[1..] {
+            assert!(line.ends_with(",,,unlabeled_sample"));
+        }
+    }
+
+    #[test]
+    fn test_regression_detection_and_gating() {
+        let analyzed = vec![AnalysisRow {
+            file: "t1.mp3".to_string(),
+            path: PathBuf::from("t1.mp3"),
+            bpm: 128.0,
+            key: "A minor".to_string(),
+            camelot: "8A".parse().unwrap(),
+            lufs: -14.0,
+            energy: 6,
+        }];
+        let gt = vec![GroundTruthRow {
+            file: "t1.mp3".to_string(),
+            bpm: 128.0,
+            camelot: "8A".parse().unwrap(),
+        }];
+
+        let report = evaluate_accuracy(&analyzed, &gt);
+        let baseline = report.to_baseline_metrics();
+
+        // 1. Same performance should pass with 0 tolerance
+        assert!(report.check_regression(&baseline, 0.0).is_ok());
+
+        // 2. Simulating a baseline that expected higher accuracy than report
+        let mut stricter_baseline = baseline.clone();
+        stricter_baseline.bpm_within_0_5_pct = 100.0;
+        stricter_baseline.key_exact_match_pct = 100.0;
+
+        let degraded_analyzed = vec![AnalysisRow {
+            file: "t1.mp3".to_string(),
+            path: PathBuf::from("t1.mp3"),
+            bpm: 140.0, // High error!
+            key: "C major".to_string(),
+            camelot: "8B".parse().unwrap(), // Mode flip!
+            lufs: -14.0,
+            energy: 6,
+        }];
+        let degraded_report = evaluate_accuracy(&degraded_analyzed, &gt);
+
+        let regression_res = degraded_report.check_regression(&stricter_baseline, 5.0);
+        assert!(regression_res.is_err());
+        let err_msg = regression_res.unwrap_err();
+        assert!(err_msg.contains("BPM within +/-0.5 accuracy dropped"));
+        assert!(err_msg.contains("Key exact match accuracy dropped"));
     }
 }

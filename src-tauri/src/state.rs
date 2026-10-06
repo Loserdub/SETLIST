@@ -163,6 +163,7 @@ impl JobQueue {
 }
 
 /// Global shared application state managed by Tauri.
+#[derive(Clone)]
 pub struct AppState {
     /// Thread-safe SQLite connection handle.
     pub db: Arc<Mutex<rusqlite::Connection>>,
@@ -170,6 +171,11 @@ pub struct AppState {
     pub job_queue: Arc<JobQueue>,
     /// Filesystem path to the SQLite database file if persisted on disk.
     pub db_path: Option<PathBuf>,
+    /// Cached catalog graph and score matrix keyed by catalog revision.
+    #[allow(clippy::type_complexity)]
+    pub catalog_graph_cache: Arc<Mutex<Option<(u64, Arc<sequencer::CatalogGraph>)>>>,
+    /// Cooperative cancellation token for setlist order suggestions.
+    pub order_cancel_token: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -200,6 +206,8 @@ impl AppState {
             db: Arc::new(Mutex::new(conn)),
             job_queue,
             db_path: Some(db_path),
+            catalog_graph_cache: Arc::new(Mutex::new(None)),
+            order_cancel_token: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -219,6 +227,8 @@ impl AppState {
             db: Arc::new(Mutex::new(conn)),
             job_queue,
             db_path: None,
+            catalog_graph_cache: Arc::new(Mutex::new(None)),
+            order_cancel_token: Arc::new(AtomicBool::new(false)),
         })
     }
 }

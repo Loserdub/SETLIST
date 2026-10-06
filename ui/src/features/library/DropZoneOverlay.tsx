@@ -109,11 +109,11 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
       {isDraggingOver && (
         <div
           data-testid="dropzone-active-overlay"
-          className="absolute inset-0 z-50 bg-[#09090b]/95 backdrop-blur-md flex flex-col items-center justify-center p-8 select-none border-2 border-dashed border-amber-500/80 animate-in fade-in duration-150 font-mono"
+          className="absolute inset-0 z-50 bg-surface-deep/95 backdrop-blur-md flex flex-col items-center justify-center p-8 select-none border-2 border-dashed border-amber-500/80 animate-in fade-in duration-150 font-mono"
         >
           <div className="relative z-10 flex flex-col items-center text-center max-w-xl space-y-4">
             {/* Precision Hardware Drop Target Reticle */}
-            <div className="w-16 h-16 border-2 border-amber-500 flex items-center justify-center bg-[#18120a] shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            <div className="w-16 h-16 border-2 border-amber-500 flex items-center justify-center bg-surface-raised shadow-[0_0_15px_rgba(245,158,11,0.2)]">
               <span className="text-2xl text-amber-400 font-bold">↓</span>
             </div>
 
@@ -127,7 +127,7 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
             </div>
 
             {/* Ingestion Workflow Progression */}
-            <div className="flex items-center gap-2 text-xs font-mono font-bold tracking-wider py-1.5 px-3 bg-[#121215] border border-[#27272a] text-amber-300">
+            <div className="flex items-center gap-2 text-xs font-mono font-bold tracking-wider py-1.5 px-3 bg-surface-raised border border-border-base text-amber-300">
               <span>DROP AUDIO</span>
               <span className="text-zinc-600">→</span>
               <span className="text-zinc-300">ANALYZE</span>
@@ -138,18 +138,18 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
             </div>
 
             {/* Supported Formats Indicator */}
-            <div className="flex flex-wrap items-center justify-center gap-1.5 pt-2 text-xs font-mono text-[#888888]">
+            <div className="flex flex-wrap items-center justify-center gap-1.5 pt-2 text-xs font-mono text-content-muted">
               {['WAV', 'FLAC', 'MP3', 'AIFF', 'M4A', 'OGG', '24-BIT HIGH-RES'].map((fmt) => (
                 <span
                   key={fmt}
-                  className="px-2 py-0.5 border border-[#1e1e1e] bg-[#0c0c0c] text-[#a8a8a8]"
+                  className="px-2 py-0.5 border border-border-subtle bg-surface-panel text-content-muted"
                 >
                   {fmt}
                 </span>
               ))}
             </div>
 
-            <p className="text-xs font-mono text-[#a8a8a8] pt-2">
+            <p className="text-xs font-mono text-content-muted pt-2">
               Source audio is strictly read-only and never modified or renamed.
             </p>
           </div>

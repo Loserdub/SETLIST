@@ -42,7 +42,7 @@ export function CatalogMatrixView({
     if (score >= 0.7) return 'bg-teal-600/80 text-white';
     if (score >= 0.5) return 'bg-amber-600/70 text-white';
     if (score >= 0.3) return 'bg-orange-700/60 text-white';
-    return 'bg-rose-900/60 text-[#ee8888]';
+    return 'bg-rose-900/60 text-status-danger';
   };
 
   return (
@@ -52,13 +52,13 @@ export function CatalogMatrixView({
           <h3 className="text-sm font-semibold text-white font-sans">
             Catalog Relationship Matrix
           </h3>
-          <p className="text-xs font-mono text-[#a8a8a8]">
+          <p className="text-xs font-mono text-content-muted">
             Row (Outgoing / From) → Column (Incoming / To). Hover or click any cell for transition
             intelligence.
           </p>
         </div>
         {songs.length > 20 && (
-          <span className="text-xs font-mono text-[#a8a8a8]">
+          <span className="text-xs font-mono text-content-muted">
             Showing first 20 tracks of {songs.length}
           </span>
         )}
@@ -66,20 +66,20 @@ export function CatalogMatrixView({
 
       {/* Hovered Relationship Preview Bar */}
       {hoveredPair ? (
-        <div className="p-3 bg-[#131313] border border-[#2b2b2b] text-xs font-mono flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-100">
+        <div className="p-3 bg-surface-raised border border-border-base text-xs font-mono flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-100">
           <div className="space-y-0.5 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-emerald-400 font-bold">
                 {hoveredPair.from.title} → {hoveredPair.to.title}
               </span>
-              <span className="px-1.5 py-0.5 text-xs border border-[#333333] uppercase text-[#cfcfcf]">
+              <span className="px-1.5 py-0.5 text-xs border border-border-strong uppercase text-content-secondary">
                 {hoveredPair.rel.primary_classification}
               </span>
               <span className="font-bold text-white">
                 {Math.round(hoveredPair.rel.overall_score * 100)}% Match
               </span>
             </div>
-            <p className="text-xs text-[#a8a8a8] truncate">
+            <p className="text-xs text-content-muted truncate">
               {hoveredPair.rel.explanation.summary}
             </p>
           </div>
@@ -87,29 +87,29 @@ export function CatalogMatrixView({
           <button
             type="button"
             onClick={() => onInspectRelationship(hoveredPair.rel)}
-            className="px-3 py-1 bg-[#1f1f1f] hover:bg-[#2a2a2a] text-white border border-[#3a3a3a] text-xs uppercase cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
+            className="px-3 py-1 bg-surface-elevated hover:bg-surface-hover text-white border border-border-strong text-xs uppercase cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
           >
             Inspect Full Breakdown →
           </button>
         </div>
       ) : (
-        <div className="p-3 bg-[#0d0d0d] border border-[#1a1a1a] text-xs font-mono text-[#a8a8a8]">
+        <div className="p-3 bg-surface-panel border border-border-subtle text-xs font-mono text-content-muted">
           Hover over any grid cell to preview transition characteristics.
         </div>
       )}
 
       {/* Matrix Table */}
-      <div className="overflow-x-auto border border-[#222222] bg-[#090909]">
+      <div className="overflow-x-auto border border-border-base bg-surface-deep">
         <table className="w-full border-collapse text-xs font-mono">
           <thead>
-            <tr className="border-b border-[#222222] bg-[#111111]">
-              <th className="p-2 text-left text-xs text-[#a8a8a8] font-normal min-w-[120px] sticky left-0 bg-[#111111] z-10">
+            <tr className="border-b border-border-base bg-surface-raised">
+              <th className="p-2 text-left text-xs text-content-muted font-normal min-w-[120px] sticky left-0 bg-surface-raised z-10">
                 FROM \ TO
               </th>
               {displaySongs.map((colSong) => (
                 <th
                   key={colSong.id}
-                  className="p-1.5 text-center text-xs text-[#a8a8a8] font-normal border-l border-[#1a1a1a] min-w-[50px] max-w-[80px]"
+                  className="p-1.5 text-center text-xs text-content-muted font-normal border-l border-border-subtle min-w-[50px] max-w-[80px]"
                 >
                   <div
                     className="truncate cursor-pointer hover:text-white"
@@ -136,15 +136,15 @@ export function CatalogMatrixView({
 
           <tbody>
             {displaySongs.map((rowSong) => (
-              <tr key={rowSong.id} className="border-b border-[#141414] hover:bg-[#111111]">
+              <tr key={rowSong.id} className="border-b border-border-subtle hover:bg-surface-raised">
                 {/* Row Header */}
                 <td
-                  className="p-2 text-left text-xs font-medium text-[#cfcfcf] sticky left-0 bg-[#0c0c0c] border-r border-[#1a1a1a] z-10 truncate max-w-[140px] cursor-pointer hover:text-white"
+                  className="p-2 text-left text-xs font-medium text-content-secondary sticky left-0 bg-surface-panel border-r border-border-subtle z-10 truncate max-w-[140px] cursor-pointer hover:text-white"
                   onClick={() => onSelectSong(rowSong)}
                   title={rowSong.title}
                 >
                   <div className="truncate">{rowSong.title}</div>
-                  <div className="flex items-center gap-1 text-xs text-[#a8a8a8]">
+                  <div className="flex items-center gap-1 text-xs text-content-muted">
                     {rowSong.camelot_code && <span>{rowSong.camelot_code}</span>}
                     {rowSong.bpm && <span>• {rowSong.bpm.toFixed(0)}</span>}
                   </div>
@@ -156,7 +156,7 @@ export function CatalogMatrixView({
                     return (
                       <td
                         key={colSong.id}
-                        className="p-1 text-center bg-[#070707] text-[#666666] border-l border-[#141414] text-xs"
+                        className="p-1 text-center bg-surface-deep text-content-dim border-l border-border-subtle text-xs"
                       >
                         —
                       </td>
@@ -168,7 +168,7 @@ export function CatalogMatrixView({
                     return (
                       <td
                         key={colSong.id}
-                        className="p-1 text-center text-[#888888] border-l border-[#141414] text-xs"
+                        className="p-1 text-center text-content-muted border-l border-border-subtle text-xs"
                       >
                         ?
                       </td>
@@ -184,7 +184,7 @@ export function CatalogMatrixView({
                         setHoveredPair({ from: rowSong, to: colSong, rel })
                       }
                       onClick={() => onInspectRelationship(rel)}
-                      className={`p-1 text-center border-l border-[#141414] cursor-pointer transition-transform hover:scale-105 select-none focus:outline-none focus:ring-1 focus:ring-sky-400 ${getCellColor(
+                      className={`p-1 text-center border-l border-border-subtle cursor-pointer transition-transform hover:scale-105 select-none focus:outline-none focus:ring-1 focus:ring-sky-400 ${getCellColor(
                         rel.overall_score
                       )}`}
                       title={`${rowSong.title} → ${colSong.title}: ${scorePct}% (${rel.primary_classification})`}

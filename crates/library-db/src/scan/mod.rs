@@ -225,6 +225,39 @@ where
     P: AsRef<Path>,
     A: Analyzer + 'static,
 {
+    scan_paths_with_progress(
+        conn,
+        paths,
+        analyzer,
+        config,
+        cancel_token,
+        event_sender,
+        None::<fn(f32)>,
+    )
+}
+
+/// Scans multiple paths (folders or individual audio files), queues unanalyzed audio files,
+/// executes analysis on a worker pool, and saves the resulting tracks and analyses into the SQLite database.
+///
+/// Supports cooperative cancellation and a progress callback reporting completion fraction [0.0, 1.0].
+/// Skips hashing and analysis when path, file size, and modification time match an existing row.
+///
+/// # Errors
+/// Returns `DbError` on database errors.
+pub fn scan_paths_with_progress<P, A, F>(
+    conn: &rusqlite::Connection,
+    paths: &[P],
+    analyzer: Arc<A>,
+    config: &ScanConfig,
+    cancel_token: Option<CancellationToken>,
+    event_sender: Option<mpsc::Sender<ScanEvent>>,
+    mut progress: Option<F>,
+) -> Result<ScanSummary, DbError>
+where
+    P: AsRef<Path>,
+    A: Analyzer + 'static,
+    F: FnMut(f32),
+{
     let cancel = cancel_token.unwrap_or_default();
     let mut summary = ScanSummary::default();
 
@@ -255,17 +288,91 @@ where
     discovered_paths.sort();
     discovered_paths.dedup();
 
-    // 2. Hash files and evaluate skip logic
+    let total_candidates = discovered_paths.len();
+
+    // 2. Incremental metadata check & hash evaluation
     let mut jobs = Vec::new();
-    for path in discovered_paths {
+    for path in &discovered_paths {
         if cancel.is_cancelled() {
             summary.cancelled = true;
             break;
         }
 
         summary.total_found += 1;
+        let path_str = path.to_string_lossy();
 
-        let hash = match compute_file_hash(&path) {
+        let meta_opt = match std::fs::metadata(path) {
+            Ok(m) => {
+                let size = m.len() as i64;
+                let mtime = m
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                Some((size, mtime))
+            }
+            Err(_) => None,
+        };
+
+        let mut fast_skipped = false;
+        if let Some((size, mtime)) = meta_opt {
+            let fast_analyzed: bool = conn
+                .query_row(
+                    "SELECT EXISTS(
+                        SELECT 1 FROM tracks
+                        WHERE path = ?1
+                          AND file_size = ?2
+                          AND file_mtime = ?3
+                          AND analysis_version = ?4
+                          AND analyzed_at IS NOT NULL
+                    )",
+                    rusqlite::params![path_str.as_ref(), size, mtime, config.analysis_version],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if fast_analyzed {
+                let _ = conn.execute(
+                    "UPDATE tracks SET is_available = 1 WHERE path = ?1 AND is_available = 0",
+                    rusqlite::params![path_str.as_ref()],
+                );
+                fast_skipped = true;
+            }
+        }
+
+        if fast_skipped {
+            summary.skipped += 1;
+            if let Some(ref tx) = event_sender {
+                let _ = tx.send(ScanEvent::Skipped { path: path.clone() });
+            }
+            if let Some(ref mut cb) = progress {
+                if total_candidates > 0 {
+                    cb(summary.total_found as f32 / total_candidates as f32);
+                }
+            }
+            continue;
+        }
+
+        let (size, mtime) = match meta_opt {
+            Some(sm) => sm,
+            None => {
+                let _ = conn.execute(
+                    "UPDATE tracks SET is_available = 0 WHERE path = ?1",
+                    rusqlite::params![path_str.as_ref()],
+                );
+                summary.failed += 1;
+                if let Some(ref tx) = event_sender {
+                    let _ = tx.send(ScanEvent::Failed {
+                        path: path.clone(),
+                        error: "failed to read file metadata".to_string(),
+                    });
+                }
+                continue;
+            }
+        };
+
+        let hash = match compute_file_hash(path) {
             Ok(h) => h,
             Err(e) => {
                 summary.failed += 1;
@@ -290,29 +397,37 @@ where
         )?;
 
         if already_analyzed {
-            // If the track path changed (e.g. portable SSD mounted under a new drive letter),
-            // update the path in SQLite so playback and exports immediately locate the file.
-            let path_str = path.to_string_lossy();
             let _ = conn.execute(
-                "UPDATE tracks SET path = ?1, updated_at = datetime('now') WHERE hash = ?2 AND path != ?1",
-                rusqlite::params![path_str.as_ref(), hash],
+                "UPDATE tracks SET path = ?1, file_size = ?2, file_mtime = ?3, is_available = 1, updated_at = datetime('now') WHERE hash = ?4",
+                rusqlite::params![path_str.as_ref(), size, mtime, hash],
             );
             summary.skipped += 1;
             if let Some(ref tx) = event_sender {
-                let _ = tx.send(ScanEvent::Skipped { path });
+                let _ = tx.send(ScanEvent::Skipped { path: path.clone() });
             }
         } else {
             summary.queued += 1;
             if let Some(ref tx) = event_sender {
                 let _ = tx.send(ScanEvent::Queued { path: path.clone() });
             }
-            jobs.push(ScanJob { path, hash });
+            jobs.push(ScanJob {
+                path: path.clone(),
+                hash,
+            });
+        }
+
+        if let Some(ref mut cb) = progress {
+            if total_candidates > 0 && jobs.is_empty() {
+                cb(summary.total_found as f32 / total_candidates as f32);
+            }
         }
     }
 
     if jobs.is_empty() || cancel.is_cancelled() {
         if cancel.is_cancelled() {
             summary.cancelled = true;
+        } else if let Some(ref mut cb) = progress {
+            cb(1.0);
         }
         return Ok(summary);
     }
@@ -429,6 +544,13 @@ where
                 }
             }
         }
+
+        if let Some(ref mut cb) = progress {
+            if total_candidates > 0 {
+                let done = summary.skipped + summary.succeeded + summary.failed;
+                cb((done as f32 / total_candidates as f32).min(1.0));
+            }
+        }
     }
 
     // Join all workers
@@ -438,6 +560,8 @@ where
 
     if cancel.is_cancelled() {
         summary.cancelled = true;
+    } else if let Some(ref mut cb) = progress {
+        cb(1.0);
     }
 
     Ok(summary)
@@ -460,13 +584,14 @@ where
     P: AsRef<Path>,
     A: Analyzer + 'static,
 {
-    scan_paths(
+    scan_paths_with_progress(
         conn,
         &[folder.as_ref().to_path_buf()],
         analyzer,
         config,
         cancel_token,
         event_sender,
+        None::<fn(f32)>,
     )
 }
 
@@ -530,6 +655,29 @@ impl<A: Analyzer + 'static> Scanner<A> {
             &self.config,
             cancel_token,
             event_sender,
+        )
+    }
+
+    /// Scans multiple paths using the configured analyzer and settings with progress reporting.
+    ///
+    /// # Errors
+    /// Returns `DbError` on database errors.
+    pub fn scan_paths_with_progress<P: AsRef<Path>, F: FnMut(f32)>(
+        &self,
+        conn: &rusqlite::Connection,
+        paths: &[P],
+        cancel_token: Option<CancellationToken>,
+        event_sender: Option<mpsc::Sender<ScanEvent>>,
+        progress: Option<F>,
+    ) -> Result<ScanSummary, DbError> {
+        scan_paths_with_progress(
+            conn,
+            paths,
+            Arc::clone(&self.analyzer),
+            &self.config,
+            cancel_token,
+            event_sender,
+            progress,
         )
     }
 }
@@ -1009,5 +1157,203 @@ mod tests {
             )
             .unwrap();
         assert_eq!(updated_path, path2.to_string_lossy());
+    }
+
+    #[test]
+    fn test_rescan_unchanged_library_fast_skip() {
+        let conn = test_db();
+        let temp = tempfile::tempdir().unwrap();
+
+        for i in 0..5 {
+            File::create(temp.path().join(format!("track_{i}.mp3")))
+                .unwrap()
+                .write_all(format!("content_{i}").as_bytes())
+                .unwrap();
+        }
+
+        let config = ScanConfig {
+            num_workers: 2,
+            analysis_version: "v1".to_string(),
+        };
+
+        // First scan: all 5 are analyzed
+        let sum1 = scan_folder(
+            &conn,
+            temp.path(),
+            Arc::new(SuccessAnalyzer),
+            &config,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(sum1.total_found, 5);
+        assert_eq!(sum1.succeeded, 5);
+        assert_eq!(sum1.skipped, 0);
+
+        // Second scan of identical files: fast skip based on path, size, and mtime
+        let sum2 = scan_folder(
+            &conn,
+            temp.path(),
+            Arc::new(SuccessAnalyzer),
+            &config,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(sum2.total_found, 5);
+        assert_eq!(sum2.succeeded, 0);
+        assert_eq!(sum2.skipped, 5);
+    }
+
+    #[test]
+    fn test_scan_paths_emoji_and_non_ascii_folder() {
+        let conn = test_db();
+        let temp = tempfile::tempdir().unwrap();
+
+        // Create folder with unicode, spaces, and emoji: "📂 2_Coding_and_Development/🎧 DJ Sets 2026"
+        let subfolder = temp
+            .path()
+            .join("📂 2_Coding_and_Development")
+            .join("🎧 DJ Sets 2026");
+        std::fs::create_dir_all(&subfolder).unwrap();
+
+        let track_file = subfolder.join("track ü ö é.mp3");
+        File::create(&track_file)
+            .unwrap()
+            .write_all(b"special_chars_audio")
+            .unwrap();
+
+        let config = ScanConfig {
+            num_workers: 1,
+            analysis_version: "v1".to_string(),
+        };
+
+        let summary = scan_folder(
+            &conn,
+            &subfolder,
+            Arc::new(SuccessAnalyzer),
+            &config,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(summary.total_found, 1);
+        assert_eq!(summary.succeeded, 1);
+
+        // Verify stored path in SQLite preserves exact unicode string
+        let stored_path: String = conn
+            .query_row("SELECT path FROM tracks LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stored_path, track_file.to_string_lossy());
+
+        // Rescan also succeeds and fast skips
+        let summary2 = scan_folder(
+            &conn,
+            &subfolder,
+            Arc::new(SuccessAnalyzer),
+            &config,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(summary2.skipped, 1);
+    }
+
+    #[test]
+    fn test_missing_drive_marks_unavailable_preserves_analysis() {
+        let conn = test_db();
+
+        // Simulate a track from a missing or disconnected external drive
+        let missing_path = "X:/DisconnectedDrive/DJ_Library/summer_anthem.mp3";
+        let track = Track {
+            id: "missing-drive-track-1".to_string(),
+            path: missing_path.to_string(),
+            hash: "blake3_simulated_missing_hash".to_string(),
+            tags: TrackTags {
+                title: Some("Summer Anthem".to_string()),
+                artist: Some("DJ Test".to_string()),
+                album: None,
+            },
+            duration_ms: 180_000.0,
+            analysis: Some(sample_analysis_for_test()),
+            analyzed_at: Some("2026-10-04T00:00:00Z".to_string()),
+            analysis_version: Some("v1".to_string()),
+        };
+
+        upsert_track(&conn, &track).unwrap();
+
+        // Track is initially available = 1
+        let is_avail_initial: i64 = conn
+            .query_row(
+                "SELECT is_available FROM tracks WHERE id = ?1",
+                [track.id.as_str()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_avail_initial, 1);
+
+        // Run availability audit across library
+        let unavailable = crate::repo::check_library_availability(&conn).unwrap();
+        assert_eq!(unavailable, 1);
+
+        // Verification: track marked unavailable (is_available = 0)
+        let is_avail_after: i64 = conn
+            .query_row(
+                "SELECT is_available FROM tracks WHERE id = ?1",
+                [track.id.as_str()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(is_avail_after, 0);
+
+        // Analysis and metadata are completely preserved!
+        let retrieved = get_track(&conn, &track.id).unwrap().unwrap();
+        assert_eq!(retrieved.path, missing_path);
+        assert_eq!(retrieved.tags.title.as_deref(), Some("Summer Anthem"));
+        assert!(retrieved.analysis.is_some());
+    }
+
+    #[test]
+    fn test_scan_paths_with_progress_monotonic() {
+        let conn = test_db();
+        let temp = tempfile::tempdir().unwrap();
+
+        for i in 0..4 {
+            File::create(temp.path().join(format!("prog_track_{i}.mp3")))
+                .unwrap()
+                .write_all(format!("audio_content_{i}").as_bytes())
+                .unwrap();
+        }
+
+        let config = ScanConfig {
+            num_workers: 2,
+            analysis_version: "v1".to_string(),
+        };
+
+        let progress_records = Arc::new(Mutex::new(Vec::new()));
+        let progress_clone = Arc::clone(&progress_records);
+
+        let summary = scan_paths_with_progress(
+            &conn,
+            &[temp.path().to_path_buf()],
+            Arc::new(SuccessAnalyzer),
+            &config,
+            None,
+            None,
+            Some(move |p: f32| {
+                let mut list = progress_clone.lock().unwrap();
+                list.push(p);
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(summary.succeeded, 4);
+
+        let list = progress_records.lock().unwrap();
+        assert!(!list.is_empty());
+        for &val in list.iter() {
+            assert!(val >= 0.0 && val <= 1.0);
+        }
+        assert_eq!(*list.last().unwrap(), 1.0);
     }
 }

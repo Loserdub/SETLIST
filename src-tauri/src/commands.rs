@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -388,37 +389,12 @@ pub async fn get_track(
     get_track_core(&state, &id)
 }
 
-/// Core implementation of setlist order suggestion with optional anchors and transition advice.
-///
-/// # Errors
-/// Returns error text if track lookup or sequencer solving fails.
-pub fn suggest_order_pins_core<F>(
-    state: &AppState,
-    track_ids: Option<Vec<String>>,
-    profile: Option<EnergyProfile>,
-    weights: Option<CostWeights>,
-    first_id: Option<String>,
-    last_id: Option<String>,
-    mut on_progress: F,
-) -> Result<Vec<SetlistEntry>, String>
-where
-    F: FnMut(ProgressEvent),
-{
-    let active_profile = profile.unwrap_or(EnergyProfile::PeakPlateau);
-
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| format!("database mutex error: {e}"))?;
-
-    let settings = library_db::load_settings(&conn).map_err(|e| e.to_string())?;
-    let cost_config = CostModelConfig::from_app_settings(&settings);
-    let active_weights = weights.unwrap_or(settings.cost_weights);
-
-    // Gather candidate tracks, preserving every track supplied in track_ids
-    let tracks = match track_ids {
-        Some(ref ids) if !ids.is_empty() => {
-            // Deduplicate IDs while strictly preserving input order
+fn load_candidate_tracks(
+    conn: &rusqlite::Connection,
+    track_ids: Option<&Vec<String>>,
+) -> Result<Vec<Track>, String> {
+    match track_ids {
+        Some(ids) if !ids.is_empty() => {
             let mut seen = HashSet::new();
             let mut unique_ids = Vec::with_capacity(ids.len());
             for id in ids {
@@ -429,10 +405,9 @@ where
 
             let mut list = Vec::with_capacity(unique_ids.len());
             for id in &unique_ids {
-                if let Some(track) = library_db::get_track(&conn, id).map_err(|e| e.to_string())? {
+                if let Some(track) = library_db::get_track(conn, id).map_err(|e| e.to_string())? {
                     list.push(track);
                 } else {
-                    // Preserve track even if unpersisted stub
                     list.push(Track {
                         id: id.clone(),
                         path: String::new(),
@@ -449,15 +424,58 @@ where
                     });
                 }
             }
-            list
+            Ok(list)
         }
-        _ => library_db::list_tracks(&conn, &TrackFilter::new()).map_err(|e| e.to_string())?,
+        _ => library_db::list_tracks(conn, &TrackFilter::new()).map_err(|e| e.to_string()),
+    }
+}
+
+/// Core implementation of setlist order suggestion with optional anchors, cancellation, and progress.
+#[allow(clippy::too_many_arguments)]
+pub fn suggest_order_pins_core_with_cancel<F, P>(
+    state: &AppState,
+    track_ids: Option<Vec<String>>,
+    profile: Option<EnergyProfile>,
+    weights: Option<CostWeights>,
+    first_id: Option<String>,
+    last_id: Option<String>,
+    cancel: Option<Arc<AtomicBool>>,
+    progress_frac: Option<P>,
+    mut on_progress: F,
+) -> Result<Vec<SetlistEntry>, String>
+where
+    F: FnMut(ProgressEvent),
+    P: FnMut(f32),
+{
+    let active_profile = profile.unwrap_or(EnergyProfile::PeakPlateau);
+
+    let (settings, tracks) = if let Some(ref path) = state.db_path {
+        let conn = library_db::open_read_only_connection(path).map_err(|e| e.to_string())?;
+        let s = library_db::load_settings(&conn).map_err(|e| e.to_string())?;
+        let t = load_candidate_tracks(&conn, track_ids.as_ref())?;
+        (s, t)
+    } else {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|e| format!("database mutex error: {e}"))?;
+        let s = library_db::load_settings(&conn).map_err(|e| e.to_string())?;
+        let t = load_candidate_tracks(&conn, track_ids.as_ref())?;
+        drop(conn);
+        (s, t)
     };
 
-    drop(conn);
+    let cost_config = CostModelConfig::from_app_settings(&settings);
+    let active_weights = weights.unwrap_or(settings.cost_weights);
 
     if tracks.is_empty() {
         return Ok(vec![]);
+    }
+
+    if let Some(ref c) = cancel {
+        if c.load(Ordering::Relaxed) {
+            return Err("Sequencer cancelled".to_string());
+        }
     }
 
     on_progress(ProgressEvent {
@@ -473,8 +491,6 @@ where
         ..Default::default()
     });
 
-    // Partition into analyzed and unanalyzed tracks.
-    // Unanalyzed tracks are never passed to the sequencer.
     let (analyzed_tracks, unanalyzed_tracks): (Vec<Track>, Vec<Track>) =
         tracks.into_iter().partition(|t| t.analysis.is_some());
 
@@ -500,15 +516,20 @@ where
 
         let seed = 42; // Deterministic seed per AGENTS.md
 
-        let ordered = sequencer::order_tracks_with_config(
+        let ordered = sequencer::order_tracks_with_options(
             &analyses,
             &active_weights,
             active_profile,
             &pins,
             seed,
             Some(&cost_config),
+            cancel.clone(),
+            progress_frac,
         )
-        .map_err(|e| format!("sequencer solver error: {e}"))?;
+        .map_err(|e| match e {
+            sequencer::SequencerError::Cancelled => "Sequencer cancelled".to_string(),
+            other => format!("sequencer solver error: {other}"),
+        })?;
 
         ordered
             .order
@@ -517,15 +538,12 @@ where
             .collect()
     };
 
-    // After sequencing analyzed tracks, merge the unoptimized tracks back into the result deterministically.
     ordered_tracks.extend(unanalyzed_tracks);
 
     let total = ordered_tracks.len();
     let mut entries: Vec<SetlistEntry> = Vec::with_capacity(total);
 
     for (pos_idx, track) in ordered_tracks.into_iter().enumerate() {
-        // Recalculate transition advice for every adjacent pair where both tracks have usable analysis.
-        // If either track lacks analysis, set transition to None rather than failing.
         let transition = if pos_idx > 0 {
             let prev_analysis = entries
                 .get(pos_idx - 1)
@@ -574,6 +592,35 @@ where
     Ok(entries)
 }
 
+/// Core implementation of setlist order suggestion with optional anchors and transition advice.
+///
+/// # Errors
+/// Returns error text if track lookup or sequencer solving fails.
+pub fn suggest_order_pins_core<F>(
+    state: &AppState,
+    track_ids: Option<Vec<String>>,
+    profile: Option<EnergyProfile>,
+    weights: Option<CostWeights>,
+    first_id: Option<String>,
+    last_id: Option<String>,
+    on_progress: F,
+) -> Result<Vec<SetlistEntry>, String>
+where
+    F: FnMut(ProgressEvent),
+{
+    suggest_order_pins_core_with_cancel(
+        state,
+        track_ids,
+        profile,
+        weights,
+        first_id,
+        last_id,
+        None,
+        None::<fn(f32)>,
+        on_progress,
+    )
+}
+
 /// Core implementation of setlist order suggestion with transition advice.
 ///
 /// Backwards-compatible convenience wrapper around [`suggest_order_pins_core`].
@@ -610,17 +657,44 @@ pub async fn suggest_order(
     last_id: Option<String>,
 ) -> Result<Vec<SetlistEntry>, String> {
     let app_handle = app.clone();
-    suggest_order_pins_core(
-        &state,
-        track_ids,
-        profile,
-        weights,
-        first_id,
-        last_id,
-        move |evt| {
-            let _ = app_handle.emit("progress", evt);
-        },
-    )
+    let state_clone = state.inner().clone();
+
+    // Reset cancellation token
+    state_clone
+        .order_cancel_token
+        .store(false, Ordering::SeqCst);
+    let cancel_token = Arc::clone(&state_clone.order_cancel_token);
+
+    tokio::task::spawn_blocking(move || {
+        let app_progress = app_handle.clone();
+        let app_fraction = app_handle.clone();
+
+        suggest_order_pins_core_with_cancel(
+            &state_clone,
+            track_ids,
+            profile,
+            weights,
+            first_id,
+            last_id,
+            Some(cancel_token),
+            Some(move |fraction: f32| {
+                let _ = app_fraction.emit("suggest-order-progress", fraction);
+            }),
+            move |evt| {
+                let _ = app_progress.emit("progress", evt);
+            },
+        )
+    })
+    .await
+    .map_err(|e| format!("Sequencer task join error: {e}"))?
+}
+
+/// Cancels an in-progress setlist order suggestion calculation.
+#[tauri::command]
+pub fn cancel_suggest_order(state: State<'_, AppState>) -> Result<(), String> {
+    log::info!("[sequencer] Cancelling active suggest_order");
+    state.order_cancel_token.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 /// Core implementation of retrieving transition advice between two tracks.
@@ -635,18 +709,31 @@ pub fn get_advice_core(
     weights: Option<CostWeights>,
     de_target: Option<f32>,
 ) -> Result<TransitionAdvice, String> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| format!("database mutex error: {e}"))?;
-
-    let track_a = library_db::get_track(&conn, track_a_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Outgoing track not found: {track_a_id}"))?;
-
-    let track_b = library_db::get_track(&conn, track_b_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Incoming track not found: {track_b_id}"))?;
+    let (track_a, track_b, settings) = if let Some(ref path) = state.db_path {
+        let conn = library_db::open_read_only_connection(path).map_err(|e| e.to_string())?;
+        let a = library_db::get_track(&conn, track_a_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Outgoing track not found: {track_a_id}"))?;
+        let b = library_db::get_track(&conn, track_b_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Incoming track not found: {track_b_id}"))?;
+        let s = library_db::load_settings(&conn).map_err(|e| e.to_string())?;
+        (a, b, s)
+    } else {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|e| format!("database mutex error: {e}"))?;
+        let a = library_db::get_track(&conn, track_a_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Outgoing track not found: {track_a_id}"))?;
+        let b = library_db::get_track(&conn, track_b_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Incoming track not found: {track_b_id}"))?;
+        let s = library_db::load_settings(&conn).map_err(|e| e.to_string())?;
+        drop(conn);
+        (a, b, s)
+    };
 
     let analysis_a = track_a
         .analysis
@@ -656,7 +743,6 @@ pub fn get_advice_core(
         .analysis
         .ok_or_else(|| format!("Incoming track has no analysis: {track_b_id}"))?;
 
-    let settings = library_db::load_settings(&conn).map_err(|e| e.to_string())?;
     let cost_config = CostModelConfig::from_app_settings(&settings);
     let active_weights = weights.unwrap_or(settings.cost_weights);
 
@@ -1078,20 +1164,96 @@ pub fn update_setlist_item(state: State<'_, AppState>, item: SetlistItem) -> Res
 
 /// Retrieves all incoming and outgoing song relationships for a catalog song.
 ///
+/// Retrieves the cached catalog graph if the catalog revision matches, or builds and caches a new one.
+///
+/// Uses a read-only database connection when available to avoid acquiring or holding the primary write lock,
+/// and computes the pairwise score matrix on background threads via Rayon without holding any database mutex.
+pub fn get_or_build_catalog_graph(state: &AppState) -> Result<Arc<CatalogGraph>, AppError> {
+    // 1. Check revision and see if cached graph is valid
+    let (current_rev, cached) = if let Some(ref path) = state.db_path {
+        let conn = library_db::open_read_only_connection(path).map_err(map_db_error)?;
+        let rev = library_db::get_catalog_revision(&conn).map_err(map_db_error)?;
+        let cache_guard = state
+            .catalog_graph_cache
+            .lock()
+            .map_err(|e| AppError::database(format!("catalog graph cache lock error: {e}")))?;
+        let hit = cache_guard.as_ref().and_then(|(cached_rev, graph)| {
+            if *cached_rev == rev {
+                Some(Arc::clone(graph))
+            } else {
+                None
+            }
+        });
+        (rev, hit)
+    } else {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let rev = library_db::get_catalog_revision(&conn).map_err(map_db_error)?;
+        let cache_guard = state
+            .catalog_graph_cache
+            .lock()
+            .map_err(|e| AppError::database(format!("catalog graph cache lock error: {e}")))?;
+        let hit = cache_guard.as_ref().and_then(|(cached_rev, graph)| {
+            if *cached_rev == rev {
+                Some(Arc::clone(graph))
+            } else {
+                None
+            }
+        });
+        drop(cache_guard);
+        drop(conn);
+        (rev, hit)
+    };
+
+    if let Some(graph) = cached {
+        return Ok(graph);
+    }
+
+    // 2. Cache miss: load songs in a brief read-only or locked transaction, then drop immediately
+    let songs = if let Some(ref path) = state.db_path {
+        let conn = library_db::open_read_only_connection(path).map_err(map_db_error)?;
+        library_db::list_songs(&conn).map_err(map_db_error)?
+    } else {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let s = library_db::list_songs(&conn).map_err(map_db_error)?;
+        drop(conn);
+        s
+    };
+
+    // 3. Compute graph and score matrix with Rayon outside any DB lock
+    let new_graph = Arc::new(CatalogGraph::new(songs));
+
+    // 4. Update the cache
+    let mut cache_guard = state
+        .catalog_graph_cache
+        .lock()
+        .map_err(|e| AppError::database(format!("catalog graph cache lock error: {e}")))?;
+    *cache_guard = Some((current_rev, Arc::clone(&new_graph)));
+
+    Ok(new_graph)
+}
+
+/// Computes multi-dimensional song relationships (incoming and outgoing) for a specific song.
+///
 /// # Errors
 /// Returns `AppError` on database error.
 #[tauri::command]
-pub fn get_song_relationships(
+pub async fn get_song_relationships(
     state: State<'_, AppState>,
     song_id: String,
 ) -> Result<SongRelationshipsResponse, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
-    let graph = CatalogGraph::new(songs);
-    Ok(graph.get_song_relationships(&song_id))
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let graph = get_or_build_catalog_graph(&state_inner)?;
+        Ok(graph.get_song_relationships(&song_id))
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 /// Evaluates the directional relationship between two songs (from -> to).
@@ -1099,22 +1261,40 @@ pub fn get_song_relationships(
 /// # Errors
 /// Returns `AppError` on database or missing song error.
 #[tauri::command]
-pub fn get_song_relationship(
+pub async fn get_song_relationship(
     state: State<'_, AppState>,
     from_song_id: String,
     to_song_id: String,
 ) -> Result<SongRelationship, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let from_song = library_db::get_song(&conn, &from_song_id)
-        .map_err(map_db_error)?
-        .ok_or_else(|| AppError::not_found("Song", from_song_id))?;
-    let to_song = library_db::get_song(&conn, &to_song_id)
-        .map_err(map_db_error)?
-        .ok_or_else(|| AppError::not_found("Song", to_song_id))?;
-    Ok(evaluate_song_relationship(&from_song, &to_song))
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let (from_song, to_song) = if let Some(ref path) = state_inner.db_path {
+            let conn = library_db::open_read_only_connection(path).map_err(map_db_error)?;
+            let f = library_db::get_song(&conn, &from_song_id)
+                .map_err(map_db_error)?
+                .ok_or_else(|| AppError::not_found("Song", from_song_id))?;
+            let t = library_db::get_song(&conn, &to_song_id)
+                .map_err(map_db_error)?
+                .ok_or_else(|| AppError::not_found("Song", to_song_id))?;
+            (f, t)
+        } else {
+            let conn = state_inner
+                .db
+                .lock()
+                .map_err(|e| AppError::database(e.to_string()))?;
+            let f = library_db::get_song(&conn, &from_song_id)
+                .map_err(map_db_error)?
+                .ok_or_else(|| AppError::not_found("Song", from_song_id))?;
+            let t = library_db::get_song(&conn, &to_song_id)
+                .map_err(map_db_error)?
+                .ok_or_else(|| AppError::not_found("Song", to_song_id))?;
+            drop(conn);
+            (f, t)
+        };
+        Ok(evaluate_song_relationship(&from_song, &to_song))
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 /// Identifies candidate bridge songs that connect two disparate songs in the catalog.
@@ -1122,19 +1302,19 @@ pub fn get_song_relationship(
 /// # Errors
 /// Returns `AppError` on database error.
 #[tauri::command]
-pub fn get_potential_bridges(
+pub async fn get_potential_bridges(
     state: State<'_, AppState>,
     song_a_id: String,
     song_b_id: String,
     limit: Option<usize>,
 ) -> Result<Vec<BridgeCandidateAnalysis>, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
-    let graph = CatalogGraph::new(songs);
-    Ok(graph.get_potential_bridges(&song_a_id, &song_b_id, limit.unwrap_or(5)))
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let graph = get_or_build_catalog_graph(&state_inner)?;
+        Ok(graph.get_potential_bridges(&song_a_id, &song_b_id, limit.unwrap_or(5)))
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 /// Discovers natural clusters of compatible songs within the artist's catalog.
@@ -1142,14 +1322,16 @@ pub fn get_potential_bridges(
 /// # Errors
 /// Returns `AppError` on database error.
 #[tauri::command]
-pub fn get_catalog_clusters(state: State<'_, AppState>) -> Result<Vec<CatalogCluster>, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
-    let graph = CatalogGraph::new(songs);
-    Ok(graph.find_clusters())
+pub async fn get_catalog_clusters(
+    state: State<'_, AppState>,
+) -> Result<Vec<CatalogCluster>, AppError> {
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let graph = get_or_build_catalog_graph(&state_inner)?;
+        Ok(graph.find_clusters())
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 /// Recommends candidate openers and closers across the artist's catalog.
@@ -1157,16 +1339,16 @@ pub fn get_catalog_clusters(state: State<'_, AppState>) -> Result<Vec<CatalogClu
 /// # Errors
 /// Returns `AppError` on database error.
 #[tauri::command]
-pub fn get_catalog_openers_and_closers(
+pub async fn get_catalog_openers_and_closers(
     state: State<'_, AppState>,
 ) -> Result<CatalogOpenersAndClosers, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
-    let graph = CatalogGraph::new(songs);
-    Ok(graph.get_openers_and_closers())
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let graph = get_or_build_catalog_graph(&state_inner)?;
+        Ok(graph.get_openers_and_closers())
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 /// Identifies low-connectivity songs / outliers in the artist's catalog with reasons.
@@ -1174,14 +1356,16 @@ pub fn get_catalog_openers_and_closers(
 /// # Errors
 /// Returns `AppError` on database error.
 #[tauri::command]
-pub fn get_catalog_outliers(state: State<'_, AppState>) -> Result<Vec<CatalogOutlier>, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
-    let graph = CatalogGraph::new(songs);
-    Ok(graph.find_outliers())
+pub async fn get_catalog_outliers(
+    state: State<'_, AppState>,
+) -> Result<Vec<CatalogOutlier>, AppError> {
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let graph = get_or_build_catalog_graph(&state_inner)?;
+        Ok(graph.find_outliers())
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 /// Discovers unusual, high-contrast transition possibilities from a song.
@@ -1189,18 +1373,18 @@ pub fn get_catalog_outliers(state: State<'_, AppState>) -> Result<Vec<CatalogOut
 /// # Errors
 /// Returns `AppError` on database error.
 #[tauri::command]
-pub fn get_unusual_transitions(
+pub async fn get_unusual_transitions(
     state: State<'_, AppState>,
     song_id: String,
     limit: Option<usize>,
 ) -> Result<Vec<SongRelationship>, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
-    let graph = CatalogGraph::new(songs);
-    Ok(graph.get_unusual_transitions(&song_id, limit.unwrap_or(5)))
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let graph = get_or_build_catalog_graph(&state_inner)?;
+        Ok(graph.get_unusual_transitions(&song_id, limit.unwrap_or(5)))
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 /// Computes high-level catalog connectivity and discovery health statistics.
@@ -1208,16 +1392,16 @@ pub fn get_unusual_transitions(
 /// # Errors
 /// Returns `AppError` on database error.
 #[tauri::command]
-pub fn get_catalog_summary_stats(
+pub async fn get_catalog_summary_stats(
     state: State<'_, AppState>,
 ) -> Result<CatalogSummaryStats, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
-    let graph = CatalogGraph::new(songs);
-    Ok(graph.get_catalog_summary_stats())
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let graph = get_or_build_catalog_graph(&state_inner)?;
+        Ok(graph.get_catalog_summary_stats())
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 /// Explores candidate sequenced paths through the catalog matching discovery constraints.
@@ -1225,17 +1409,17 @@ pub fn get_catalog_summary_stats(
 /// # Errors
 /// Returns `AppError` on database error.
 #[tauri::command]
-pub fn explore_candidate_paths(
+pub async fn explore_candidate_paths(
     state: State<'_, AppState>,
     constraints: DiscoveryConstraints,
 ) -> Result<Vec<DiscoveryCandidatePath>, AppError> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
-    let graph = CatalogGraph::new(songs);
-    Ok(graph.find_candidate_paths(&constraints))
+    let state_inner = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let graph = get_or_build_catalog_graph(&state_inner)?;
+        Ok(graph.find_candidate_paths(&constraints))
+    })
+    .await
+    .map_err(|e| AppError::database(format!("Task join error: {e}")))?
 }
 
 #[cfg(test)]

@@ -80,9 +80,8 @@ TypeScript
 - No hard-coded hex colors in TSX. Use theme tokens.
 
 UI standards
-- [PLACEHOLDER: Minimum text size and contrast rules, to be filled in by F3]
-- Text is never smaller than 12px. Body text is 14px.
-- Text contrast meets WCAG AA (4.5 to 1) on the dark background.
+- Type scale: minimum 12px for readable text, 14px for body text. Micro-labels (such as uppercase tracked hardware chips and keyboard shortcuts) may use 11px with tracking-wider/tracking-widest. Text below 11px is forbidden. Stage mode enforces a distance-legible scale (minimum 12px, headers 20-32px).
+- Text contrast meets WCAG AA (minimum 4.5:1 for body text, 3:1 for large text) on dark background surfaces (#080808, #0c0c10, #141418).
 - No hard-coded hex colors in TSX. Use theme tokens.
 - Every button, input, and row shows a visible keyboard focus ring.
 - Labels use plain words. Internal names such as w_tempo never appear in the UI.
@@ -285,7 +284,14 @@ Offline CLI harness for benchmarking audio DSP accuracy against ground truth:
 6. Do not refactor code you do not own.
 7. Do not add features the prompt does not ask for.
 8. Write a handoff note to `docs/handoffs/<task-id>.md`.
-9. Commit to your workgroup branch with a clear message.
+9. Commit to your workgroup branch with a clear message following the commit message conventions.
+
+### Commit message conventions
+
+Use standard Conventional Commits format (`type(scope): summary`) instead of informal messages (e.g. avoid "almost v1" or "fixes"):
+- **Types**: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `chore`, `style`.
+- **Scopes**: `sequencer`, `playback`, `library-db`, `audio-analysis`, `audio-io`, `exporters`, `tauri`, `ui`, `scripts`.
+- **Format**: `<type>(<scope>): <summary>` (e.g., `feat(sequencer): cache score matrix per catalog revision`, `fix(ui): remove hard-coded hex colors in track drawer`).
 
 ### Parallel work
 

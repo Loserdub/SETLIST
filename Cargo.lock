@@ -3295,6 +3295,7 @@ name = "playback"
 version = "0.1.0"
 dependencies = [
  "core-types",
+ "hound",
  "log",
  "rodio",
  "serde",
@@ -5437,6 +5438,9 @@ dependencies = [
  "audio-io",
  "core-types",
  "hound",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.21",
 ]

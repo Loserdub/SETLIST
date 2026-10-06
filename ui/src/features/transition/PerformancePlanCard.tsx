@@ -41,22 +41,22 @@ export const PerformancePlanCard: React.FC<PerformancePlanCardProps> = ({
   const allNotes = [...plan.guidanceNotes, ...customNotes];
 
   return (
-    <div className={`bg-[#0a0a0a] border border-[#1f1f1f] p-4 space-y-4 ${className}`}>
+    <div className={`bg-surface-panel border border-border-subtle p-4 space-y-4 ${className}`}>
       {/* Title Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1c1c1c] pb-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle pb-2.5">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono font-bold tracking-widest text-[#38bdf8] uppercase bg-[#0c1f2e] border border-[#1e496a] px-2 py-0.5">
+          <span className="text-xs font-mono font-bold tracking-widest text-accent-blue uppercase bg-accent-blue-subtle border border-accent-blue-dim px-2 py-0.5">
             TRANSITION {posAStr} → {posBStr}
           </span>
-          <span className="text-xs font-mono text-[#a8a8a8]">Performance Execution Protocol</span>
+          <span className="text-xs font-mono text-content-muted">Performance Execution Protocol</span>
         </div>
 
         <div className="flex items-center gap-2 font-mono text-xs">
-          <span className="px-2 py-0.5 bg-[#141414] border border-[#2b2b2b] text-[#cfcfcf]">
+          <span className="px-2 py-0.5 bg-surface-raised border border-border-base text-content-secondary">
             {plan.phraseBars} BARS · {plan.transitionDurationSec}s WINDOW
           </span>
           {advice?.transition_type && (
-            <span className="px-2 py-0.5 bg-[#141414] border border-[#2b2b2b] text-[#a8a8a8] uppercase">
+            <span className="px-2 py-0.5 bg-surface-raised border border-border-base text-content-muted uppercase">
               {advice.transition_type}
             </span>
           )}
@@ -66,55 +66,55 @@ export const PerformancePlanCard: React.FC<PerformancePlanCardProps> = ({
       {/* Triad Performance Cards: ENTER, LOW END, RELEASE */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* 1. ENTER */}
-        <div className="p-3 bg-[#0d0d0d] border border-[#222222] space-y-1.5 hover:border-[#38bdf8]/40 transition-colors">
+        <div className="p-3 bg-surface-panel border border-border-base space-y-1.5 hover:border-accent-blue/40 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#38bdf8]">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-accent-blue">
               ENTER
             </span>
-            <span className="text-xs font-mono px-1.5 py-0.5 bg-[#142332] text-[#38bdf8] border border-[#1e496a]">
+            <span className="text-xs font-mono px-1.5 py-0.5 bg-accent-blue-subtle text-accent-blue border border-accent-blue-dim">
               IN-POINT
             </span>
           </div>
-          <div className="text-xs font-medium text-[#ededed] leading-relaxed">
+          <div className="text-xs font-medium text-content-primary leading-relaxed">
             {plan.enter}
           </div>
-          <div className="text-xs font-mono text-[#a8a8a8] pt-1 border-t border-[#1a1a1a]">
+          <div className="text-xs font-mono text-content-muted pt-1 border-t border-border-subtle">
             Target: {plan.inPoint.label}
           </div>
         </div>
 
         {/* 2. LOW END */}
-        <div className="p-3 bg-[#0d0d0d] border border-[#222222] space-y-1.5 hover:border-[#f59e0b]/40 transition-colors">
+        <div className="p-3 bg-surface-panel border border-border-base space-y-1.5 hover:border-accent-amber/40 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#f59e0b]">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-accent-amber">
               LOW END
             </span>
-            <span className="text-xs font-mono px-1.5 py-0.5 bg-[#261c0a] text-[#f59e0b] border border-[#593d0d]">
+            <span className="text-xs font-mono px-1.5 py-0.5 bg-accent-amber-subtle text-accent-amber border border-border-strong">
               FILTER / EQ
             </span>
           </div>
-          <div className="text-xs font-medium text-[#ededed] leading-relaxed">
+          <div className="text-xs font-medium text-content-primary leading-relaxed">
             {plan.lowEnd}
           </div>
-          <div className="text-xs font-mono text-[#a8a8a8] pt-1 border-t border-[#1a1a1a]">
+          <div className="text-xs font-mono text-content-muted pt-1 border-t border-border-subtle">
             Strategy: Sub-bass isolation & cross-blend
           </div>
         </div>
 
         {/* 3. RELEASE */}
-        <div className="p-3 bg-[#0d0d0d] border border-[#222222] space-y-1.5 hover:border-[#10b981]/40 transition-colors">
+        <div className="p-3 bg-surface-panel border border-border-base space-y-1.5 hover:border-status-success/40 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#10b981]">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-status-success">
               RELEASE
             </span>
-            <span className="text-xs font-mono px-1.5 py-0.5 bg-[#0c2419] text-[#10b981] border border-[#165136]">
+            <span className="text-xs font-mono px-1.5 py-0.5 bg-status-success-dim text-status-success border border-status-success">
               DROP / OUT-POINT
             </span>
           </div>
-          <div className="text-xs font-medium text-[#ededed] leading-relaxed">
+          <div className="text-xs font-medium text-content-primary leading-relaxed">
             {plan.release}
           </div>
-          <div className="text-xs font-mono text-[#a8a8a8] pt-1 border-t border-[#1a1a1a]">
+          <div className="text-xs font-mono text-content-muted pt-1 border-t border-border-subtle">
             Source: {plan.outPoint.label}
           </div>
         </div>
@@ -124,13 +124,13 @@ export const PerformancePlanCard: React.FC<PerformancePlanCardProps> = ({
       {(advice?.intervention_required || advice?.loop_extension_recommended) && (
         <div className="flex flex-wrap gap-2 pt-1 font-mono text-xs">
           {advice.intervention_required && (
-            <div className="px-2.5 py-1 bg-[#1c0808] border border-[#6b1515] text-[#f87171] uppercase tracking-wider font-semibold flex items-center gap-1.5">
+            <div className="px-2.5 py-1 bg-status-danger-dim border border-status-danger-dim text-status-danger uppercase tracking-wider font-semibold flex items-center gap-1.5">
               <span>⚠</span>
               <span>Intervention Needed (ΔBPM &gt; 8 or key distance d &gt; 3)</span>
             </div>
           )}
           {advice.loop_extension_recommended && (
-            <div className="px-2.5 py-1 bg-[#1c1408] border border-[#78350f] text-[#f59e0b] uppercase tracking-wider font-semibold flex items-center gap-1.5">
+            <div className="px-2.5 py-1 bg-accent-amber-subtle border border-status-danger text-accent-amber uppercase tracking-wider font-semibold flex items-center gap-1.5">
               <span>🔁</span>
               <span>Loop Extension Recommended (&lt; 16 bar outro)</span>
             </div>
@@ -139,12 +139,12 @@ export const PerformancePlanCard: React.FC<PerformancePlanCardProps> = ({
       )}
 
       {/* DJ Performance Notes Section (Required by tests and prompt!) */}
-      <div className="space-y-2 pt-2 border-t border-[#1c1c1c]">
+      <div className="space-y-2 pt-2 border-t border-border-subtle">
         <div className="flex items-center justify-between">
-          <div className="font-mono text-xs uppercase font-bold tracking-wider text-[#a8a8a8]">
+          <div className="font-mono text-xs uppercase font-bold tracking-wider text-content-muted">
             DJ Performance Notes:
           </div>
-          <span className="text-xs font-mono text-[#a8a8a8]">
+          <span className="text-xs font-mono text-content-muted">
             {allNotes.length} {allNotes.length === 1 ? 'direction' : 'directions'}
           </span>
         </div>
@@ -158,18 +158,18 @@ export const PerformancePlanCard: React.FC<PerformancePlanCardProps> = ({
                 onClick={() => toggleCheck(idx)}
                 className={`p-2.5 border text-xs leading-relaxed flex items-start gap-2.5 transition-colors cursor-pointer ${
                   isChecked
-                    ? 'bg-[#09120e] border-[#165136] text-[#6ee7b7] line-through opacity-70'
-                    : 'bg-[#0d0d0d] border-[#1e1e1e] hover:border-[#2e2e2e] text-[#cfcfcf]'
+                    ? 'bg-status-success-dim border-status-success text-status-success line-through opacity-70'
+                    : 'bg-surface-panel border-border-subtle hover:border-border-base text-content-secondary'
                 }`}
               >
                 <input
                   type="checkbox"
                   checked={isChecked}
                   onChange={() => toggleCheck(idx)}
-                  className="mt-0.5 rounded-none border-[#333333] bg-[#1a1a1a] text-[#10b981] focus:ring-0 cursor-pointer"
+                  className="mt-0.5 rounded-none border-border-strong bg-surface-elevated text-status-success focus:ring-0 cursor-pointer"
                   onClick={(e) => e.stopPropagation()}
                 />
-                <span className="text-[#a8a8a8] font-mono text-xs select-none">
+                <span className="text-content-muted font-mono text-xs select-none">
                   0{idx + 1}
                 </span>
                 <span className="flex-1 font-sans">{note}</span>
@@ -186,12 +186,12 @@ export const PerformancePlanCard: React.FC<PerformancePlanCardProps> = ({
               value={newNoteText}
               onChange={(e) => setNewNoteText(e.target.value)}
               placeholder="Add stage note (e.g. Cut delay on beat 4, hard swap on bar 16)..."
-              className="flex-1 px-2.5 py-1 text-xs font-sans bg-[#121212] border border-[#262626] text-[#ededed] placeholder-[#666666] focus:border-[#38bdf8] focus:outline-none"
+              className="flex-1 px-2.5 py-1 text-xs font-sans bg-surface-raised border border-border-base text-content-primary placeholder-content-dim focus:border-accent-blue focus:outline-none"
             />
             <button
               type="submit"
               disabled={!newNoteText.trim()}
-              className="px-3 py-1 bg-[#1a1a1a] hover:bg-[#252525] disabled:opacity-40 text-xs font-mono uppercase tracking-wider text-[#ededed] border border-[#333333] cursor-pointer"
+              className="px-3 py-1 bg-surface-elevated hover:bg-surface-hover disabled:opacity-40 text-xs font-mono uppercase tracking-wider text-content-primary border border-border-strong cursor-pointer"
             >
               + Add Note
             </button>

@@ -61,20 +61,20 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
   };
 
   return (
-    <div className={`space-y-4 bg-[#0a0a0a] border border-[#1f1f1f] p-4 ${className}`}>
-      <div className="flex items-center justify-between border-b border-[#1c1c1c] pb-2">
+    <div className={`space-y-4 bg-surface-panel border border-border-subtle p-4 ${className}`}>
+      <div className="flex items-center justify-between border-b border-border-subtle pb-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#38bdf8]">
+          <span className="text-xs font-mono font-bold uppercase tracking-wider text-accent-blue">
             Dual-Deck Transition Alignment
           </span>
-          <span className="text-xs font-mono text-[#a8a8a8]">
+          <span className="text-xs font-mono text-content-muted">
             Click any marker to audition mix point
           </span>
         </div>
         {/* Audition Speed */}
         {auditionTrackId && (
           <div className="flex items-center gap-1.5 text-xs font-mono">
-            <span className="text-[#a8a8a8]">Audition Speed:</span>
+            <span className="text-content-muted">Audition Speed:</span>
             {[0.8, 1.0, 1.2].map((s) => (
               <button
                 key={s}
@@ -82,8 +82,8 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
                 onClick={() => onSetSpeed(s)}
                 className={`px-1.5 py-0.5 border text-xs cursor-pointer ${
                   Math.abs(auditionSpeed - s) < 0.05
-                    ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
-                    : 'border-[#222222] bg-[#121212] text-[#a8a8a8] hover:text-[#ededed]'
+                    ? 'border-accent-blue bg-accent-blue-subtle text-accent-blue font-bold'
+                    : 'border-border-base bg-surface-raised text-content-muted hover:text-content-primary'
                 }`}
               >
                 {s}x
@@ -94,16 +94,16 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
       </div>
 
       {/* Deck A: Outgoing */}
-      <div className="space-y-2 p-3 bg-[#0d0d0d] border border-[#1c1c1c]">
+      <div className="space-y-2 p-3 bg-surface-panel border border-border-subtle">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.5 text-xs font-mono font-bold bg-[#181818] border border-[#2b2b2b] text-[#cfcfcf]">
+            <span className="px-1.5 py-0.5 text-xs font-mono font-bold bg-surface-elevated border border-border-base text-content-secondary">
               DECK A · OUTGOING {posA ? `(#${String(posA).padStart(2, '0')})` : ''}
             </span>
-            <span className="font-semibold text-xs text-[#ededed] truncate max-w-[200px] sm:max-w-xs">
+            <span className="font-semibold text-xs text-content-primary truncate max-w-[200px] sm:max-w-xs">
               {trackA?.tags.title ?? 'Unknown Track'}
             </span>
-            <span className="text-xs text-[#a8a8a8] truncate max-w-[150px]">
+            <span className="text-xs text-content-muted truncate max-w-[150px]">
               {trackA?.tags.artist ?? 'Unknown Artist'}
             </span>
           </div>
@@ -115,10 +115,10 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
             >
               {keyAStr}
             </span>
-            <span className="text-[#cfcfcf] te-num tabular-nums">
-              {trackA?.analysis?.rhythm.grid.bpm ? Math.round(trackA.analysis.rhythm.grid.bpm) : '-'} <span className="te-unit text-[#71717a]">BPM</span>
+            <span className="text-content-secondary te-num tabular-nums">
+              {trackA?.analysis?.rhythm.grid.bpm ? Math.round(trackA.analysis.rhythm.grid.bpm) : '-'} <span className="te-unit text-content-muted">BPM</span>
             </span>
-            <span className="text-[#a8a8a8] te-num">E{trackA?.analysis?.energy_score ?? '-'}</span>
+            <span className="text-content-muted te-num">E{trackA?.analysis?.energy_score ?? '-'}</span>
 
             {trackA && (
               <FourPointCueChips
@@ -134,8 +134,8 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
                 onClick={() => onToggleAudition(trackA.id)}
                 className={`ml-2 px-2 py-0.5 text-xs font-mono uppercase tracking-wider border flex items-center gap-1 transition-colors cursor-pointer ${
                   auditionTrackId === trackA.id && auditionState === 'playing'
-                    ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
-                    : 'border-[#27272a] bg-[#141414] hover:bg-[#202020] text-[#cfcfcf]'
+                    ? 'border-accent-blue bg-accent-blue-subtle text-accent-blue font-bold'
+                    : 'border-border-base bg-surface-raised hover:bg-surface-hover text-content-secondary'
                 }`}
                 title="Audition Outgoing Track A"
               >
@@ -147,7 +147,7 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
         </div>
 
         {/* Structural Waveform Track A */}
-        <div className="relative h-12 bg-[#121212] border border-[#242424] rounded-none overflow-hidden select-none">
+        <div className="relative h-12 bg-surface-raised border border-border-base rounded-none overflow-hidden select-none">
           {/* Segments representation */}
           {trackA?.analysis?.segments.map((seg, idx) => {
             const segDuration = Math.max(0, seg.end_ms - seg.start_ms);
@@ -176,11 +176,11 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
                   backgroundColor: segColor,
                   opacity: 0.25,
                 }}
-                className="absolute inset-y-0 border-r border-[#0a0a0a]/60 hover:opacity-40 transition-opacity cursor-pointer"
+                className="absolute inset-y-0 border-r border-border-subtle/60 hover:opacity-40 transition-opacity cursor-pointer"
                 title={`${seg.label.toUpperCase()} (${formatTime(seg.start_ms)} - ${formatTime(seg.end_ms)})`}
                 onClick={() => void handleJumpToTime(trackA.id, seg.start_ms)}
               >
-                <span className="absolute top-1 left-1 text-[9px] font-mono uppercase font-bold text-white/90 truncate pointer-events-none">
+                <span className="absolute top-1 left-1 text-[11px] font-mono uppercase tracking-wider font-bold text-white/90 truncate pointer-events-none">
                   {seg.label}
                 </span>
               </div>
@@ -219,9 +219,9 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
               left: `${Math.max(0, (durA - 45000) / durA) * 100}%`,
               right: 0,
             }}
-            className="absolute inset-y-0 bg-[#10b981]/10 border-l border-dashed border-[#10b981]/80 pointer-events-none flex items-center justify-end pr-2"
+            className="absolute inset-y-0 bg-status-success/10 border-l border-dashed border-status-success/80 pointer-events-none flex items-center justify-end pr-2"
           >
-            <span className="text-xs font-mono font-bold text-[#10b981] uppercase tracking-wider">
+            <span className="text-xs font-mono font-bold text-status-success uppercase tracking-wider">
               MIX-OUT ZONE
             </span>
           </div>
@@ -229,13 +229,13 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
 
         {/* Marker Quick Jumps for Deck A */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs font-mono">
-          <span className="text-[#a8a8a8]">Jump to:</span>
+          <span className="text-content-muted">Jump to:</span>
           {markersA.slice(0, 5).map((m) => (
             <button
               key={m.id}
               type="button"
               onClick={() => void handleJumpToTime(trackA!.id, m.timeMs)}
-              className="px-1.5 py-0.5 bg-[#141414] hover:bg-[#202020] border border-[#242424] hover:border-[#38bdf8] text-[#cfcfcf] hover:text-[#38bdf8] transition-colors cursor-pointer"
+              className="px-1.5 py-0.5 bg-surface-raised hover:bg-surface-hover border border-border-base hover:border-accent-blue text-content-secondary hover:text-accent-blue transition-colors cursor-pointer"
             >
               {m.label} ({formatTime(m.timeMs)})
             </button>
@@ -244,16 +244,16 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
       </div>
 
       {/* Deck B: Incoming */}
-      <div className="space-y-2 p-3 bg-[#0d0d0d] border border-[#1c1c1c]">
+      <div className="space-y-2 p-3 bg-surface-panel border border-border-subtle">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.5 text-xs font-mono font-bold bg-[#181818] border border-[#2b2b2b] text-[#cfcfcf]">
+            <span className="px-1.5 py-0.5 text-xs font-mono font-bold bg-surface-elevated border border-border-base text-content-secondary">
               DECK B · INCOMING {posB ? `(#${String(posB).padStart(2, '0')})` : ''}
             </span>
-            <span className="font-semibold text-xs text-[#ededed] truncate max-w-[200px] sm:max-w-xs">
+            <span className="font-semibold text-xs text-content-primary truncate max-w-[200px] sm:max-w-xs">
               {trackB?.tags.title ?? 'Unknown Track'}
             </span>
-            <span className="text-xs text-[#a8a8a8] truncate max-w-[150px]">
+            <span className="text-xs text-content-muted truncate max-w-[150px]">
               {trackB?.tags.artist ?? 'Unknown Artist'}
             </span>
           </div>
@@ -265,10 +265,10 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
             >
               {keyBStr}
             </span>
-            <span className="text-[#cfcfcf] te-num tabular-nums">
-              {trackB?.analysis?.rhythm.grid.bpm ? Math.round(trackB.analysis.rhythm.grid.bpm) : '-'} <span className="te-unit text-[#71717a]">BPM</span>
+            <span className="text-content-secondary te-num tabular-nums">
+              {trackB?.analysis?.rhythm.grid.bpm ? Math.round(trackB.analysis.rhythm.grid.bpm) : '-'} <span className="te-unit text-content-muted">BPM</span>
             </span>
-            <span className="text-[#a8a8a8] te-num">E{trackB?.analysis?.energy_score ?? '-'}</span>
+            <span className="text-content-muted te-num">E{trackB?.analysis?.energy_score ?? '-'}</span>
 
             {trackB && (
               <FourPointCueChips
@@ -284,8 +284,8 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
                 onClick={() => onToggleAudition(trackB.id)}
                 className={`ml-2 px-2 py-0.5 text-xs font-mono uppercase tracking-wider border flex items-center gap-1 transition-colors cursor-pointer ${
                   auditionTrackId === trackB.id && auditionState === 'playing'
-                    ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8] font-bold'
-                    : 'border-[#27272a] bg-[#141414] hover:bg-[#202020] text-[#cfcfcf]'
+                    ? 'border-accent-blue bg-accent-blue-subtle text-accent-blue font-bold'
+                    : 'border-border-base bg-surface-raised hover:bg-surface-hover text-content-secondary'
                 }`}
                 title="Audition Incoming Track B"
               >
@@ -297,7 +297,7 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
         </div>
 
         {/* Structural Waveform Track B */}
-        <div className="relative h-12 bg-[#121212] border border-[#242424] rounded-none overflow-hidden select-none">
+        <div className="relative h-12 bg-surface-raised border border-border-base rounded-none overflow-hidden select-none">
           {/* Segments representation */}
           {trackB?.analysis?.segments.map((seg, idx) => {
             const segDuration = Math.max(0, seg.end_ms - seg.start_ms);
@@ -326,11 +326,11 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
                   backgroundColor: segColor,
                   opacity: 0.25,
                 }}
-                className="absolute inset-y-0 border-r border-[#0a0a0a]/60 hover:opacity-40 transition-opacity cursor-pointer"
+                className="absolute inset-y-0 border-r border-border-subtle/60 hover:opacity-40 transition-opacity cursor-pointer"
                 title={`${seg.label.toUpperCase()} (${formatTime(seg.start_ms)} - ${formatTime(seg.end_ms)})`}
                 onClick={() => void handleJumpToTime(trackB.id, seg.start_ms)}
               >
-                <span className="absolute top-1 left-1 text-[9px] font-mono uppercase font-bold text-white/90 truncate pointer-events-none">
+                <span className="absolute top-1 left-1 text-[11px] font-mono uppercase tracking-wider font-bold text-white/90 truncate pointer-events-none">
                   {seg.label}
                 </span>
               </div>
@@ -369,9 +369,9 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
               left: 0,
               width: `${Math.min(100, (45000 / durB) * 100)}%`,
             }}
-            className="absolute inset-y-0 bg-[#38bdf8]/10 border-r border-dashed border-[#38bdf8]/80 pointer-events-none flex items-center justify-start pl-2"
+            className="absolute inset-y-0 bg-accent-blue/10 border-r border-dashed border-accent-blue/80 pointer-events-none flex items-center justify-start pl-2"
           >
-            <span className="text-xs font-mono font-bold text-[#38bdf8] uppercase tracking-wider">
+            <span className="text-xs font-mono font-bold text-accent-blue uppercase tracking-wider">
               MIX-IN ENTRY ZONE
             </span>
           </div>
@@ -379,13 +379,13 @@ export const DualDeckWaveform: React.FC<DualDeckWaveformProps> = ({
 
         {/* Marker Quick Jumps for Deck B */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs font-mono">
-          <span className="text-[#a8a8a8]">Jump to:</span>
+          <span className="text-content-muted">Jump to:</span>
           {markersB.slice(0, 5).map((m) => (
             <button
               key={m.id}
               type="button"
               onClick={() => void handleJumpToTime(trackB!.id, m.timeMs)}
-              className="px-1.5 py-0.5 bg-[#141414] hover:bg-[#202020] border border-[#242424] hover:border-[#38bdf8] text-[#cfcfcf] hover:text-[#38bdf8] transition-colors cursor-pointer"
+              className="px-1.5 py-0.5 bg-surface-raised hover:bg-surface-hover border border-border-base hover:border-accent-blue text-content-secondary hover:text-accent-blue transition-colors cursor-pointer"
             >
               {m.label} ({formatTime(m.timeMs)})
             </button>

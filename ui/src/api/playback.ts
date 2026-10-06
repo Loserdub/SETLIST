@@ -269,8 +269,12 @@ export class TauriPlaybackClient implements PlaybackClient {
   }
 
   public async stop(): Promise<void> {
-    await this.pause();
-    await this.seek(0);
+    try {
+      await invoke('playback_stop');
+    } catch {
+      await this.pause();
+      await this.seek(0);
+    }
   }
 
   public onPosition(callback: (payload: PlaybackPositionPayload) => void): () => void {

@@ -22,6 +22,7 @@ interface ConstraintCockpitProps {
   onSelectWeightsPreset: (preset: PreferredTransitionPreset) => void;
   isSuggesting: boolean;
   onSuggestOrder: () => void;
+  onCancelSuggest?: () => void;
   onRegenerateUnlocked?: () => void;
   onOpenTrackSelector: () => void;
   trackCount: number;
@@ -41,6 +42,7 @@ export function ConstraintCockpit({
   onSelectWeightsPreset,
   isSuggesting,
   onSuggestOrder,
+  onCancelSuggest,
   onRegenerateUnlocked,
   onOpenTrackSelector,
   trackCount,
@@ -61,7 +63,7 @@ export function ConstraintCockpit({
       : 'Balanced';
 
   return (
-    <div className="bg-[#0b0b0b] border-b border-[#1c1c1c] p-3.5 space-y-3 shrink-0">
+    <div className="bg-surface-panel border-b border-border-subtle p-3.5 space-y-3 shrink-0">
       {/* Upper Bar: Duration Gauge & Primary Suggest Action */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Left: Duration Gauge with Visual Progress Bar */}
@@ -70,12 +72,12 @@ export function ConstraintCockpit({
             <span className="text-amber-400">
               <IconClock size={13} />
             </span>
-            <span className="text-[#a8a8a8] uppercase font-semibold">TARGET DURATION:</span>
+            <span className="text-content-muted uppercase font-semibold">TARGET DURATION:</span>
             <select
               aria-label="Target Duration"
               value={targetDurationMinutes}
               onChange={(e) => onSetTargetDurationMinutes(Number(e.target.value))}
-              className="bg-[#141414] border border-[#2a2a2a] text-white text-xs font-mono px-2 py-0.5 focus:outline-none focus:border-[#38bdf8] cursor-pointer"
+              className="bg-surface-raised border border-border-base text-white text-xs font-mono px-2 py-0.5 focus:outline-none focus:border-accent-blue cursor-pointer"
             >
               <option value={30}>30 min</option>
               <option value={45}>45 min</option>
@@ -91,14 +93,14 @@ export function ConstraintCockpit({
             <span className="text-white font-bold te-num tabular-nums">
               {formatDurationMs(totalDurationMs)}
             </span>
-            <span className="text-[#555566]">/</span>
-            <span className="text-[#a8a8a8] te-num tabular-nums">
+            <span className="text-content-dim">/</span>
+            <span className="text-content-muted te-num tabular-nums">
               {targetDurationMinutes}:00
             </span>
-            <span className="text-[#333344]">|</span>
+            <span className="text-content-dim">|</span>
             <span
               className={`te-num tabular-nums text-xs font-medium ${
-                timeDiffMs > 0 ? 'text-[#38bdf8]' : 'text-amber-400'
+                timeDiffMs > 0 ? 'text-accent-blue' : 'text-amber-400'
               }`}
             >
               {timeDiffMs > 0
@@ -108,7 +110,7 @@ export function ConstraintCockpit({
           </div>
 
           {/* Mini Progress Bar */}
-          <div className="w-24 bg-[#181818] h-1.5 overflow-hidden border border-[#252525] hidden sm:block">
+          <div className="w-24 bg-surface-elevated h-1.5 overflow-hidden border border-border-base hidden sm:block">
             <div
               className={`h-full transition-all duration-300 ${
                 progressPercent >= 100
@@ -126,12 +128,12 @@ export function ConstraintCockpit({
           <button
             type="button"
             onClick={onOpenTrackSelector}
-            className="px-2.5 py-1 bg-[#141414] hover:bg-[#1f1f1f] text-[#38bdf8] border border-[#2e2e2e] hover:border-[#38bdf8] text-xs font-mono uppercase tracking-wider font-semibold transition-colors cursor-pointer flex items-center gap-1.5 rounded-none hw-btn"
+            className="px-2.5 py-1 bg-surface-raised hover:bg-surface-elevated text-accent-blue border border-border-base hover:border-accent-blue text-xs font-mono uppercase tracking-wider font-semibold transition-colors cursor-pointer flex items-center gap-1.5 rounded-none hw-btn"
             title="Browse library and add tracks to set"
           >
             <IconPlus size={12} />
             <span>Select Tracks</span>
-            <span className="px-1.5 py-0.5 bg-[#1c1c1c] text-white text-xs rounded-none border border-[#2b2b2b]">
+            <span className="px-1.5 py-0.5 bg-surface-elevated text-white text-xs rounded-none border border-border-base">
               {trackCount}
             </span>
           </button>
@@ -142,7 +144,7 @@ export function ConstraintCockpit({
               type="button"
               onClick={onRegenerateUnlocked}
               disabled={isSuggesting}
-              className="px-2.5 py-1 bg-[#161616] hover:bg-[#202020] text-[#ededed] border border-[#303030] text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer rounded-none disabled:opacity-40"
+              className="px-2.5 py-1 bg-surface-raised hover:bg-surface-hover text-content-primary border border-border-base text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer rounded-none disabled:opacity-40"
               title="Re-order unpinned tracks while keeping all pinned tracks locked at exact positions"
             >
               <span>Regen Unlocked</span>
@@ -154,22 +156,33 @@ export function ConstraintCockpit({
             type="button"
             onClick={onSuggestOrder}
             disabled={trackCount < 2 || isSuggesting}
-            className="px-3.5 py-1 bg-[#1a2634] hover:bg-[#243547] text-[#38bdf8] hover:text-white border border-[#38bdf8]/60 text-xs font-mono uppercase tracking-wider font-bold transition-colors cursor-pointer flex items-center gap-1.5 rounded-none disabled:opacity-30 disabled:cursor-not-allowed shadow-xs"
+            className="px-3.5 py-1 bg-surface-hover hover:bg-accent-blue-dim text-accent-blue hover:text-white border border-accent-blue/60 text-xs font-mono uppercase tracking-wider font-bold transition-colors cursor-pointer flex items-center gap-1.5 rounded-none disabled:opacity-30 disabled:cursor-not-allowed shadow-xs"
             title="Auto-optimize setlist sequence respecting locked pins and energy curve"
           >
             <IconSparkles size={12} className={isSuggesting ? 'animate-spin' : ''} />
             <span>{isSuggesting ? 'Optimizing Flow...' : 'Suggest Order'}</span>
           </button>
+
+          {isSuggesting && onCancelSuggest && (
+            <button
+              type="button"
+              onClick={onCancelSuggest}
+              className="px-2.5 py-1 bg-surface-raised hover:bg-surface-elevated text-status-danger border border-status-danger/40 text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer rounded-none"
+              title="Cancel optimization"
+            >
+              <span>Cancel</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Lower Bar: Architectural Constraints Controls Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-[#16161c]">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-border-subtle">
         {/* Left Constraints: Pins, Energy Profile, Preferred Transitions in Unified Hardware Ribbon */}
-        <div className="flex flex-wrap items-center bg-[#0a0a0d] border border-[#191922] divide-x divide-[#191922]">
+        <div className="flex flex-wrap items-center bg-surface-panel border border-border-subtle divide-x divide-border-subtle">
           {/* Lock Pins Controls (Opener / Closer) */}
           <div className="flex items-center gap-1 px-2.5 py-1">
-            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase pr-1 flex items-center gap-1">
+            <span className="text-xs font-mono font-semibold text-content-muted uppercase pr-1 flex items-center gap-1">
               <IconLock size={10} />
               <span>PINS:</span>
             </span>
@@ -177,10 +190,10 @@ export function ConstraintCockpit({
               type="button"
               onClick={onToggleLockFirst}
               disabled={trackCount <= 1}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${
                 pins.lockFirst
-                  ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
+                  ? 'bg-accent-amber-subtle text-accent-amber border-status-danger'
+                  : 'bg-transparent text-content-muted hover:text-content-primary border-transparent'
               }`}
               title="Lock opening track in first position"
             >
@@ -191,10 +204,10 @@ export function ConstraintCockpit({
               type="button"
               onClick={onToggleLockLast}
               disabled={trackCount <= 1}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${
                 pins.lockLast
-                  ? 'bg-[#1c1408] text-[#f59e0b] border-[#78350f]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
+                  ? 'bg-accent-amber-subtle text-accent-amber border-status-danger'
+                  : 'bg-transparent text-content-muted hover:text-content-primary border-transparent'
               }`}
               title="Lock closing track in last position"
             >
@@ -204,14 +217,14 @@ export function ConstraintCockpit({
 
           {/* Energy Profile Selector (Strictly retaining exact names for existing tests) */}
           <div className="flex items-center gap-0.5 px-2.5 py-1">
-            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase pr-1">ARC:</span>
+            <span className="text-xs font-mono font-semibold text-content-muted uppercase pr-1">ARC:</span>
             <button
               type="button"
               onClick={() => onSetEnergyProfile('LinearRamp')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${
                 energyProfile === 'LinearRamp'
-                  ? 'bg-[#1e1e24] text-white border-[#383844]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
+                  ? 'bg-surface-elevated text-white border-border-strong'
+                  : 'bg-transparent text-content-muted hover:text-content-primary border-transparent'
               }`}
               title="Linear Ramp: steady gradual energy build"
             >
@@ -220,10 +233,10 @@ export function ConstraintCockpit({
             <button
               type="button"
               onClick={() => onSetEnergyProfile('Wave')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${
                 energyProfile === 'Wave'
-                  ? 'bg-[#1e1e24] text-white border-[#383844]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
+                  ? 'bg-surface-elevated text-white border-border-strong'
+                  : 'bg-transparent text-content-muted hover:text-content-primary border-transparent'
               }`}
               title="Wave: alternating peaks and breathers"
             >
@@ -232,10 +245,10 @@ export function ConstraintCockpit({
             <button
               type="button"
               onClick={() => onSetEnergyProfile('PeakPlateau')}
-              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] ${
+              className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${
                 energyProfile === 'PeakPlateau'
-                  ? 'bg-[#1e1e24] text-white border-[#383844]'
-                  : 'bg-transparent text-[#a8a8a8] hover:text-[#ededed] border-transparent'
+                  ? 'bg-surface-elevated text-white border-border-strong'
+                  : 'bg-transparent text-content-muted hover:text-content-primary border-transparent'
               }`}
               title="Plateau: rapid ramp to sustained high peak groove"
             >
@@ -245,7 +258,7 @@ export function ConstraintCockpit({
 
           {/* Preferred Transitions / Weight Tuning Presets */}
           <div className="flex items-center gap-0.5 px-2.5 py-1">
-            <span className="text-xs font-mono font-semibold text-[#a8a8a8] uppercase pr-1">
+            <span className="text-xs font-mono font-semibold text-content-muted uppercase pr-1">
               PREFERENCE:
             </span>
             {(['Balanced', 'Harmonic', 'Energy', 'Tempo'] as PreferredTransitionPreset[]).map((p) => (
@@ -255,8 +268,8 @@ export function ConstraintCockpit({
                 onClick={() => onSelectWeightsPreset(p)}
                 className={`px-2 py-0.5 text-xs font-mono transition-colors cursor-pointer border rounded-none ${
                   activePreset === p
-                    ? 'bg-[#1e1e24] text-[#38bdf8] border-[#383844] font-semibold'
-                    : 'bg-transparent text-[#a8a8a8] hover:text-white border-transparent'
+                    ? 'bg-surface-elevated text-accent-blue border-border-strong font-semibold'
+                    : 'bg-transparent text-content-muted hover:text-white border-transparent'
                 }`}
                 title={`Prioritize ${p} matching in transition cost model`}
               >

@@ -34,6 +34,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 tauri-plugin-single-instance = "2"
 thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 hound = "3.5"

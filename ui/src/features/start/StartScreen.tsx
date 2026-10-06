@@ -11,11 +11,11 @@ import type { StartScreenProps, StepStatus } from './types';
 function getStatusBadgeClasses(status: StepStatus): string {
   switch (status) {
     case 'done':
-      return 'bg-[#052e16] text-[#4ade80] border-[#166534]';
+      return 'bg-status-success-dim text-status-success border-status-success';
     case 'in_progress':
-      return 'bg-[#082f49] text-[#38bdf8] border-[#0284c7]';
+      return 'bg-accent-blue-subtle text-accent-blue border-accent-blue';
     case 'not_started':
-      return 'bg-[#18181b] text-[#d4d4d8] border-[#3f3f46]';
+      return 'bg-surface-elevated text-content-secondary border-border-strong';
   }
 }
 
@@ -93,21 +93,21 @@ export function StartScreen({
 
   return (
     <div
-      className="flex-1 flex flex-col h-full overflow-y-auto bg-[#080808] text-[#ededed] select-none"
+      className="flex-1 flex flex-col h-full overflow-y-auto bg-surface-deep text-content-primary select-none"
       data-testid="start-screen"
     >
       {/* ── Top Header ── */}
-      <header className="px-6 py-5 border-b border-[#1c1c1c] bg-[#0a0a0a]">
+      <header className="px-6 py-5 border-b border-border-subtle bg-surface-panel">
         <div className="max-w-4xl mx-auto flex flex-col gap-1">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-mono font-bold tracking-widest text-white uppercase">
               GETTING STARTED
             </h1>
-            <span className="text-xs font-mono px-2 py-0.5 border border-[#2b2b2b] bg-[#141414] text-[#a1a1aa] uppercase tracking-wider">
+            <span className="text-xs font-mono px-2 py-0.5 border border-border-base bg-surface-raised text-content-muted uppercase tracking-wider">
               GUIDED WORKFLOW
             </span>
           </div>
-          <p className="text-sm font-mono text-[#a1a1aa] leading-relaxed">
+          <p className="text-sm font-mono text-content-muted leading-relaxed">
             Follow the four steps below to scan your music, verify track analysis, construct your set, and perform live.
           </p>
         </div>
@@ -120,13 +120,13 @@ export function StartScreen({
           {/* STEP 1: Add your music                                  */}
           {/* ═════════════════════════════════════════════════════════ */}
           <section
-            className="p-5 bg-[#0e0e0e] border border-[#222222] flex flex-col gap-3.5"
+            className="p-5 bg-surface-panel border border-border-base flex flex-col gap-3.5"
             data-testid="start-step-1"
             aria-labelledby="step-1-title"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="text-xs font-mono font-bold px-2 py-0.5 border border-[#333333] bg-[#1a1a1a] text-[#ededed]">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 border border-border-strong bg-surface-elevated text-content-primary">
                   STEP 1
                 </span>
                 <h2
@@ -147,7 +147,7 @@ export function StartScreen({
             </div>
 
             <p
-              className="text-sm font-mono text-[#d4d4d8] leading-relaxed"
+              className="text-sm font-mono text-content-secondary leading-relaxed"
               data-testid="start-step-1-sentence"
             >
               {step1.sentence}
@@ -156,21 +156,21 @@ export function StartScreen({
             {/* Live Progress Bar if scanning with total */}
             {progress && (
               <div
-                className="p-2.5 bg-[#080808] border border-[#242424] flex flex-col gap-1.5"
+                className="p-2.5 bg-surface-deep border border-border-base flex flex-col gap-1.5"
                 aria-live="polite"
               >
                 <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-[#a1a1aa] uppercase tracking-wider">
+                  <span className="text-content-muted uppercase tracking-wider">
                     {progress.stage}...
                   </span>
-                  <span className="text-[#ededed] font-semibold">
+                  <span className="text-content-primary font-semibold">
                     {progress.current} / {progress.total} (
                     {Math.round((progress.current / (progress.total || 1)) * 100)}%)
                   </span>
                 </div>
-                <div className="w-full h-1.5 bg-[#1a1a1a] overflow-hidden">
+                <div className="w-full h-1.5 bg-surface-elevated overflow-hidden">
                   <div
-                    className="h-full bg-[#38bdf8] transition-all duration-200"
+                    className="h-full bg-accent-blue transition-all duration-200"
                     style={{
                       width: `${Math.min(
                         100,
@@ -187,7 +187,7 @@ export function StartScreen({
                 type="button"
                 onClick={() => void handleScanClick()}
                 disabled={isLoadingTracks}
-                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-[#181818] hover:bg-[#242424] disabled:opacity-40 disabled:cursor-not-allowed border border-[#333333] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-offset-1 focus-visible:ring-offset-[#080808]"
+                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-surface-elevated hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed border border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface-deep"
                 data-testid="start-scan-btn"
               >
                 {isLoadingTracks ? 'Scanning...' : 'Choose Folder & Scan'}
@@ -199,13 +199,13 @@ export function StartScreen({
           {/* STEP 2: Check the results                               */}
           {/* ═════════════════════════════════════════════════════════ */}
           <section
-            className="p-5 bg-[#0e0e0e] border border-[#222222] flex flex-col gap-3.5"
+            className="p-5 bg-surface-panel border border-border-base flex flex-col gap-3.5"
             data-testid="start-step-2"
             aria-labelledby="step-2-title"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="text-xs font-mono font-bold px-2 py-0.5 border border-[#333333] bg-[#1a1a1a] text-[#ededed]">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 border border-border-strong bg-surface-elevated text-content-primary">
                   STEP 2
                 </span>
                 <h2
@@ -226,7 +226,7 @@ export function StartScreen({
             </div>
 
             <p
-              className="text-sm font-mono text-[#d4d4d8] leading-relaxed"
+              className="text-sm font-mono text-content-secondary leading-relaxed"
               data-testid="start-step-2-sentence"
             >
               {step2.sentence}
@@ -238,7 +238,7 @@ export function StartScreen({
                 <button
                   type="button"
                   onClick={onOpenFilteredLibrary}
-                  className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-[#181818] hover:bg-[#242424] border border-[#333333] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-offset-1 focus-visible:ring-offset-[#080808]"
+                  className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-surface-elevated hover:bg-surface-hover border border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface-deep"
                   data-testid="start-review-btn"
                 >
                   Open My Music (Filtered)
@@ -251,13 +251,13 @@ export function StartScreen({
           {/* STEP 3: Build your set                                  */}
           {/* ═════════════════════════════════════════════════════════ */}
           <section
-            className="p-5 bg-[#0e0e0e] border border-[#222222] flex flex-col gap-3.5"
+            className="p-5 bg-surface-panel border border-border-base flex flex-col gap-3.5"
             data-testid="start-step-3"
             aria-labelledby="step-3-title"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="text-xs font-mono font-bold px-2 py-0.5 border border-[#333333] bg-[#1a1a1a] text-[#ededed]">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 border border-border-strong bg-surface-elevated text-content-primary">
                   STEP 3
                 </span>
                 <h2
@@ -278,7 +278,7 @@ export function StartScreen({
             </div>
 
             <p
-              className="text-sm font-mono text-[#d4d4d8] leading-relaxed"
+              className="text-sm font-mono text-content-secondary leading-relaxed"
               data-testid="start-step-3-sentence"
             >
               {step3.sentence}
@@ -289,7 +289,7 @@ export function StartScreen({
               <button
                 type="button"
                 onClick={() => setRoute('setlist')}
-                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-[#181818] hover:bg-[#242424] border border-[#333333] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-offset-1 focus-visible:ring-offset-[#080808]"
+                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-surface-elevated hover:bg-surface-hover border border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface-deep"
                 data-testid="start-open-set-btn"
               >
                 Open My Set
@@ -300,7 +300,7 @@ export function StartScreen({
                 <button
                   type="button"
                   onClick={onQuickSet}
-                  className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-[#e2e2e2] bg-[#121212] hover:bg-[#1a1a1a] hover:text-white border border-[#2b2b2b] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-offset-1 focus-visible:ring-offset-[#080808]"
+                  className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-content-primary bg-surface-raised hover:bg-surface-elevated hover:text-white border border-border-base transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface-deep"
                   data-testid="start-quick-set-btn"
                 >
                   Quick set
@@ -313,13 +313,13 @@ export function StartScreen({
           {/* STEP 4: Play and export                                 */}
           {/* ═════════════════════════════════════════════════════════ */}
           <section
-            className="p-5 bg-[#0e0e0e] border border-[#222222] flex flex-col gap-3.5"
+            className="p-5 bg-surface-panel border border-border-base flex flex-col gap-3.5"
             data-testid="start-step-4"
             aria-labelledby="step-4-title"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="text-xs font-mono font-bold px-2 py-0.5 border border-[#333333] bg-[#1a1a1a] text-[#ededed]">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 border border-border-strong bg-surface-elevated text-content-primary">
                   STEP 4
                 </span>
                 <h2
@@ -340,7 +340,7 @@ export function StartScreen({
             </div>
 
             <p
-              className="text-sm font-mono text-[#d4d4d8] leading-relaxed"
+              className="text-sm font-mono text-content-secondary leading-relaxed"
               data-testid="start-step-4-sentence"
             >
               {step4.sentence}
@@ -352,7 +352,7 @@ export function StartScreen({
                 type="button"
                 onClick={enterStageMode}
                 disabled={setlist.length < 2}
-                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-[#181818] hover:bg-[#242424] disabled:opacity-40 disabled:cursor-not-allowed border border-[#333333] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-offset-1 focus-visible:ring-offset-[#080808]"
+                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-surface-elevated hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed border border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface-deep"
                 data-testid="start-play-stage-btn"
               >
                 Play set (Stage Mode)
@@ -363,7 +363,7 @@ export function StartScreen({
                 type="button"
                 onClick={handleExportClick}
                 disabled={setlist.length < 2}
-                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-[#e2e2e2] bg-[#121212] hover:bg-[#1a1a1a] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed border border-[#2b2b2b] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-offset-1 focus-visible:ring-offset-[#080808]"
+                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-content-primary bg-surface-raised hover:bg-surface-elevated hover:text-white disabled:opacity-40 disabled:cursor-not-allowed border border-border-base transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-surface-deep"
                 data-testid="start-export-btn"
               >
                 Export

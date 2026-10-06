@@ -137,13 +137,13 @@ export function BridgeFinderModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-fade-in">
       <div
-        className="bg-[#0b0b0b] border border-[#2a2a2a] max-w-2xl w-full p-5 space-y-4 rounded-none shadow-2xl text-[#ededed]"
+        className="bg-surface-panel border border-border-base max-w-2xl w-full p-5 space-y-4 rounded-none shadow-2xl text-content-primary"
         role="dialog"
         aria-modal="true"
         aria-label="Bridge Track Discovery"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#1c1c1c] pb-3">
+        <div className="flex items-center justify-between border-b border-border-subtle pb-3">
           <div className="flex items-center gap-2">
             <span className="text-amber-400">
               <IconSparkles size={16} />
@@ -155,7 +155,7 @@ export function BridgeFinderModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-[#a8a8a8] hover:text-white transition-colors cursor-pointer text-xs font-mono p-1 focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
+            className="text-content-muted hover:text-white transition-colors cursor-pointer text-xs font-mono p-1 focus-visible:ring-1 focus-visible:ring-accent-blue"
             aria-label="Close bridge discovery modal"
           >
             <IconClose size={14} />
@@ -163,28 +163,28 @@ export function BridgeFinderModal({
         </div>
 
         {/* Transition Overview */}
-        <div className="p-3 bg-[#111111] border border-[#1f1f1f] flex items-center justify-between gap-3 text-xs font-mono">
+        <div className="p-3 bg-surface-raised border border-border-subtle flex items-center justify-between gap-3 text-xs font-mono">
           <div className="min-w-0 flex-1">
-            <span className="text-[#a8a8a8] text-xs uppercase block">Source Track:</span>
+            <span className="text-content-muted text-xs uppercase block">Source Track:</span>
             <span className="font-semibold text-white truncate block">
               {trackA.tags.title ?? 'Track A'}
             </span>
-            <span className="text-xs text-[#a8a8a8]">
+            <span className="text-xs text-content-muted">
               {keyAStr} • {Math.round(trackA.analysis?.rhythm.grid.bpm ?? 0)} BPM
             </span>
           </div>
 
-          <div className="flex flex-col items-center justify-center px-3 border-x border-[#222222] shrink-0 text-[#f59e0b]">
+          <div className="flex flex-col items-center justify-center px-3 border-x border-border-base shrink-0 text-accent-amber">
             <span className="text-xs font-bold uppercase">GAP TO BRIDGE</span>
             <span className="text-xs">→ [Bridge] →</span>
           </div>
 
           <div className="min-w-0 flex-1 text-right">
-            <span className="text-[#a8a8a8] text-xs uppercase block">Destination Track:</span>
+            <span className="text-content-muted text-xs uppercase block">Destination Track:</span>
             <span className="font-semibold text-white truncate block">
               {trackB.tags.title ?? 'Track B'}
             </span>
-            <span className="text-xs text-[#a8a8a8]">
+            <span className="text-xs text-content-muted">
               {keyBStr} • {Math.round(trackB.analysis?.rhythm.grid.bpm ?? 0)} BPM
             </span>
           </div>
@@ -192,24 +192,24 @@ export function BridgeFinderModal({
 
         {/* Candidates List */}
         <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-          <span className="text-xs font-mono text-[#a8a8a8] uppercase tracking-wider block">
+          <span className="text-xs font-mono text-content-muted uppercase tracking-wider block">
             Recommended Intermediate Tracks ({candidates.length} options):
           </span>
 
           {candidates.length === 0 ? (
-            <div className="p-6 text-center border border-[#1e1e1e] bg-[#0e0e0e] text-xs font-mono text-[#a8a8a8]">
+            <div className="p-6 text-center border border-border-subtle bg-surface-panel text-xs font-mono text-content-muted">
               No intermediate bridge tracks discovered in library with lower combined friction.
             </div>
           ) : (
             candidates.map((cand) => {
-              const bg = cand.keyStr !== '-' ? camelotColor(cand.keyStr) : '#22222a';
-              const fg = cand.keyStr !== '-' ? camelotTextColor(cand.keyStr) : '#9898a4';
+              const bg = cand.keyStr !== '-' ? camelotColor(cand.keyStr) : 'var(--color-surface-hover)';
+              const fg = cand.keyStr !== '-' ? camelotTextColor(cand.keyStr) : 'var(--color-content-muted)';
               const isPlaying = auditionTrackId === cand.track.id && auditionState === 'playing';
 
               return (
                 <div
                   key={cand.track.id}
-                  className="p-3 bg-[#0e0e0e] hover:bg-[#141414] border border-[#222222] hover:border-[#383838] transition-colors flex items-center justify-between gap-3 group"
+                  className="p-3 bg-surface-panel hover:bg-surface-raised border border-border-base hover:border-border-strong transition-colors flex items-center justify-between gap-3 group"
                 >
                   {/* Left: Role, Key, BPM, Title */}
                   <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -219,8 +219,8 @@ export function BridgeFinderModal({
                       onClick={() => void toggleAudition(cand.track.id)}
                       className={`p-1.5 text-xs font-mono border transition-colors cursor-pointer rounded-none shrink-0 ${
                         isPlaying
-                          ? 'border-[#38bdf8] bg-[#142332] text-[#38bdf8]'
-                          : 'border-[#2a2a2a] bg-[#181818] text-[#cccccc] hover:text-white'
+                          ? 'border-accent-blue bg-accent-blue-subtle text-accent-blue'
+                          : 'border-border-base bg-surface-elevated text-content-secondary hover:text-white'
                       }`}
                       title={isPlaying ? 'Pause' : 'Audition track'}
                     >
@@ -245,7 +245,7 @@ export function BridgeFinderModal({
                           {cand.bridgeRole}
                         </span>
                       </div>
-                      <div className="text-xs font-mono text-[#a8a8a8] flex items-center gap-2 mt-0.5">
+                      <div className="text-xs font-mono text-content-muted flex items-center gap-2 mt-0.5">
                         <span className="truncate">{cand.track.tags.artist ?? 'Unknown Artist'}</span>
                         <span>•</span>
                         <span>{cand.bpm} BPM</span>
@@ -257,7 +257,7 @@ export function BridgeFinderModal({
 
                   {/* Right: Step Transition Friction & Insert Button */}
                   <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-right font-mono text-xs text-[#a8a8a8]">
+                    <div className="text-right font-mono text-xs text-content-muted">
                       <div>
                         Step 1: <span className="text-white">{cand.costAToBridge.toFixed(2)}</span>
                       </div>
@@ -270,7 +270,7 @@ export function BridgeFinderModal({
                       type="button"
                       onClick={() => void handleSelect(cand)}
                       disabled={isInserting === cand.track.id}
-                      className="px-3 py-1.5 bg-[#181818] hover:bg-[#222222] text-[#38bdf8] border border-[#38bdf8]/60 text-xs font-mono uppercase tracking-wider font-semibold transition-colors cursor-pointer disabled:opacity-40 rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+                      className="px-3 py-1.5 bg-surface-elevated hover:bg-surface-hover text-accent-blue border border-accent-blue/60 text-xs font-mono uppercase tracking-wider font-semibold transition-colors cursor-pointer disabled:opacity-40 rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue"
                     >
                       {isInserting === cand.track.id ? 'Inserting...' : '+ Insert Bridge'}
                     </button>
@@ -282,12 +282,12 @@ export function BridgeFinderModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-[#1c1c1c] pt-3 text-xs font-mono text-[#a8a8a8]">
+        <div className="flex items-center justify-between border-t border-border-subtle pt-3 text-xs font-mono text-content-muted">
           <span>Inserting a bridge creates two smooth, phrase-aligned transitions.</span>
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 text-xs font-mono text-[#cccccc] hover:text-white transition-colors cursor-pointer border border-[#262626] bg-[#141414]"
+            className="px-3 py-1 text-xs font-mono text-content-secondary hover:text-white transition-colors cursor-pointer border border-border-base bg-surface-raised"
           >
             Cancel
           </button>

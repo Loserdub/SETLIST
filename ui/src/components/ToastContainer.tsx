@@ -11,10 +11,10 @@ export function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: 
       data-testid={`toast-${toast.type}`}
       className={`pointer-events-auto flex items-start gap-3 p-3 rounded-none border shadow-2xl transition-all duration-200 max-w-sm font-mono ${
         isError
-          ? 'bg-[#120808] border-[#7f1d1d] text-[#fca5a5]'
+          ? 'bg-surface-panel border-status-danger-dim text-status-danger'
           : isSuccess
-          ? 'bg-[#081208] border-[#166534] text-[#86efac]'
-          : 'bg-[#0c0c0c] border-[#27272a] text-[#ededed]'
+          ? 'bg-status-success-dim border-status-success text-status-success'
+          : 'bg-surface-panel border-border-base text-content-primary'
       }`}
     >
       <div className="shrink-0 text-xs font-bold mt-0.5">
@@ -26,7 +26,7 @@ export function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: 
           {toast.message}
         </p>
         {toast.details && (
-          <p className="text-xs text-[#a8a8a8] mt-1 break-words leading-relaxed line-clamp-3">
+          <p className="text-xs text-content-muted mt-1 break-words leading-relaxed line-clamp-3">
             {toast.details}
           </p>
         )}
@@ -36,7 +36,7 @@ export function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: 
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="shrink-0 text-[#a8a8a8] hover:text-white transition-colors cursor-pointer text-xs p-0.5 rounded-none hover:bg-[#1f1f1f] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+        className="shrink-0 text-content-muted hover:text-white transition-colors cursor-pointer text-xs p-0.5 rounded-none hover:bg-surface-elevated focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
       >
         ✕
       </button>

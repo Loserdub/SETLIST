@@ -18,7 +18,9 @@ export function BridgeDiscoveryModal({
   initialSongBId,
   onClose,
 }: BridgeDiscoveryModalProps) {
-  const { useMockBackend, addToSetlist, addToast } = useAppStore();
+  const useMockBackend = useAppStore((s) => s.useMockBackend);
+  const addToSetlist = useAppStore((s) => s.addToSetlist);
+  const addToast = useAppStore((s) => s.addToast);
 
   const [songAId, setSongAId] = useState<string>(
     initialSongAId ?? (songs.length > 0 ? songs[0].id : '')
@@ -96,14 +98,14 @@ export function BridgeDiscoveryModal({
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'HarmonicBridge':
-        return { label: 'HARMONIC BRIDGE', bg: 'bg-[#20152a] text-[#d985ff] border-[#552066]' };
+        return { label: 'HARMONIC BRIDGE', bg: 'bg-surface-elevated text-accent-blue border-border-strong' };
       case 'TempoBridge':
-        return { label: 'TEMPO BRIDGE', bg: 'bg-[#2a2410] text-[#eedd77] border-[#665510]' };
+        return { label: 'TEMPO BRIDGE', bg: 'bg-surface-hover text-content-secondary border-border-strong' };
       case 'EnergyBridge':
-        return { label: 'ENERGY STAGING', bg: 'bg-[#102a24] text-[#77eedd] border-[#106655]' };
+        return { label: 'ENERGY STAGING', bg: 'bg-status-success-dim text-accent-blue border-accent-blue-dim' };
       case 'StyleBridge':
       default:
-        return { label: 'TUNING/STYLE BRIDGE', bg: 'bg-[#2a101d] text-[#ee77b4] border-[#661042]' };
+        return { label: 'TUNING/STYLE BRIDGE', bg: 'bg-surface-elevated text-status-danger border-border-base' };
     }
   };
 
@@ -114,17 +116,17 @@ export function BridgeDiscoveryModal({
       data-testid="bridge-discovery-modal-overlay"
     >
       <div
-        className="w-full max-w-4xl bg-[#0e0e0e] border border-[#262626] shadow-2xl flex flex-col max-h-[90vh] text-[#e2e2e2] overflow-hidden"
+        className="w-full max-w-4xl bg-surface-panel border border-border-base shadow-2xl flex flex-col max-h-[90vh] text-content-primary overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         data-testid="bridge-discovery-modal"
       >
         {/* Modal Header */}
-        <div className="p-4 border-b border-[#222222] bg-[#121212] flex items-center justify-between">
+        <div className="p-4 border-b border-border-base bg-surface-raised flex items-center justify-between">
           <div>
-            <span className="text-xs font-mono tracking-wider text-[#a8a8a8] uppercase">
+            <span className="text-xs font-mono tracking-wider text-content-muted uppercase">
               CATALOG BRIDGE DISCOVERY
             </span>
-            <h2 className="text-base font-semibold text-[#f0f0f0] font-sans">
+            <h2 className="text-base font-semibold text-content-primary font-sans">
               What can get me from Track A to Track B?
             </h2>
           </div>
@@ -132,7 +134,7 @@ export function BridgeDiscoveryModal({
             type="button"
             onClick={onClose}
             aria-label="Close bridge discovery modal"
-            className="p-1.5 text-[#a8a8a8] hover:text-white hover:bg-[#222222] transition-colors rounded-none cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+            className="p-1.5 text-content-muted hover:text-white hover:bg-surface-hover transition-colors rounded-none cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
           >
             <svg
               className="w-5 h-5"
@@ -147,12 +149,12 @@ export function BridgeDiscoveryModal({
         </div>
 
         {/* Source & Destination Track Selectors */}
-        <div className="p-4 border-b border-[#1f1f1f] bg-[#0d0d0d] grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-4 border-b border-border-subtle bg-surface-panel grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Song A (Source) */}
-          <div className="space-y-1.5 bg-[#141414] p-3 border border-[#242424]">
+          <div className="space-y-1.5 bg-surface-raised p-3 border border-border-base">
             <label
               htmlFor="song-a-select"
-              className="text-xs font-mono uppercase font-bold text-[#a8a8a8] tracking-wider block"
+              className="text-xs font-mono uppercase font-bold text-content-muted tracking-wider block"
             >
               SOURCE TRACK (SONG A)
             </label>
@@ -160,7 +162,7 @@ export function BridgeDiscoveryModal({
               id="song-a-select"
               value={songAId}
               onChange={(e) => setSongAId(e.target.value)}
-              className="w-full bg-[#0a0a0a] border border-[#333333] text-xs font-mono p-2 text-white outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+              className="w-full bg-surface-panel border border-border-strong text-xs font-mono p-2 text-white outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue"
               data-testid="select-song-a"
             >
               {songs.map((s) => (
@@ -172,7 +174,7 @@ export function BridgeDiscoveryModal({
             </select>
 
             {songA && (
-              <div className="flex items-center gap-2 pt-1 text-xs font-mono text-[#a8a8a8]">
+              <div className="flex items-center gap-2 pt-1 text-xs font-mono text-content-muted">
                 {songA.camelot_code && (
                   <span
                     className="px-1.5 py-0.2 font-bold rounded-[2px] text-xs"
@@ -184,7 +186,7 @@ export function BridgeDiscoveryModal({
                     {songA.camelot_code}
                   </span>
                 )}
-                <span className="text-[#cfcfcf]">{songA.bpm ? `${songA.bpm.toFixed(1)} BPM` : '—'}</span>
+                <span className="text-content-secondary">{songA.bpm ? `${songA.bpm.toFixed(1)} BPM` : '—'}</span>
                 <span>•</span>
                 <span>Energy {songA.energy_rating ?? '—'}/10</span>
               </div>
@@ -192,10 +194,10 @@ export function BridgeDiscoveryModal({
           </div>
 
           {/* Song B (Destination) */}
-          <div className="space-y-1.5 bg-[#141414] p-3 border border-[#242424]">
+          <div className="space-y-1.5 bg-surface-raised p-3 border border-border-base">
             <label
               htmlFor="song-b-select"
-              className="text-xs font-mono uppercase font-bold text-[#a8a8a8] tracking-wider block"
+              className="text-xs font-mono uppercase font-bold text-content-muted tracking-wider block"
             >
               DESTINATION TRACK (SONG B)
             </label>
@@ -203,7 +205,7 @@ export function BridgeDiscoveryModal({
               id="song-b-select"
               value={songBId}
               onChange={(e) => setSongBId(e.target.value)}
-              className="w-full bg-[#0a0a0a] border border-[#333333] text-xs font-mono p-2 text-white outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+              className="w-full bg-surface-panel border border-border-strong text-xs font-mono p-2 text-white outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue"
               data-testid="select-song-b"
             >
               {songs.map((s) => (
@@ -215,7 +217,7 @@ export function BridgeDiscoveryModal({
             </select>
 
             {songB && (
-              <div className="flex items-center gap-2 pt-1 text-xs font-mono text-[#a8a8a8]">
+              <div className="flex items-center gap-2 pt-1 text-xs font-mono text-content-muted">
                 {songB.camelot_code && (
                   <span
                     className="px-1.5 py-0.2 font-bold rounded-[2px] text-xs"
@@ -227,7 +229,7 @@ export function BridgeDiscoveryModal({
                     {songB.camelot_code}
                   </span>
                 )}
-                <span className="text-[#cfcfcf]">{songB.bpm ? `${songB.bpm.toFixed(1)} BPM` : '—'}</span>
+                <span className="text-content-secondary">{songB.bpm ? `${songB.bpm.toFixed(1)} BPM` : '—'}</span>
                 <span>•</span>
                 <span>Energy {songB.energy_rating ?? '—'}/10</span>
               </div>
@@ -241,19 +243,19 @@ export function BridgeDiscoveryModal({
           data-testid="bridge-candidates-container"
         >
           {songAId === songBId && (
-            <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
+            <div className="py-12 text-center text-xs font-mono text-content-muted">
               Please select two different songs to discover intermediate bridge tracks.
             </div>
           )}
 
           {isLoading && (
-            <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
+            <div className="py-12 text-center text-xs font-mono text-content-muted">
               Evaluating catalog graph for optimal intermediate bridge paths...
             </div>
           )}
 
           {!isLoading && songAId !== songBId && candidates.length === 0 && (
-            <div className="py-12 text-center text-xs font-mono text-[#a8a8a8]">
+            <div className="py-12 text-center text-xs font-mono text-content-muted">
               No intermediate bridge songs found that improve upon direct transition.
             </div>
           )}
@@ -265,14 +267,14 @@ export function BridgeDiscoveryModal({
               return (
                 <div
                   key={bridge.id}
-                  className="bg-[#131313] border border-[#252525] hover:border-[#353535] p-3.5 space-y-3 transition-all"
+                  className="bg-surface-raised border border-border-base hover:border-border-strong p-3.5 space-y-3 transition-all"
                   data-testid={`bridge-card-${bridge.id}`}
                 >
                   {/* Candidate Header */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-[#a8a8a8] font-bold">
+                        <span className="text-xs font-mono text-content-muted font-bold">
                           #{idx + 1} CANDIDATE
                         </span>
                         <h3 className="text-sm font-semibold text-white truncate">{bridge.title}</h3>
@@ -288,12 +290,12 @@ export function BridgeDiscoveryModal({
                           </span>
                         )}
                         {bridge.bpm && (
-                          <span className="text-xs font-mono text-[#cfcfcf]">
+                          <span className="text-xs font-mono text-content-secondary">
                             {bridge.bpm.toFixed(1)} BPM
                           </span>
                         )}
                         {bridge.energy_rating && (
-                          <span className="text-xs font-mono text-[#a8a8a8]">
+                          <span className="text-xs font-mono text-content-muted">
                             E{bridge.energy_rating}
                           </span>
                         )}
@@ -316,20 +318,20 @@ export function BridgeDiscoveryModal({
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="px-2.5 py-1 text-xs font-mono font-bold bg-[#1b2b1b] text-[#99ee99] border border-[#2d552d]">
+                      <span className="px-2.5 py-1 text-xs font-mono font-bold bg-status-success-dim text-status-success border border-status-success">
                         {Math.round(cand.combined_score * 100)}% ROUTE SCORE
                       </span>
                     </div>
                   </div>
 
                   {/* Two-Leg Route Visual Breakdown */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono bg-[#0a0a0a] p-2.5 border border-[#1c1c1c]">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono bg-surface-panel p-2.5 border border-border-subtle">
                     {/* Leg 1: Song A -> Bridge */}
-                    <div className="space-y-1 pr-2 border-r border-[#1c1c1c]">
-                      <span className="text-xs text-[#a8a8a8] uppercase font-bold">
+                    <div className="space-y-1 pr-2 border-r border-border-subtle">
+                      <span className="text-xs text-content-muted uppercase font-bold">
                         LEG 1: {songA?.title} → {bridge.title}
                       </span>
-                      <div className="flex items-center gap-2 text-[#cfcfcf]">
+                      <div className="flex items-center gap-2 text-content-secondary">
                         <span>
                           {cand.from_a_relationship.explanation.bpm.delta !== null
                             ? `${cand.from_a_relationship.explanation.bpm.delta >= 0 ? '+' : ''}${cand.from_a_relationship.explanation.bpm.delta.toFixed(1)} BPM`
@@ -340,17 +342,17 @@ export function BridgeDiscoveryModal({
                         <span>•</span>
                         <span>{cand.from_a_relationship.primary_classification}</span>
                       </div>
-                      <p className="text-xs text-[#a8a8a8] truncate">
+                      <p className="text-xs text-content-muted truncate">
                         {cand.from_a_relationship.explanation.summary}
                       </p>
                     </div>
 
                     {/* Leg 2: Bridge -> Song B */}
                     <div className="space-y-1 pl-2">
-                      <span className="text-xs text-[#a8a8a8] uppercase font-bold">
+                      <span className="text-xs text-content-muted uppercase font-bold">
                         LEG 2: {bridge.title} → {songB?.title}
                       </span>
-                      <div className="flex items-center gap-2 text-[#cfcfcf]">
+                      <div className="flex items-center gap-2 text-content-secondary">
                         <span>
                           {cand.to_b_relationship.explanation.bpm.delta !== null
                             ? `${cand.to_b_relationship.explanation.bpm.delta >= 0 ? '+' : ''}${cand.to_b_relationship.explanation.bpm.delta.toFixed(1)} BPM`
@@ -361,30 +363,30 @@ export function BridgeDiscoveryModal({
                         <span>•</span>
                         <span>{cand.to_b_relationship.primary_classification}</span>
                       </div>
-                      <p className="text-xs text-[#a8a8a8] truncate">
+                      <p className="text-xs text-content-muted truncate">
                         {cand.to_b_relationship.explanation.summary}
                       </p>
                     </div>
                   </div>
 
                   {/* Plain Language Reasoning */}
-                  <p className="text-xs text-[#cccccc] font-normal leading-relaxed bg-[#111111] p-2 border border-[#202020]">
+                  <p className="text-xs text-content-secondary font-normal leading-relaxed bg-surface-raised p-2 border border-border-base">
                     {cand.reason}
                   </p>
 
                   {/* Route Actions */}
-                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#1e1e1e] text-xs font-mono">
+                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-border-subtle text-xs font-mono">
                     <button
                       type="button"
                       onClick={() => handleAddBridgeOnly(bridge.id)}
-                      className="px-2.5 py-1 text-xs bg-[#1e1e1e] hover:bg-[#282828] text-[#cccccc] hover:text-white border border-[#333333] uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                      className="px-2.5 py-1 text-xs bg-surface-elevated hover:bg-surface-hover text-content-secondary hover:text-white border border-border-strong uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     >
                       Add Bridge Track Only
                     </button>
                     <button
                       type="button"
                       onClick={() => handleAddFullRoute(bridge.id)}
-                      className="px-3 py-1 text-xs bg-[#1a2d1a] hover:bg-[#244224] text-[#88ee88] border border-[#2d5a2d] font-semibold uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                      className="px-3 py-1 text-xs bg-surface-hover hover:bg-status-success-dim text-status-success border border-status-success font-semibold uppercase transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     >
                       Add 3-Track Sequence to Setlist
                     </button>

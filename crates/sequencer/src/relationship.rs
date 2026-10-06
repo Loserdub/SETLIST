@@ -701,7 +701,10 @@ pub struct ScoreMatrix {
 
 impl ScoreMatrix {
     /// Builds a score matrix for the given slice of songs with an optional cancellation hook.
-    pub fn build_with_cancel(songs: &[Song], cancel: Option<&AtomicBool>) -> Result<Self, SequencerError> {
+    pub fn build_with_cancel(
+        songs: &[Song],
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Self, SequencerError> {
         let n = songs.len();
         let mut id_to_row = HashMap::with_capacity(n);
         let mut row_to_id = Vec::with_capacity(n);

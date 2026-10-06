@@ -126,6 +126,21 @@ pub fn playback_pause_core() -> Result<(), String> {
     })
 }
 
+/// Core implementation of stopping audio playback.
+///
+/// Drops active sink, releases file handles, and resets playhead to 0 ms.
+///
+/// # Errors
+/// Returns error if stopping fails.
+pub fn playback_stop_core() -> Result<(), String> {
+    log::info!("[playback] Stopping audio playback");
+    get_player().stop().map_err(|e| {
+        let msg = format!("Playback stop failed: {e}");
+        log::error!("[playback] {msg}");
+        msg
+    })
+}
+
 /// Core implementation of seeking to a position in milliseconds.
 ///
 /// # Errors
@@ -254,6 +269,30 @@ pub async fn playback_pause(app: AppHandle) -> Result<(), String> {
         "playback-position",
         PlaybackPositionPayload {
             position_ms: state_res.position_ms,
+            duration_ms: get_player().duration_ms(),
+            state: state_res.state,
+            speed: state_res.speed,
+            volume: state_res.volume,
+        },
+    );
+
+    Ok(())
+}
+
+/// Stops audio playback and resets the playhead to 0 ms.
+///
+/// # Errors
+/// Returns error text if stopping fails.
+#[tauri::command]
+pub async fn playback_stop(app: AppHandle) -> Result<(), String> {
+    TICKER_GENERATION.fetch_add(1, Ordering::SeqCst);
+    playback_stop_core()?;
+
+    let state_res = get_player().state();
+    let _ = app.emit(
+        "playback-position",
+        PlaybackPositionPayload {
+            position_ms: 0.0,
             duration_ms: get_player().duration_ms(),
             state: state_res.state,
             speed: state_res.speed,

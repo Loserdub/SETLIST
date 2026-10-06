@@ -67,11 +67,11 @@ export const FourPointCueChips: React.FC<FourPointCueChipsProps> = ({
             className={`inline-flex items-center gap-1 border transition-all rounded-none ${padSizeClass} ${
               isPresent
                 ? isActive
-                  ? 'border-white bg-[#222222] text-white shadow-[0_0_8px_rgba(255,255,255,0.4)]'
+                  ? 'border-white bg-surface-hover text-white shadow-[0_0_8px_rgba(255,255,255,0.4)]'
                   : cue.isConfirmed
-                  ? 'border-[#2e3748] bg-[#0c121a] text-[#ededed] hover:border-[#4b5563]'
-                  : 'border-[#1f242e] bg-[#090d12] text-[#cbd5e1] hover:border-[#374151]'
-                : 'border-[#181818] bg-[#080808] text-[#444444] opacity-50 cursor-default'
+                  ? 'border-border-strong bg-surface-panel text-content-primary hover:border-border-strong'
+                  : 'border-border-base bg-surface-panel text-content-secondary hover:border-border-strong'
+                : 'border-border-subtle bg-surface-deep text-content-dim opacity-50 cursor-default'
             } ${isInteractive ? 'hw-btn cursor-pointer active:translate-y-[1px] focus-visible:ring-1 focus-visible:ring-cyan-400 focus-visible:outline-none' : 'cursor-default'}`}
             title={
               isPresent

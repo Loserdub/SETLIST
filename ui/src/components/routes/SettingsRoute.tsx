@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAppStore, DEFAULT_APP_SETTINGS } from '../../store/useAppStore';
+import { useShallow } from 'zustand/react/shallow';
 import type { AppSettings } from '../../bindings/AppSettings';
 import { DiagnosticsHelpPanel } from '../../features/diagnostics/DiagnosticsHelpPanel';
 
@@ -27,7 +28,22 @@ export function SettingsRoute() {
     pingResult,
     isLoading,
     error,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((s) => ({
+      appSettings: s.appSettings,
+      loadSettings: s.loadSettings,
+      saveSettings: s.saveSettings,
+      updateSettings: s.updateSettings,
+      isLoadingSettings: s.isLoadingSettings,
+      settingsError: s.settingsError,
+      useMockBackend: s.useMockBackend,
+      setUseMockBackend: s.setUseMockBackend,
+      fetchPing: s.fetchPing,
+      pingResult: s.pingResult,
+      isLoading: s.isLoading,
+      error: s.error,
+    }))
+  );
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -83,14 +99,14 @@ export function SettingsRoute() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full w-full overflow-y-auto bg-[#080808] text-[#ededed] p-6 space-y-6">
+    <div className="flex-1 flex flex-col h-full w-full overflow-y-auto bg-surface-deep text-content-primary p-6 space-y-6">
       {/* Header & Global Save Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1c1c1c] pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border-subtle pb-5">
         <div>
           <h2 className="text-xs font-mono font-bold tracking-wider text-white uppercase">
             Application Settings
           </h2>
-          <p className="text-xs text-[#71717a] mt-0.5">
+          <p className="text-xs text-content-muted mt-0.5">
             Tune sequencing cost weights, Camelot penalty matrices, energy trajectory parameters, and worker threads. Persisted to SQLite.
           </p>
         </div>
@@ -100,7 +116,7 @@ export function SettingsRoute() {
             type="button"
             onClick={handleResetDefaults}
             disabled={isLoadingSettings || isSaving}
-            className="px-3.5 py-1.5 bg-[#101010] hover:bg-[#181818] border border-[#242424] text-[#a1a1aa] hover:text-white text-xs font-mono uppercase tracking-wider rounded-none transition-colors cursor-pointer disabled:opacity-40"
+            className="px-3.5 py-1.5 bg-surface-panel hover:bg-surface-elevated border border-border-base text-content-muted hover:text-white text-xs font-mono uppercase tracking-wider rounded-none transition-colors cursor-pointer disabled:opacity-40"
           >
             Reset Defaults
           </button>
@@ -108,7 +124,7 @@ export function SettingsRoute() {
             type="button"
             onClick={() => void handleSave()}
             disabled={isLoadingSettings || isSaving}
-            className="px-4 py-1.5 bg-[#ededed] hover:bg-white disabled:opacity-40 text-black text-xs font-mono font-bold uppercase tracking-wider rounded-none flex items-center gap-2 transition-colors cursor-pointer"
+            className="px-4 py-1.5 bg-white hover:bg-white disabled:opacity-40 text-black text-xs font-mono font-bold uppercase tracking-wider rounded-none flex items-center gap-2 transition-colors cursor-pointer"
           >
             {isSaving ? (
               <span>Saving...</span>
@@ -122,27 +138,27 @@ export function SettingsRoute() {
       </div>
 
       {settingsError && (
-        <div className="p-3 rounded-none bg-[#1c0808] border border-[#7f1d1d] text-[#fca5a5] text-xs font-mono">
+        <div className="p-3 rounded-none bg-status-danger-dim border border-status-danger-dim text-status-danger text-xs font-mono">
           Failed to load/save settings: {settingsError}
         </div>
       )}
 
       {/* 1. Transition Cost Model Weights */}
-      <div className="p-5 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none space-y-5">
-        <div className="border-b border-[#161616] pb-3">
-          <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
+      <div className="p-5 bg-surface-panel border border-border-subtle rounded-none space-y-5">
+        <div className="border-b border-border-subtle pb-3">
+          <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-content-secondary">
             Transition Cost Model Weights
           </h3>
-          <p className="text-xs text-[#a8a8a8] mt-0.5 font-mono">
+          <p className="text-xs text-content-muted mt-0.5 font-mono">
             Objective weights in C_ij = w_tempo·Φ_tempo + w_key·Φ_key + w_energy·Φ_energy + w_timbre·Φ_timbre
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Tempo Weight */}
-          <div className="p-3 bg-[#050505] border border-[#1c1c1c] rounded-none space-y-2">
+          <div className="p-3 bg-surface-deep border border-border-subtle rounded-none space-y-2">
             <div className="flex justify-between text-xs font-mono">
-              <span className="text-[#a8a8a8]">Tempo Discrepancy (w_tempo)</span>
+              <span className="text-content-muted">Tempo Discrepancy (w_tempo)</span>
               <span className="text-white font-bold">{appSettings.cost_weights.tempo.toFixed(2)}</span>
             </div>
             <input
@@ -152,15 +168,15 @@ export function SettingsRoute() {
               step="0.05"
               value={appSettings.cost_weights.tempo}
               onChange={(e) => updateCostWeight('tempo', parseFloat(e.target.value))}
-              className="w-full accent-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+              className="w-full accent-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
             />
-            <p className="text-xs font-mono text-[#a8a8a8]">Normalizes tempo step |BPM_i - BPM_j| / 6 with octave detection.</p>
+            <p className="text-xs font-mono text-content-muted">Normalizes tempo step |BPM_i - BPM_j| / 6 with octave detection.</p>
           </div>
 
           {/* Key Distance Weight */}
-          <div className="p-3 bg-[#050505] border border-[#1c1c1c] rounded-none space-y-2">
+          <div className="p-3 bg-surface-deep border border-border-subtle rounded-none space-y-2">
             <div className="flex justify-between text-xs font-mono">
-              <span className="text-[#a8a8a8]">Key Distance (w_key)</span>
+              <span className="text-content-muted">Key Distance (w_key)</span>
               <span className="text-white font-bold">{appSettings.cost_weights.key.toFixed(2)}</span>
             </div>
             <input
@@ -170,15 +186,15 @@ export function SettingsRoute() {
               step="0.05"
               value={appSettings.cost_weights.key}
               onChange={(e) => updateCostWeight('key', parseFloat(e.target.value))}
-              className="w-full accent-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+              className="w-full accent-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
             />
-            <p className="text-xs font-mono text-[#a8a8a8]">Penalizes harmonic dissonance using the Camelot penalty matrix.</p>
+            <p className="text-xs font-mono text-content-muted">Penalizes harmonic dissonance using the Camelot penalty matrix.</p>
           </div>
 
           {/* Energy Weight */}
-          <div className="p-3 bg-[#050505] border border-[#1c1c1c] rounded-none space-y-2">
+          <div className="p-3 bg-surface-deep border border-border-subtle rounded-none space-y-2">
             <div className="flex justify-between text-xs font-mono">
-              <span className="text-[#a8a8a8]">Energy Trajectory (w_energy)</span>
+              <span className="text-content-muted">Energy Trajectory (w_energy)</span>
               <span className="text-white font-bold">{appSettings.cost_weights.energy.toFixed(2)}</span>
             </div>
             <input
@@ -188,16 +204,16 @@ export function SettingsRoute() {
               step="0.05"
               value={appSettings.cost_weights.energy}
               onChange={(e) => updateCostWeight('energy', parseFloat(e.target.value))}
-              className="w-full accent-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8]"
+              className="w-full accent-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
             />
-            <p className="text-xs font-mono text-[#a8a8a8]">Aligns track transitions with selected energy profile (Linear, Wave, Plateau).</p>
+            <p className="text-xs font-mono text-content-muted">Aligns track transitions with selected energy profile (Linear, Wave, Plateau).</p>
           </div>
 
           {/* Timbre Weight (v2) */}
-          <div className="p-3 bg-[#050505] border border-[#181818] rounded-none opacity-50 space-y-2">
+          <div className="p-3 bg-surface-deep border border-border-subtle rounded-none opacity-50 space-y-2">
             <div className="flex justify-between text-xs font-mono">
-              <span className="text-[#a8a8a8]">Timbre Embeddings (w_timbre) — v2 Phase</span>
-              <span className="text-[#a8a8a8] font-bold">0.00</span>
+              <span className="text-content-muted">Timbre Embeddings (w_timbre) — v2 Phase</span>
+              <span className="text-content-muted font-bold">0.00</span>
             </div>
             <input
               type="range"
@@ -208,25 +224,25 @@ export function SettingsRoute() {
               disabled
               className="w-full accent-neutral-600 cursor-not-allowed"
             />
-            <p className="text-xs font-mono text-[#a8a8a8]">Reserved for deep neural timbre embeddings in v2.</p>
+            <p className="text-xs font-mono text-content-muted">Reserved for deep neural timbre embeddings in v2.</p>
           </div>
         </div>
       </div>
 
       {/* 2. Camelot Key Penalty Matrix Table */}
-      <div className="p-5 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none space-y-4">
-        <div className="border-b border-[#161616] pb-3">
-          <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
+      <div className="p-5 bg-surface-panel border border-border-subtle rounded-none space-y-4">
+        <div className="border-b border-border-subtle pb-3">
+          <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-content-secondary">
             Camelot Key Distance Penalty Table (Φ_key)
           </h3>
-          <p className="text-xs text-[#a8a8a8] mt-0.5 font-mono">
+          <p className="text-xs text-content-muted mt-0.5 font-mono">
             Lookup penalties for circular Camelot wheel distance d ∈ [0..6] and mode switches per AGENTS.md 6.3.
           </p>
         </div>
 
-        <div className="overflow-x-auto border border-[#1c1c1c] bg-[#050505]">
-          <table className="w-full text-left text-xs text-[#cfcfcf]">
-            <thead className="bg-[#0a0a0a] text-[#a8a8a8] font-mono font-semibold border-b border-[#1c1c1c] uppercase tracking-wider text-xs">
+        <div className="overflow-x-auto border border-border-subtle bg-surface-deep">
+          <table className="w-full text-left text-xs text-content-secondary">
+            <thead className="bg-surface-panel text-content-muted font-mono font-semibold border-b border-border-subtle uppercase tracking-wider text-xs">
               <tr>
                 <th className="py-2.5 px-3">Distance (d)</th>
                 <th className="py-2.5 px-3">Harmonic Move</th>
@@ -234,15 +250,15 @@ export function SettingsRoute() {
                 <th className="py-2.5 px-3">Mode Flip Penalty</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#161616] font-mono text-xs">
+            <tbody className="divide-y divide-border-subtle font-mono text-xs">
               {appSettings.key_penalties.map((row) => (
-                <tr key={row.distance} className="hover:bg-[#0c0c0c] transition-colors">
+                <tr key={row.distance} className="hover:bg-surface-panel transition-colors">
                   <td className="py-2.5 px-3 font-bold text-white">
                     d = {row.distance}
                   </td>
-                  <td className="py-2.5 px-3 text-[#a8a8a8]">
+                  <td className="py-2.5 px-3 text-content-muted">
                     <div>{KEY_RELATION_DESCRIPTIONS[row.distance]?.same ?? 'Harmonic step'}</div>
-                    <div className="text-xs text-[#a8a8a8]">{KEY_RELATION_DESCRIPTIONS[row.distance]?.flip}</div>
+                    <div className="text-xs text-content-muted">{KEY_RELATION_DESCRIPTIONS[row.distance]?.flip}</div>
                   </td>
                   <td className="py-2.5 px-3">
                     <div className="flex items-center gap-2.5">
@@ -253,7 +269,7 @@ export function SettingsRoute() {
                         step="0.05"
                         value={row.same_mode}
                         onChange={(e) => updateKeyPenalty(row.distance, 'same_mode', parseFloat(e.target.value))}
-                        className="w-20 accent-white cursor-pointer focus-visible:ring-1 focus-visible:ring-[#38bdf8] focus:outline-none rounded-sm"
+                        className="w-20 accent-white cursor-pointer focus-visible:ring-1 focus-visible:ring-accent-blue focus:outline-none rounded-sm"
                       />
                       <span className="w-8 text-right text-white tabular-nums">{row.same_mode.toFixed(2)}</span>
                     </div>
@@ -267,9 +283,9 @@ export function SettingsRoute() {
                         step="0.05"
                         value={row.mode_flip}
                         onChange={(e) => updateKeyPenalty(row.distance, 'mode_flip', parseFloat(e.target.value))}
-                        className="w-20 accent-[#fbbf24] cursor-pointer focus-visible:ring-1 focus-visible:ring-[#38bdf8] focus:outline-none rounded-sm"
+                        className="w-20 accent-accent-amber cursor-pointer focus-visible:ring-1 focus-visible:ring-accent-blue focus:outline-none rounded-sm"
                       />
-                      <span className="w-8 text-right text-[#fbbf24] tabular-nums">{row.mode_flip.toFixed(2)}</span>
+                      <span className="w-8 text-right text-accent-amber-glow tabular-nums">{row.mode_flip.toFixed(2)}</span>
                     </div>
                   </td>
                 </tr>
@@ -282,12 +298,12 @@ export function SettingsRoute() {
       {/* 3. Energy Model & Worker Threads */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Energy Model Weights */}
-        <div className="p-5 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none space-y-4">
-          <div className="border-b border-[#161616] pb-2">
-            <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
+        <div className="p-5 bg-surface-panel border border-border-subtle rounded-none space-y-4">
+          <div className="border-b border-border-subtle pb-2">
+            <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-content-secondary">
               Energy Trajectory Model
             </h3>
-            <p className="text-xs text-[#a8a8a8] mt-0.5 font-mono">
+            <p className="text-xs text-content-muted mt-0.5 font-mono">
               Penalty: min(((E_j - E_i) - dE_target)² / divisor, 1)
             </p>
           </div>
@@ -295,7 +311,7 @@ export function SettingsRoute() {
           <div className="space-y-4">
             <div>
               <div className="flex justify-between text-xs font-mono mb-1">
-                <span className="text-[#a8a8a8]">Quadratic Divisor</span>
+                <span className="text-content-muted">Quadratic Divisor</span>
                 <span className="text-white font-bold">{appSettings.energy_model.divisor.toFixed(1)}</span>
               </div>
               <input
@@ -305,14 +321,14 @@ export function SettingsRoute() {
                 step="1"
                 value={appSettings.energy_model.divisor}
                 onChange={(e) => updateEnergyModel('divisor', parseFloat(e.target.value))}
-                className="w-full accent-white cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none rounded-sm"
+                className="w-full accent-white cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none rounded-sm"
               />
-              <p className="text-xs font-mono text-[#a8a8a8] mt-1">Default 16.0 per AGENTS.md 6.3 normalization.</p>
+              <p className="text-xs font-mono text-content-muted mt-1">Default 16.0 per AGENTS.md 6.3 normalization.</p>
             </div>
 
             <div>
               <div className="flex justify-between text-xs font-mono mb-1">
-                <span className="text-[#a8a8a8]">Linear Ramp Target Step (dE)</span>
+                <span className="text-content-muted">Linear Ramp Target Step (dE)</span>
                 <span className="text-white font-bold">+{appSettings.energy_model.target_step.toFixed(1)}</span>
               </div>
               <input
@@ -322,20 +338,20 @@ export function SettingsRoute() {
                 step="0.1"
                 value={appSettings.energy_model.target_step}
                 onChange={(e) => updateEnergyModel('target_step', parseFloat(e.target.value))}
-                className="w-full accent-white cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none rounded-sm"
+                className="w-full accent-white cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none rounded-sm"
               />
-              <p className="text-xs font-mono text-[#a8a8a8] mt-1">Target energy gain between consecutive tracks in a ramp profile.</p>
+              <p className="text-xs font-mono text-content-muted mt-1">Target energy gain between consecutive tracks in a ramp profile.</p>
             </div>
           </div>
         </div>
 
         {/* Worker Threads & Concurrency */}
-        <div className="p-5 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none space-y-4">
-          <div className="border-b border-[#161616] pb-2">
-            <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
+        <div className="p-5 bg-surface-panel border border-border-subtle rounded-none space-y-4">
+          <div className="border-b border-border-subtle pb-2">
+            <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-content-secondary">
               Worker Threads & Concurrency
             </h3>
-            <p className="text-xs text-[#a8a8a8] mt-0.5 font-mono">
+            <p className="text-xs text-content-muted mt-0.5 font-mono">
               Concurrent threads for audio library scanning and DSP analysis.
             </p>
           </div>
@@ -343,7 +359,7 @@ export function SettingsRoute() {
           <div className="space-y-4">
             <div>
               <div className="flex justify-between text-xs font-mono mb-1">
-                <span className="text-[#a8a8a8]">Background Worker Count</span>
+                <span className="text-content-muted">Background Worker Count</span>
                 <span className="text-white font-bold">{appSettings.worker_count} Threads</span>
               </div>
               <input
@@ -353,13 +369,13 @@ export function SettingsRoute() {
                 step="1"
                 value={appSettings.worker_count}
                 onChange={(e) => updateSettings({ worker_count: parseInt(e.target.value, 10) })}
-                className="w-full accent-white cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none rounded-sm"
+                className="w-full accent-white cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none rounded-sm"
               />
-              <p className="text-xs font-mono text-[#a8a8a8] mt-1">Parallelism used by Rayon and the folder scanner worker pool.</p>
+              <p className="text-xs font-mono text-content-muted mt-1">Parallelism used by Rayon and the folder scanner worker pool.</p>
             </div>
 
-            <div className="p-2.5 bg-[#050505] border border-[#1c1c1c] text-xs font-mono text-[#a8a8a8] space-y-0.5">
-              <div className="font-semibold text-[#cfcfcf]">Structured Logging:</div>
+            <div className="p-2.5 bg-surface-deep border border-border-subtle text-xs font-mono text-content-muted space-y-0.5">
+              <div className="font-semibold text-content-secondary">Structured Logging:</div>
               <div>File: <span className="text-white">app_data/setlist.log</span></div>
               <div>Captures background analysis jobs, sequencing runs, and database migrations.</div>
             </div>
@@ -368,12 +384,12 @@ export function SettingsRoute() {
       </div>
 
       {/* 4. Backend Selection & Ping Verification */}
-      <div className="p-5 bg-[#0a0a0a] border border-[#1c1c1c] rounded-none space-y-4">
-        <div className="border-b border-[#161616] pb-2">
-          <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
+      <div className="p-5 bg-surface-panel border border-border-subtle rounded-none space-y-4">
+        <div className="border-b border-border-subtle pb-2">
+          <h3 className="text-sm font-mono font-bold uppercase tracking-wider text-content-secondary">
             Backend Provider & Tauri IPC Diagnostics
           </h3>
-          <p className="text-xs text-[#a8a8a8] mt-0.5 font-mono">
+          <p className="text-xs text-content-muted mt-0.5 font-mono">
             Switch between in-memory mock data (40 demo tracks) and native Tauri IPC backend.
           </p>
         </div>
@@ -389,17 +405,17 @@ export function SettingsRoute() {
                 setUseMockBackend(true);
               }
             }}
-            className={`p-3.5 border cursor-pointer transition-colors rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+            className={`p-3.5 border cursor-pointer transition-colors rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
               useMockBackend
-                ? 'bg-[#141414] border-[#ededed] text-white'
-                : 'bg-[#050505] border-[#1c1c1c] text-[#a8a8a8] hover:border-[#2a2a2a]'
+                ? 'bg-surface-raised border-content-primary text-white'
+                : 'bg-surface-deep border-border-subtle text-content-muted hover:border-border-base'
             }`}
           >
             <div className="flex items-center justify-between">
               <span className="font-mono font-bold text-xs uppercase text-white">Mock In-Memory Backend</span>
-              {useMockBackend && <span className="text-xs font-mono text-[#4ade80]">● ACTIVE</span>}
+              {useMockBackend && <span className="text-xs font-mono text-status-success">● ACTIVE</span>}
             </div>
-            <p className="text-xs text-[#a8a8a8] mt-1">
+            <p className="text-xs text-content-muted mt-1">
               40 generated tracks with complete beat grids, 3-band waveforms, cue points, and simulated progress.
             </p>
           </div>
@@ -414,25 +430,25 @@ export function SettingsRoute() {
                 setUseMockBackend(false);
               }
             }}
-            className={`p-3.5 border cursor-pointer transition-colors rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+            className={`p-3.5 border cursor-pointer transition-colors rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
               !useMockBackend
-                ? 'bg-[#141414] border-[#ededed] text-white'
-                : 'bg-[#050505] border-[#1c1c1c] text-[#a8a8a8] hover:border-[#2a2a2a]'
+                ? 'bg-surface-raised border-content-primary text-white'
+                : 'bg-surface-deep border-border-subtle text-content-muted hover:border-border-base'
             }`}
           >
             <div className="flex items-center justify-between">
               <span className="font-mono font-bold text-xs uppercase text-white">Tauri Native Backend</span>
-              {!useMockBackend && <span className="text-xs font-mono text-[#4ade80]">● ACTIVE</span>}
+              {!useMockBackend && <span className="text-xs font-mono text-status-success">● ACTIVE</span>}
             </div>
-            <p className="text-xs text-[#a8a8a8] mt-1">
+            <p className="text-xs text-content-muted mt-1">
               Calls native Rust backend via Tauri IPC (`invoke`) with SQLite persistence, DSP pipeline analysis, and background progress events.
             </p>
           </div>
         </div>
 
         {/* Backend Ping Verification Section */}
-        <div className="pt-3 border-t border-[#181818] space-y-2">
-          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-[#a8a8a8]">
+        <div className="pt-3 border-t border-border-subtle space-y-2">
+          <div className="text-xs font-mono font-semibold uppercase tracking-wider text-content-muted">
             Tauri IPC Ping Verification
           </div>
           <div className="flex items-center gap-3">
@@ -440,16 +456,16 @@ export function SettingsRoute() {
               type="button"
               onClick={() => void fetchPing()}
               disabled={isLoading}
-              className="px-3 py-1.5 bg-[#141414] hover:bg-[#1f1f1f] border border-[#27272a] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none disabled:opacity-40 text-white text-xs font-mono uppercase tracking-wider rounded-none transition-colors cursor-pointer"
+              className="px-3 py-1.5 bg-surface-raised hover:bg-surface-elevated border border-border-base focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none disabled:opacity-40 text-white text-xs font-mono uppercase tracking-wider rounded-none transition-colors cursor-pointer"
             >
               {isLoading ? 'Pinging...' : 'Send Ping'}
             </button>
             <div className="text-xs font-mono">
               Status:{' '}
               {error ? (
-                <span className="text-[#f87171]">{error}</span>
+                <span className="text-status-danger">{error}</span>
               ) : (
-                <span className="text-[#4ade80]" data-testid="ping-result">
+                <span className="text-status-success" data-testid="ping-result">
                   {pingResult ?? 'Ready'}
                 </span>
               )}
@@ -462,11 +478,11 @@ export function SettingsRoute() {
       <DiagnosticsHelpPanel />
 
       {/* Safety & Local-First Policy */}
-      <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] text-xs font-mono text-[#a8a8a8] space-y-2 rounded-none">
-        <h4 className="font-semibold text-[#cfcfcf] uppercase tracking-wider text-xs">
+      <div className="p-4 bg-surface-panel border border-border-subtle text-xs font-mono text-content-muted space-y-2 rounded-none">
+        <h4 className="font-semibold text-content-secondary uppercase tracking-wider text-xs">
           Locked Decisions (AGENTS.md)
         </h4>
-        <ul className="list-disc list-inside space-y-1 text-[#a8a8a8] text-xs">
+        <ul className="list-disc list-inside space-y-1 text-content-muted text-xs">
           <li>Local only: Audio files and analysis never leave your machine. No telemetry or cloud sync.</li>
           <li>Source audio is strictly read-only: Files are never modified, retagged, or renamed.</li>
           <li>Deterministic DSP: All Camelot key detection, beat tracking, and sequencing is pure Rust CPU-driven.</li>
@@ -474,22 +490,22 @@ export function SettingsRoute() {
       </div>
 
       {/* Intellectual Property & Licensing */}
-      <div className="p-4 bg-[#0a0a0a] border border-[#1c1c1c] text-xs font-mono space-y-2 rounded-none">
-        <div className="flex items-center justify-between border-b border-[#181818] pb-2">
+      <div className="p-4 bg-surface-panel border border-border-subtle text-xs font-mono space-y-2 rounded-none">
+        <div className="flex items-center justify-between border-b border-border-subtle pb-2">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-[#555555]" />
-            <h4 className="font-bold text-[#ededed] uppercase tracking-wider text-xs">
+            <span className="w-2 h-2 bg-content-dim" />
+            <h4 className="font-bold text-content-primary uppercase tracking-wider text-xs">
               TRUSTNODELOGIC
             </h4>
           </div>
-          <span className="text-xs text-[#a8a8a8] tracking-normal border border-[#2e2e2e] px-1.5 py-0.5 bg-[#111111]">
+          <span className="text-xs text-content-muted tracking-normal border border-border-base px-1.5 py-0.5 bg-surface-raised">
             Proprietary IP
           </span>
         </div>
-        <p className="text-[#a8a8a8] text-xs leading-relaxed">
-          All system architecture, harmonic compatibility models, transition heuristics, audio analysis pipelines, and user interface implementations are the proprietary intellectual property of <strong className="text-[#cfcfcf]">TRUSTNODELOGIC</strong>.
+        <p className="text-content-muted text-xs leading-relaxed">
+          All system architecture, harmonic compatibility models, transition heuristics, audio analysis pipelines, and user interface implementations are the proprietary intellectual property of <strong className="text-content-secondary">TRUSTNODELOGIC</strong>.
         </p>
-        <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-[#a8a8a8] tracking-normal gap-1">
+        <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-content-muted tracking-normal gap-1">
           <span>© 2026 TRUSTNODELOGIC. All Rights Reserved.</span>
           <span>Unauthorized copying, reverse engineering, or distribution strictly prohibited.</span>
         </div>

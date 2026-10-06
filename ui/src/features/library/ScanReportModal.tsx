@@ -35,9 +35,9 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
       aria-labelledby="scan-report-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm select-text font-mono"
     >
-      <div className="w-full max-w-2xl bg-[#0c0c0f] border border-[#27272a] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+      <div className="w-full max-w-2xl bg-surface-panel border border-border-base shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-[#27272a] flex items-center justify-between bg-[#09090b]">
+        <div className="p-4 border-b border-border-base flex items-center justify-between bg-surface-deep">
           <div className="flex items-center gap-2.5">
             <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
             <h3 id="scan-report-title" className="text-xs font-bold uppercase tracking-wider text-zinc-100">
@@ -47,7 +47,7 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white border border-[#27272a] bg-[#121215] hover:bg-[#1a1a1f] transition-colors cursor-pointer text-xs focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none"
+            className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white border border-border-base bg-surface-raised hover:bg-surface-elevated transition-colors cursor-pointer text-xs focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none"
             aria-label="Close report"
           >
             ✕
@@ -55,7 +55,7 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
         </div>
 
         {/* Tab Bar */}
-        <div className="flex border-b border-[#27272a] bg-[#09090b] text-xs">
+        <div className="flex border-b border-border-base bg-surface-deep text-xs">
           <button
             type="button"
             onClick={() => setActiveTab('failed')}
@@ -83,7 +83,7 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
             onClick={() => setActiveTab('summary')}
             className={`px-4 py-2 border-b-2 font-bold uppercase tracking-wider transition-colors cursor-pointer ${
               activeTab === 'summary'
-                ? 'border-zinc-300 text-zinc-100 bg-[#18181b]'
+                ? 'border-zinc-300 text-zinc-100 bg-surface-elevated'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
@@ -113,7 +113,7 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
                   {summary.failedFiles.map((f: FailedScanFile, idx: number) => (
                     <div
                       key={idx}
-                      className="p-2.5 bg-[#09090b] border border-[#27272a] space-y-1"
+                      className="p-2.5 bg-surface-deep border border-border-base space-y-1"
                     >
                       <div className="flex items-center justify-between text-zinc-100 font-bold">
                         <span className="truncate">{f.fileName}</span>
@@ -143,11 +143,11 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-center pt-2">
-                <div className="p-3 bg-[#09090b] border border-[#27272a]">
+                <div className="p-3 bg-surface-deep border border-border-base">
                   <div className="text-xs font-mono text-zinc-400 uppercase">Skipped Duplicates</div>
                   <div className="text-xl font-bold text-amber-400 mt-1 te-num">{summary.skipped}</div>
                 </div>
-                <div className="p-3 bg-[#09090b] border border-[#27272a]">
+                <div className="p-3 bg-surface-deep border border-border-base">
                   <div className="text-xs font-mono text-zinc-400 uppercase">Newly Analyzed</div>
                   <div className="text-xl font-bold text-emerald-400 mt-1 te-num">{summary.analyzed}</div>
                 </div>
@@ -158,25 +158,25 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
           {activeTab === 'summary' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="p-2.5 bg-[#09090b] border border-[#27272a]">
+                <div className="p-2.5 bg-surface-deep border border-border-base">
                   <span className="text-xs font-mono text-zinc-400 uppercase">Total Found</span>
                   <div className="text-base font-bold text-zinc-100 mt-0.5 te-num">{summary.totalFound}</div>
                 </div>
-                <div className="p-2.5 bg-[#09090b] border border-[#27272a]">
+                <div className="p-2.5 bg-surface-deep border border-border-base">
                   <span className="text-xs font-mono text-zinc-400 uppercase">Analyzed</span>
                   <div className="text-base font-bold text-emerald-400 mt-0.5 te-num">{summary.analyzed}</div>
                 </div>
-                <div className="p-2.5 bg-[#09090b] border border-[#27272a]">
+                <div className="p-2.5 bg-surface-deep border border-border-base">
                   <span className="text-xs font-mono text-zinc-400 uppercase">Duplicates</span>
                   <div className="text-base font-bold text-amber-400 mt-0.5 te-num">{summary.skipped}</div>
                 </div>
-                <div className="p-2.5 bg-[#09090b] border border-[#27272a]">
+                <div className="p-2.5 bg-surface-deep border border-border-base">
                   <span className="text-xs font-mono text-zinc-400 uppercase">Failed</span>
                   <div className="text-base font-bold text-rose-400 mt-0.5 te-num">{summary.failed}</div>
                 </div>
               </div>
 
-              <div className="p-3 bg-[#09090b] border border-[#27272a] space-y-1 text-xs font-mono text-zinc-400">
+              <div className="p-3 bg-surface-deep border border-border-base space-y-1 text-xs font-mono text-zinc-400">
                 <div>• Pipeline Engine: Deterministic classical DSP (Rust)</div>
                 <div>• Content Hashing: BLAKE3 (file size + first/last 1 MB chunks)</div>
                 <div>• Storage Target: Local SQLite (WAL mode, zero telemetry)</div>
@@ -186,13 +186,13 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-3 border-t border-[#16202c] bg-[#080b0f] flex items-center justify-between text-xs">
+        <div className="p-3 border-t border-border-subtle bg-surface-panel flex items-center justify-between text-xs">
           <div>
             {activeTab === 'failed' && summary.failedFiles.length > 0 && (
               <button
                 type="button"
                 onClick={handleCopyErrors}
-                className="px-2.5 py-1 border border-[#2a3749] bg-[#101824] hover:bg-[#1a2536] text-[#cbd5e1] hover:text-white uppercase transition-colors cursor-pointer"
+                className="px-2.5 py-1 border border-accent-blue-subtle bg-accent-blue-subtle hover:bg-surface-hover text-content-secondary hover:text-white uppercase transition-colors cursor-pointer"
               >
                 {copied ? '✓ Copied to Clipboard' : 'Copy Error Details'}
               </button>
@@ -203,7 +203,7 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
               <button
                 type="button"
                 onClick={onClearErrors}
-                className="px-2.5 py-1 text-[#94a3b8] hover:text-[#f87171] uppercase cursor-pointer"
+                className="px-2.5 py-1 text-content-muted hover:text-status-danger uppercase cursor-pointer"
               >
                 Dismiss Errors
               </button>
@@ -211,7 +211,7 @@ export const ScanReportModal: React.FC<ScanReportModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-1 bg-[#1e293b] hover:bg-[#334155] text-white uppercase font-bold transition-colors cursor-pointer"
+              className="px-4 py-1 bg-surface-hover hover:bg-surface-hover text-white uppercase font-bold transition-colors cursor-pointer"
             >
               Close
             </button>

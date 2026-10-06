@@ -8,12 +8,14 @@ import { TrackRoute } from './components/routes/TrackRoute';
 import { SetlistRoute } from './components/routes/SetlistRoute';
 import { SettingsRoute } from './components/routes/SettingsRoute';
 import { StageRoute } from './components/routes/StageRoute';
+import { GlobalTransportBar } from './components/transport/GlobalTransportBar';
 import { ToastContainer } from './components/ToastContainer';
 import { useAppStore } from './store/useAppStore';
 
 export function App() {
   const currentRoute = useAppStore((state) => state.currentRoute);
   const isStageMode = useAppStore((state) => state.isStageMode);
+  const auditionTrackId = useAppStore((state) => state.auditionTrackId);
   const hasLoadedTracks = useAppStore((state) => state.hasLoadedTracks);
   const loadTracks = useAppStore((state) => state.loadTracks);
   const hasLoadedActiveSetlist = useAppStore((state) => state.hasLoadedActiveSetlist);
@@ -47,11 +49,19 @@ export function App() {
     }
   }, [hasLoadedTracks, loadTracks, hasLoadedActiveSetlist, loadActiveSetlist]);
 
+  const showTransport =
+    auditionTrackId !== null &&
+    !isStageMode &&
+    currentRoute !== 'stage' &&
+    currentRoute !== 'track';
+
   return (
-    <div className="flex h-full w-full bg-[#080808] text-[#e2e2e2] overflow-hidden font-sans relative">
+    <div className="flex h-full w-full bg-surface-deep text-content-primary overflow-hidden font-sans relative">
       {!isStageMode && currentRoute !== 'stage' && <Sidebar />}
       <main
-        className="flex-1 flex flex-col h-full overflow-hidden bg-[#080808]"
+        className={`flex-1 flex flex-col h-full overflow-hidden bg-surface-deep ${
+          showTransport ? 'pb-14' : ''
+        }`}
         data-testid="app-main"
       >
         {currentRoute === 'library' && <LibraryRoute />}
@@ -61,6 +71,9 @@ export function App() {
         {currentRoute === 'settings' && <SettingsRoute />}
         {currentRoute === 'stage' && <StageRoute />}
       </main>
+
+      {showTransport && <GlobalTransportBar />}
+
       {!isStageMode && <ToastContainer />}
 
       {/* Corner Professional Software Stamp & IP Notice (Out of sight, but present) */}
@@ -69,12 +82,12 @@ export function App() {
         aria-label="Software Intellectual Property"
       >
         <div
-          className="pointer-events-auto flex items-center gap-1.5 text-xs font-mono tracking-wide text-[#a8a8a8] hover:text-[#ededed] transition-colors cursor-help opacity-75 hover:opacity-100"
+          className="pointer-events-auto flex items-center gap-1.5 text-xs font-mono tracking-wide text-content-muted hover:text-content-primary transition-colors cursor-help opacity-75 hover:opacity-100"
           title="TRUSTNODELOGIC • Proprietary Intellectual Property • All Rights Reserved. System architecture, transition scoring models, and DSP pipelines are protected."
         >
-          <span className="w-1.5 h-1.5 bg-[#666666] rounded-full inline-block" />
+          <span className="w-1.5 h-1.5 bg-content-dim rounded-full inline-block" />
           <span className="font-semibold uppercase">TRUSTNODELOGIC</span>
-          <span className="text-xs text-[#a8a8a8] tracking-normal">
+          <span className="text-xs text-content-muted tracking-normal">
             © 2026 IP
           </span>
         </div>

@@ -44,7 +44,7 @@ export const StructuralMiniMap: React.FC<StructuralMiniMapProps> = ({
         className={`h-2.5 w-24 bg-[#141414] border border-[#222222] rounded-none flex items-center justify-center ${className}`}
         title="No structural segments analyzed"
       >
-        <span className="text-[9px] font-mono text-[#71717a] leading-none">NO MAP</span>
+        <span className="text-[11px] font-mono uppercase tracking-widest text-content-dim leading-none">NO MAP</span>
       </div>
     );
   }

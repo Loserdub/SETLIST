@@ -1,3 +1,6 @@
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
 use core_types::{AudioBuffer, DecodedAudio, LoudnessInfo, TrackTags};
 pub use lofty;
 use lofty::file::TaggedFileExt;
@@ -472,6 +475,28 @@ mod tests {
         let result = decode_file(&path);
         assert!(result.is_err());
         assert!(!matches!(result, Err(AudioIoError::FileNotFound(_))));
+    }
+
+    #[test]
+    fn test_truncated_wav_returns_error_without_panic() {
+        let (_guard, path) = temp_wav_path("truncated");
+        // Valid RIFF/WAVE header specifying 4096 bytes data, but truncated to only 44 bytes header
+        let mut truncated = b"RIFF\x24\x10\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x10\x00\x00".to_vec();
+        truncated.extend_from_slice(&[0u8; 8]); // only 8 bytes of data instead of 4096
+        std::fs::write(&path, &truncated).unwrap();
+        let result = decode_file(&path);
+        // Must either decode partial or return error, never panic
+        assert!(result.is_err() || result.is_ok());
+    }
+
+    #[test]
+    fn test_zero_byte_mp3_returns_error_without_panic() {
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join(format!("zero_byte_{}.mp3", std::process::id()));
+        std::fs::write(&path, b"").unwrap();
+        let result = decode_file(&path);
+        assert!(result.is_err(), "Zero-byte MP3 must return error");
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

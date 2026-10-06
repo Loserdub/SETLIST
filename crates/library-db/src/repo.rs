@@ -12,6 +12,184 @@ use core_types::{
 };
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use std::collections::HashMap;
+use std::path::Path;
+
+/// Configures recommended SQLite PRAGMAs for high-performance concurrent local operation:
+/// - WAL journal mode for non-blocking concurrent reads and writes
+/// - synchronous = NORMAL for safety with reduced disk flush overhead
+/// - busy_timeout = 5000 ms to prevent SQLITE_BUSY under transient lock contention
+/// - foreign_keys = ON to enforce relational integrity and cascades
+/// - cache_size = -64000 (64 MB in-memory page cache)
+pub fn configure_connection_pragmas(conn: &Connection) -> Result<(), DbError> {
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA busy_timeout = 5000;
+         PRAGMA foreign_keys = ON;
+         PRAGMA cache_size = -64000;",
+    )?;
+    Ok(())
+}
+
+/// Opens a standard read-write connection to SQLite and applies configured PRAGMAs.
+pub fn open_connection<P: AsRef<Path>>(path: P) -> Result<Connection, DbError> {
+    let conn = Connection::open(path)?;
+    configure_connection_pragmas(&conn)?;
+    Ok(conn)
+}
+
+/// Opens a dedicated read-only connection to SQLite with WAL concurrency.
+///
+/// Designed for src-tauri and compute-intensive operations (such as catalog relationship scoring)
+/// so long-running reads can execute without sharing or blocking the primary database write mutex.
+pub fn open_read_only_connection<P: AsRef<Path>>(path: P) -> Result<Connection, DbError> {
+    use rusqlite::OpenFlags;
+    let flags = OpenFlags::SQLITE_OPEN_READ_ONLY
+        | OpenFlags::SQLITE_OPEN_NO_MUTEX
+        | OpenFlags::SQLITE_OPEN_URI;
+    let conn = Connection::open_with_flags(path, flags)?;
+    conn.execute_batch(
+        "PRAGMA busy_timeout = 5000;
+         PRAGMA foreign_keys = ON;
+         PRAGMA cache_size = -64000;",
+    )?;
+    Ok(conn)
+}
+
+/// Retrieves the monotonic catalog revision counter.
+///
+/// Returns 1 if the counter has not yet been initialized.
+pub fn get_catalog_revision(conn: &Connection) -> Result<u64, DbError> {
+    let rev: Option<i64> = conn
+        .query_row(
+            "SELECT value FROM catalog_meta WHERE key = 'catalog_revision'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+
+    Ok(rev.map(|v| (v.max(1)) as u64).unwrap_or(1))
+}
+
+/// Increments the monotonic catalog revision counter and returns the new value.
+///
+/// Called whenever tracks are analyzed, added, removed, or have overrides modified,
+/// signalling to downstream caches (such as D1's ScoreMatrix) that re-computation is needed.
+pub fn bump_catalog_revision(conn: &Connection) -> Result<u64, DbError> {
+    conn.execute(
+        "INSERT INTO catalog_meta (key, value) VALUES ('catalog_revision', 2)
+         ON CONFLICT (key) DO UPDATE SET value = value + 1",
+        [],
+    )?;
+    get_catalog_revision(conn)
+}
+
+/// Lightweight summary representation of a song for graph analysis and table rendering.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SongSummary {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub duration_seconds: f64,
+    pub bpm: Option<f64>,
+    pub musical_key: Option<String>,
+    pub mode: Option<Mode>,
+    pub camelot_code: Option<String>,
+    pub energy_rating: Option<u8>,
+    pub tags: Vec<String>,
+}
+
+impl From<Song> for SongSummary {
+    fn from(s: Song) -> Self {
+        Self {
+            id: s.id,
+            title: s.title,
+            artist: s.artist,
+            duration_seconds: s.duration_seconds,
+            bpm: s.bpm,
+            musical_key: s.musical_key,
+            mode: s.mode,
+            camelot_code: s.camelot_code,
+            energy_rating: s.energy_rating,
+            tags: s.tags,
+        }
+    }
+}
+
+/// Lists lightweight song summaries without loading optional heavy metadata or blobs.
+pub fn list_song_summaries(conn: &Connection) -> Result<Vec<SongSummary>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, artist, duration_seconds, bpm, musical_key, mode,
+                camelot_code, energy_rating, tags_json
+         FROM songs ORDER BY artist COLLATE NOCASE ASC, title COLLATE NOCASE ASC",
+    )?;
+
+    let iter = stmt.query_map([], |r| {
+        let id: String = r.get(0)?;
+        let title: String = r.get(1)?;
+        let artist: String = r.get(2)?;
+        let duration_seconds: f64 = r.get(3)?;
+        let bpm: Option<f64> = r.get(4)?;
+        let musical_key: Option<String> = r.get(5)?;
+        let mode_str: Option<String> = r.get(6)?;
+        let camelot_code: Option<String> = r.get(7)?;
+        let energy_rating: Option<u8> = r.get(8)?;
+        let tags_json: Option<String> = r.get(9)?;
+
+        let mode = mode_str.and_then(|m| match m.as_str() {
+            "Minor" => Some(Mode::Minor),
+            "Major" => Some(Mode::Major),
+            _ => None,
+        });
+
+        let tags = tags_json
+            .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+            .unwrap_or_default();
+
+        Ok(SongSummary {
+            id,
+            title,
+            artist,
+            duration_seconds,
+            bpm,
+            musical_key,
+            mode,
+            camelot_code,
+            energy_rating,
+            tags,
+        })
+    })?;
+
+    let mut summaries = Vec::new();
+    for s in iter {
+        summaries.push(s?);
+    }
+    Ok(summaries)
+}
+
+/// Verifies track availability across local filesystem, marking missing tracks unavailable
+/// without deleting their analysis data.
+pub fn check_library_availability(conn: &Connection) -> Result<usize, DbError> {
+    let mut stmt = conn.prepare("SELECT id, path FROM tracks")?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .filter_map(Result::ok)
+        .collect();
+
+    let mut unavailable_count = 0;
+    for (id, path) in rows {
+        let exists = Path::new(&path).exists();
+        let status = if exists { 1 } else { 0 };
+        if !exists {
+            unavailable_count += 1;
+        }
+        conn.execute(
+            "UPDATE tracks SET is_available = ?1 WHERE id = ?2 AND is_available != ?1",
+            rusqlite::params![status, id],
+        )?;
+    }
+    Ok(unavailable_count)
+}
 
 /// Inserts or updates a track in the library database.
 ///
@@ -30,6 +208,19 @@ pub use upsert_track as insert_track;
 pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError> {
     let tx = conn.unchecked_transaction()?;
 
+    let (file_size, file_mtime) = std::fs::metadata(&track.path)
+        .map(|m| {
+            let s = m.len() as i64;
+            let mt = m
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            (Some(s), Some(mt))
+        })
+        .unwrap_or((None, None));
+
     let existing_by_hash: Option<(String, String)> = tx
         .query_row(
             "SELECT id, path FROM tracks WHERE hash = ?1",
@@ -47,14 +238,19 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError>
                 artist = coalesce(?3, artist),
                 album = coalesce(?4, album),
                 duration_ms = ?5,
+                file_size = coalesce(?6, file_size),
+                file_mtime = coalesce(?7, file_mtime),
+                is_available = 1,
                 updated_at = datetime('now')
-             WHERE id = ?6",
+             WHERE id = ?8",
             rusqlite::params![
                 track.path,
                 track.tags.title,
                 track.tags.artist,
                 track.tags.album,
                 track.duration_ms,
+                file_size,
+                file_mtime,
                 id,
             ],
         )?;
@@ -77,14 +273,19 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError>
                     artist = coalesce(?3, artist),
                     album = coalesce(?4, album),
                     duration_ms = ?5,
+                    file_size = coalesce(?6, file_size),
+                    file_mtime = coalesce(?7, file_mtime),
+                    is_available = 1,
                     updated_at = datetime('now')
-                 WHERE id = ?6",
+                 WHERE id = ?8",
                 rusqlite::params![
                     track.hash,
                     track.tags.title,
                     track.tags.artist,
                     track.tags.album,
                     track.duration_ms,
+                    file_size,
+                    file_mtime,
                     id,
                 ],
             )?;
@@ -98,8 +299,8 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError>
             };
 
             tx.execute(
-                "INSERT INTO tracks (id, path, hash, title, artist, album, duration_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO tracks (id, path, hash, title, artist, album, duration_ms, file_size, file_mtime, is_available)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1)",
                 rusqlite::params![
                     id,
                     track.path,
@@ -108,6 +309,8 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError>
                     track.tags.artist,
                     track.tags.album,
                     track.duration_ms,
+                    file_size,
+                    file_mtime,
                 ],
             )?;
             id
@@ -133,6 +336,7 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError>
         rusqlite::params![track_id, title, artist, duration_sec],
     )?;
 
+    bump_catalog_revision(&tx)?;
     tx.commit()?;
     Ok(track_id)
 }
@@ -1268,6 +1472,9 @@ pub fn list_tracks_with_overrides(
 pub fn delete_track(conn: &Connection, id: &str) -> Result<bool, DbError> {
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     let rows_affected = conn.execute("DELETE FROM tracks WHERE id = ?1", [id])?;
+    if rows_affected > 0 {
+        bump_catalog_revision(conn)?;
+    }
     Ok(rows_affected > 0)
 }
 
@@ -1329,6 +1536,8 @@ pub fn upsert_song(conn: &Connection, song: &Song) -> Result<String, DbError> {
             song.notes,
         ],
     )?;
+
+    bump_catalog_revision(conn)?;
 
     Ok(song.id.clone())
 }
@@ -1461,6 +1670,9 @@ pub fn list_songs(conn: &Connection) -> Result<Vec<Song>, DbError> {
 /// Returns `DbError` on database error.
 pub fn delete_song(conn: &Connection, id: &str) -> Result<bool, DbError> {
     let count = conn.execute("DELETE FROM songs WHERE id = ?1", [id])?;
+    if count > 0 {
+        bump_catalog_revision(conn)?;
+    }
     Ok(count > 0)
 }
 

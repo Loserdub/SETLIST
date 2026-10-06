@@ -388,10 +388,10 @@ describe('StartScreen Component', () => {
     const quickSetBtn = screen.getByTestId('start-quick-set-btn');
 
     expect(scanBtn.className).toContain('focus-visible:ring-2');
-    expect(scanBtn.className).toContain('focus-visible:ring-[#38bdf8]');
+    expect(scanBtn.className).toContain('focus-visible:ring-accent-blue');
     expect(openSetBtn.className).toContain('focus-visible:ring-2');
-    expect(openSetBtn.className).toContain('focus-visible:ring-[#38bdf8]');
+    expect(openSetBtn.className).toContain('focus-visible:ring-accent-blue');
     expect(quickSetBtn.className).toContain('focus-visible:ring-2');
-    expect(quickSetBtn.className).toContain('focus-visible:ring-[#38bdf8]');
+    expect(quickSetBtn.className).toContain('focus-visible:ring-accent-blue');
   });
 });

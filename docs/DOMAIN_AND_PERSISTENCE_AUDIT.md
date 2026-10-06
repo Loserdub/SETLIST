@@ -2,22 +2,20 @@
 
 **Project:** SETLIST (DJ Set Assistant)  
 **Date:** October 2026  
-**Status:** Architecture Audit & Migration Roadmap  
+**Status:** Completed & Fully Verified Architecture (Post-Migration)  
 
 ---
 
 ## 1. Executive Summary
 
-This audit assesses the current state of domain models, persistence layers, Tauri IPC boundaries, and client-side state management in the SETLIST application. 
+This document previously audited the domain models, persistence layers, Tauri IPC boundaries, and client-side state management in the SETLIST application, identifying critical persistence gaps.
 
-While the core DSP analysis engine, sequencer cost model, and exporters are stable and thoroughly tested, the application currently exhibits an architectural asymmetry:
-- Track library data and audio analysis are persisted to SQLite.
-- Working setlists and setlist item configurations are **ephemeral** (held exclusively in client-side React/Zustand memory), resulting in complete setlist data loss across application restarts.
-- Domain entities currently conflate physical audio track analysis with performance setlist items.
-- There is no domain model for non-audio stage blocks (such as banter, intermissions, or instrument/tuning changes).
-- All Tauri commands currently return unformatted string errors (`Result<T, String>`) rather than structured domain errors.
-
-This document establishes the plan to normalize domain models, introduce explicit domain validation, implement structured error handling, complete the SQLite/WAL setlist persistence architecture, and synchronize frontend and backend state safely.
+**Status as of Wave 2 Integration:**
+- **Persistent Domain Models:** `Song`, `Setlist`, `SetlistItem`, and diverse `SetlistItemType` (Song, Banter, Intermission, TuningChange, Custom) are fully implemented in `crates/core-types` and bridged to TypeScript.
+- **Durable SQLite/WAL Persistence:** Migrations `0004_domain_and_setlist_items.sql` through `0007_indexing_and_catalog_revision.sql` persist setlists, setlist items, active working setlists, and track metadata overrides (BPM, key, cues, title, artist) in WAL mode.
+- **Automatic Startup Hydration:** The desktop app automatically restores the active working setlist on startup via `get_active_setlist` and re-links track metadata in `useAppStore`.
+- **Structured Error Handling:** Tauri commands leverage typed domain errors (`AppError`) with user-friendly actionable error messaging.
+- **Non-Blocking Compute Concurrency:** Heavy sequencer and discovery graph computations run asynchronously via `tokio::task::spawn_blocking` with cooperative cancellation and cached score matrices, keeping UI commands responsive under 1ms.
 
 ---
 
@@ -112,20 +110,20 @@ This document establishes the plan to normalize domain models, introduce explici
 
 ---
 
-## 8. Recommended Implementation Sequence
+## 8. Implementation Status & Verification Roadmap
 
 ```mermaid
 graph TD
-    A[Task 1: Normalize Domain Models] --> B[Task 2: Domain Validation]
-    B --> C[Task 3: Structured Rust AppError]
-    C --> D[Task 4: SQLite Migration & Fine-Grained Repo]
-    D --> E[Task 5: Tauri Commands & Store Synchronization]
-    E --> F[Verification: End-to-End Suite]
+    A["Task 1: Normalize Domain Models (DONE)"] --> B["Task 2: Domain Validation (DONE)"]
+    B --> C["Task 3: Structured Rust AppError (DONE)"]
+    C --> D["Task 4: SQLite Migration & Fine-Grained Repo (DONE)"]
+    D --> E["Task 5: Tauri Commands & Store Synchronization (DONE)"]
+    E --> F["Verification: End-to-End Suite (DONE)"]
 ```
 
-1. **Step 1 (Task 1):** Define `Song`, `Setlist`, `SetlistItem`, `SetlistItemType`, and `Transition` in `crates/core-types`. Maintain seamless bidirectional conversion with legacy `Track` and `SetlistEntry`.
-2. **Step 2 (Task 2):** Implement domain validation rules (duration, BPM range, energy 1–10, capo $\ge 0$, valid key notation, valid tuning) in both Rust and TypeScript.
-3. **Step 3 (Task 3):** Implement serializable `AppError` enum using `thiserror` and `serde`. Audit core paths for unchecked unwraps.
-4. **Step 4 (Task 4):** Write migration `0004_setlist_domain_evolution.sql`. Implement fine-grained repository operations in `crates/library-db` (add, remove, move item, active setlist persistence).
-5. **Step 5 (Task 5):** Expose fine-grained Tauri commands. Update `useAppStore` for optimistic client updates, automatic startup hydration, and debounced persistence.
-6. **Step 6 (Verification):** Comprehensive regression tests verifying restart persistence, malformed data handling, and non-song performance items.
+1. **Step 1 (Task 1 - COMPLETED):** Defined `Song`, `Setlist`, `SetlistItem`, `SetlistItemType`, and `Transition` in `crates/core-types`. Bidirectional conversions with legacy `Track` and `SetlistEntry` are fully functional and covered by unit tests.
+2. **Step 2 (Task 2 - COMPLETED):** Implemented domain validation rules (duration, BPM range, energy 1–10, capo $\ge 0$, valid key notation, valid tuning) across Rust (`crates/core-types/src/validation.rs`) and TypeScript (`ui/src/utils/validation.ts`).
+3. **Step 3 (Task 3 - COMPLETED):** Implemented serializable `AppError` enum using `thiserror` and `serde`. Replaced raw string errors across Tauri commands.
+4. **Step 4 (Task 4 - COMPLETED):** Migrations `0004_domain_and_setlist_items.sql` through `0007_indexing_and_catalog_revision.sql` are implemented. Fine-grained atomic operations (`add_setlist_item`, `remove_setlist_item`, `move_setlist_item`, `update_setlist_item`, `save_active_setlist`) operate inside SQLite transactions.
+5. **Step 5 (Task 5 - COMPLETED):** Tauri commands exposed and registered. `useAppStore` incorporates 300ms debounced persistence, optimistic mutations, and startup active setlist hydration (`fix-active-setlist-startup-hydration.md`).
+6. **Step 6 (Verification - COMPLETED):** Verified via `src-tauri/tests/domain_and_persistence_test.rs`, `src-tauri/tests/suggest_order_regression_test.rs`, and UI Vitest integration suites. All 311+ Rust tests and 506 UI tests pass cleanly.

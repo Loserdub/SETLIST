@@ -55,13 +55,13 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
 
   return (
     <div
-      className="p-3 bg-[#09090b] border border-[#27272a] font-mono select-none"
+      className="p-3 bg-surface-deep border border-border-base font-mono select-none"
       role="region"
       aria-label="Audio Ingestion Instrument Display"
       data-testid="ingestion-instrument-display"
     >
       {/* Top Instrument Header & Status Indicators */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#27272a]">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-border-base">
         <div className="flex items-center gap-2.5">
           {/* Hardware LED Status Beacon */}
           <span className="w-2 h-2 rounded-full bg-amber-400 inline-block shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
@@ -73,7 +73,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
             <span className="text-zinc-500 text-xs font-normal">({progress.stage}...)</span>
           </span>
 
-          <span className="text-xs px-2 py-0.5 bg-[#121215] border border-[#27272a] text-zinc-300">
+          <span className="text-xs px-2 py-0.5 bg-surface-raised border border-border-base text-zinc-300">
             PURE RUST DSP
           </span>
         </div>
@@ -91,7 +91,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
             <button
               type="button"
               onClick={onCancel}
-              className="hw-btn px-2 py-0.5 text-xs uppercase tracking-wider bg-[#18181b] hover:bg-[#222226] text-rose-300 border border-rose-900/60 transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none active:translate-y-[1px]"
+              className="hw-btn px-2 py-0.5 text-xs uppercase tracking-wider bg-surface-elevated hover:bg-surface-hover text-rose-300 border border-rose-900/60 transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:outline-none active:translate-y-[1px]"
               title="Cancel audio scan"
             >
               Abort
@@ -106,7 +106,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
           <span className="tracking-widest uppercase">PIPELINE GAUGES</span>
           <span className="tracking-tight text-amber-400 font-bold te-num">{asciiBar}</span>
         </div>
-        <div className="w-full bg-[#08080a] border border-[#27272a] h-2 overflow-hidden">
+        <div className="w-full bg-surface-deep border border-border-base h-2 overflow-hidden">
           <div
             className="h-full bg-amber-400 transition-all duration-150"
             style={{ width: `${percentage}%` }}
@@ -117,7 +117,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
       {/* 4 Real-time Hardware Instrument Readout Cells */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono">
         {/* Cell 1: BPM / TEMPO */}
-        <div className="p-2.5 bg-[#0c0c0f] border border-[#27272a] flex flex-col justify-between">
+        <div className="p-2.5 bg-surface-panel border border-border-base flex flex-col justify-between">
           <div className="text-xs text-zinc-400 font-bold tracking-wider uppercase flex items-center justify-between">
             <span>BPM</span>
             <span className="text-zinc-300">TEMPO</span>
@@ -134,7 +134,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
         </div>
 
         {/* Cell 2: MUSICAL KEY */}
-        <div className="p-2.5 bg-[#0c0c0f] border border-[#27272a] flex flex-col justify-between">
+        <div className="p-2.5 bg-surface-panel border border-border-base flex flex-col justify-between">
           <div className="text-xs text-zinc-400 font-bold tracking-wider uppercase flex items-center justify-between">
             <span>KEY</span>
             <span className="text-zinc-300">TONAL</span>
@@ -150,7 +150,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
         </div>
 
         {/* Cell 3: CAMELOT CODE */}
-        <div className="p-2.5 bg-[#0c0c0f] border border-[#27272a] flex flex-col justify-between">
+        <div className="p-2.5 bg-surface-panel border border-border-base flex flex-col justify-between">
           <div className="text-xs text-zinc-400 font-bold tracking-wider uppercase flex items-center justify-between">
             <span>CAM</span>
             <span className="text-zinc-300">WHEEL</span>
@@ -170,17 +170,17 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
         </div>
 
         {/* Cell 4: ENERGY & LOUDNESS */}
-        <div className="p-2.5 bg-[#0e0e10] border border-[#1e1e22] flex flex-col justify-between">
-          <div className="text-xs text-[#888888] font-bold tracking-wider uppercase flex items-center justify-between">
+        <div className="p-2.5 bg-surface-panel border border-border-subtle flex flex-col justify-between">
+          <div className="text-xs text-content-muted font-bold tracking-wider uppercase flex items-center justify-between">
             <span>ENERGY / LUFS</span>
-            <span className="text-[#f59e0b]">DSP</span>
+            <span className="text-accent-amber">DSP</span>
           </div>
           <div className="mt-1 flex items-baseline justify-between gap-1">
-            <span className="text-base font-bold text-[#ededed] tabular-nums">
+            <span className="text-base font-bold text-content-primary tabular-nums">
               {displayEnergy}
-              <span className="text-xs font-normal text-[#888888] ml-0.5">/ 10</span>
+              <span className="text-xs font-normal text-content-muted ml-0.5">/ 10</span>
             </span>
-            <span className="text-xs text-[#a8a8a8] font-mono tabular-nums">
+            <span className="text-xs text-content-muted font-mono tabular-nums">
               {displayLufs}
             </span>
           </div>
@@ -194,7 +194,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
                 <div
                   key={step}
                   className={`flex-1 h-full rounded-none ${
-                    active ? color : 'bg-[#1c1c22]'
+                    active ? color : 'bg-surface-elevated'
                   }`}
                 />
               );
@@ -204,7 +204,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
       </div>
 
       {/* File Ingest Telemetry Stream Marquee & Ticker */}
-      <div className="mt-2.5 pt-2 border-t border-[#27272a] flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400 font-mono">
+      <div className="mt-2.5 pt-2 border-t border-border-base flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400 font-mono">
         <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
           <span className="text-amber-400 uppercase shrink-0 font-bold">SOURCE:</span>
           <span className="text-zinc-200 truncate font-mono">
@@ -241,7 +241,7 @@ export const IngestionInstrumentDisplay: React.FC<IngestionInstrumentDisplayProp
             <button
               type="button"
               onClick={onOpenReport}
-              className="hw-btn px-2 py-0.5 border border-[#27272a] bg-[#121215] hover:bg-[#1c1c20] text-zinc-300 hover:text-white uppercase transition-colors cursor-pointer rounded-none focus-visible:ring-1 focus-visible:ring-zinc-400 active:translate-y-[1px]"
+              className="hw-btn px-2 py-0.5 border border-border-base bg-surface-raised hover:bg-surface-elevated text-zinc-300 hover:text-white uppercase transition-colors cursor-pointer rounded-none focus-visible:ring-1 focus-visible:ring-zinc-400 active:translate-y-[1px]"
             >
               View Report
             </button>

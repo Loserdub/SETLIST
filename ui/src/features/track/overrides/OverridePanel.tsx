@@ -28,7 +28,9 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
   className = '',
   defaultExpanded = true,
 }) => {
-  const { selectedTrack, addToast, refreshTrackInSetlist } = useAppStore();
+  const selectedTrack = useAppStore((s) => s.selectedTrack);
+  const addToast = useAppStore((s) => s.addToast);
+  const refreshTrackInSetlist = useAppStore((s) => s.refreshTrackInSetlist);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -200,27 +202,27 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
 
   return (
     <section
-      className={`border-t border-[#1c1c1c] bg-[#0a0a0a] text-[#ededed] font-mono transition-all z-20 shrink-0 ${className}`}
+      className={`border-t border-border-subtle bg-surface-panel text-content-primary font-mono transition-all z-20 shrink-0 ${className}`}
       data-testid="override-panel"
       aria-label="Track analysis corrections"
     >
       {/* Panel Header & Toggle */}
-      <div className="px-5 py-2.5 bg-[#0e0e0e] border-b border-[#181818] flex items-center justify-between">
+      <div className="px-5 py-2.5 bg-surface-panel border-b border-border-subtle flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-[#cfcfcf] hover:text-white transition-colors cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+            className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-content-secondary hover:text-white transition-colors cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
             aria-expanded={isExpanded}
           >
-            <span className="text-xs text-[#a8a8a8]">{isExpanded ? '▼' : '►'}</span>
+            <span className="text-xs text-content-muted">{isExpanded ? '▼' : '►'}</span>
             <span>Analysis Overrides</span>
           </button>
           {(isBpmOverridden || isDownbeatOverridden || isKeyOverridden) && (
             <EditedBadge title="Track has active user corrections" />
           )}
           {isSaving && (
-            <span className="text-xs text-[#a8a8a8] animate-pulse">Saving...</span>
+            <span className="text-xs text-content-muted animate-pulse">Saving...</span>
           )}
         </div>
 
@@ -230,7 +232,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
               type="button"
               onClick={() => void handleClearField(['all'], 'All overrides reset to analyzed values')}
               disabled={isSaving}
-              className="px-2 py-0.5 text-xs font-mono tracking-wider uppercase border border-[#333333] bg-[#141414] hover:bg-[#222222] text-[#a8a8a8] hover:text-white transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+              className="px-2 py-0.5 text-xs font-mono tracking-wider uppercase border border-border-strong bg-surface-raised hover:bg-surface-hover text-content-muted hover:text-white transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
               data-testid="reset-all-btn"
               title="Reset all fields back to initial DSP analysis"
             >
@@ -246,12 +248,12 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* ── BPM Field Controls ── */}
             <div
-              className="p-3 bg-[#0d0d0d] border border-[#1c1c1c] space-y-2.5 rounded-none"
+              className="p-3 bg-surface-panel border border-border-subtle space-y-2.5 rounded-none"
               data-testid="override-bpm-section"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#cfcfcf]">
+                  <span className="text-xs font-bold uppercase tracking-wider text-content-secondary">
                     Tempo (BPM)
                   </span>
                   {isBpmOverridden && <EditedBadge field="bpm" title="BPM is overridden" />}
@@ -260,10 +262,10 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                   type="button"
                   onClick={() => void handleClearField(['bpm'], 'BPM reset to analyzed value')}
                   disabled={!isBpmOverridden || isSaving}
-                  className={`px-2 py-0.5 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+                  className={`px-2 py-0.5 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
                     isBpmOverridden
-                      ? 'border-[#444444] bg-[#161616] hover:bg-[#242424] text-[#cfcfcf]'
-                      : 'border-[#1f1f1f] bg-[#090909] text-[#666666] cursor-not-allowed opacity-50'
+                      ? 'border-border-strong bg-surface-raised hover:bg-surface-hover text-content-secondary'
+                      : 'border-border-subtle bg-surface-deep text-content-dim cursor-not-allowed opacity-50'
                   }`}
                   data-testid="bpm-reset-btn"
                   title="Reset BPM back to initial analyzed value"
@@ -283,7 +285,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                   onBlur={handleCommitBpmInput}
                   onKeyDown={(e) => e.key === 'Enter' && handleCommitBpmInput()}
                   disabled={isSaving}
-                  className="w-24 px-2.5 py-1 bg-[#141414] border border-[#262626] text-white font-mono text-sm focus:outline-none focus:border-[#444444] tabular-nums"
+                  className="w-24 px-2.5 py-1 bg-surface-raised border border-border-base text-white font-mono text-sm focus:outline-none focus:border-border-strong tabular-nums"
                   data-testid="bpm-input"
                   aria-label="Override BPM value"
                 />
@@ -294,7 +296,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     type="button"
                     onClick={handleHalfBpm}
                     disabled={isSaving}
-                    className="px-2 py-1 bg-[#161616] hover:bg-[#222222] border border-[#2a2a2a] text-xs font-mono text-[#d0d0d0] hover:text-white transition-colors cursor-pointer"
+                    className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-xs font-mono text-content-secondary hover:text-white transition-colors cursor-pointer"
                     data-testid="bpm-half-btn"
                     title="Halve BPM (/ 2)"
                   >
@@ -304,7 +306,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     type="button"
                     onClick={handleDoubleBpm}
                     disabled={isSaving}
-                    className="px-2 py-1 bg-[#161616] hover:bg-[#222222] border border-[#2a2a2a] text-xs font-mono text-[#d0d0d0] hover:text-white transition-colors cursor-pointer"
+                    className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-xs font-mono text-content-secondary hover:text-white transition-colors cursor-pointer"
                     data-testid="bpm-double-btn"
                     title="Double BPM (× 2)"
                   >
@@ -314,7 +316,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     type="button"
                     onClick={() => handleNudgeBpm(-0.1)}
                     disabled={isSaving}
-                    className="px-2 py-1 bg-[#161616] hover:bg-[#222222] border border-[#2a2a2a] text-xs font-mono text-[#d0d0d0] hover:text-white transition-colors cursor-pointer"
+                    className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-xs font-mono text-content-secondary hover:text-white transition-colors cursor-pointer"
                     data-testid="bpm-minus-01-btn"
                     title="Nudge -0.1 BPM"
                   >
@@ -324,7 +326,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     type="button"
                     onClick={() => handleNudgeBpm(0.1)}
                     disabled={isSaving}
-                    className="px-2 py-1 bg-[#161616] hover:bg-[#222222] border border-[#2a2a2a] text-xs font-mono text-[#d0d0d0] hover:text-white transition-colors cursor-pointer"
+                    className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-xs font-mono text-content-secondary hover:text-white transition-colors cursor-pointer"
                     data-testid="bpm-plus-01-btn"
                     title="Nudge +0.1 BPM"
                   >
@@ -336,12 +338,12 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
 
             {/* ── First Downbeat Controls ── */}
             <div
-              className="p-3 bg-[#0d0d0d] border border-[#1c1c1c] space-y-2.5 rounded-none"
+              className="p-3 bg-surface-panel border border-border-subtle space-y-2.5 rounded-none"
               data-testid="override-downbeat-section"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#a8a8a8]">
+                  <span className="text-xs font-bold uppercase tracking-wider text-content-muted">
                     First Downbeat
                   </span>
                   {isDownbeatOverridden && (
@@ -354,10 +356,10 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     void handleClearField(['first_downbeat_ms'], 'Downbeat reset to analyzed value')
                   }
                   disabled={!isDownbeatOverridden || isSaving}
-                  className={`px-2 py-0.5 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+                  className={`px-2 py-0.5 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
                     isDownbeatOverridden
-                      ? 'border-[#444444] bg-[#161616] hover:bg-[#242424] text-[#cfcfcf]'
-                      : 'border-[#1f1f1f] bg-[#090909] text-[#666666] cursor-not-allowed opacity-50'
+                      ? 'border-border-strong bg-surface-raised hover:bg-surface-hover text-content-secondary'
+                      : 'border-border-subtle bg-surface-deep text-content-dim cursor-not-allowed opacity-50'
                   }`}
                   data-testid="downbeat-reset-btn"
                   title="Reset downbeat back to initial analyzed value"
@@ -367,7 +369,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 bg-[#141414] border border-[#262626] px-2 py-1">
+                <div className="flex items-center gap-1 bg-surface-raised border border-border-base px-2 py-1">
                   <input
                     type="number"
                     step="1"
@@ -377,11 +379,11 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     onBlur={handleCommitDownbeatInput}
                     onKeyDown={(e) => e.key === 'Enter' && handleCommitDownbeatInput()}
                     disabled={isSaving}
-                    className="w-20 bg-transparent text-white font-mono text-sm focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus:outline-none tabular-nums"
+                    className="w-20 bg-transparent text-white font-mono text-sm focus-visible:ring-2 focus-visible:ring-accent-blue focus:outline-none tabular-nums"
                     data-testid="downbeat-input"
                     aria-label="Override first downbeat in milliseconds"
                   />
-                  <span className="text-xs text-[#a8a8a8]">ms</span>
+                  <span className="text-xs text-content-muted">ms</span>
                 </div>
 
                 {/* Downbeat Nudge Buttons */}
@@ -390,7 +392,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     type="button"
                     onClick={() => handleNudgeDownbeat(-10)}
                     disabled={isSaving}
-                    className="px-2 py-1 bg-[#161616] hover:bg-[#222222] border border-[#2a2a2a] text-xs font-mono text-[#cfcfcf] hover:text-white transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                    className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-xs font-mono text-content-secondary hover:text-white transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     data-testid="downbeat-minus-10-btn"
                     title="Nudge grid -10 ms"
                   >
@@ -400,7 +402,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     type="button"
                     onClick={() => handleNudgeDownbeat(10)}
                     disabled={isSaving}
-                    className="px-2 py-1 bg-[#161616] hover:bg-[#222222] border border-[#2a2a2a] text-xs font-mono text-[#cfcfcf] hover:text-white transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                    className="px-2 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-xs font-mono text-content-secondary hover:text-white transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     data-testid="downbeat-plus-10-btn"
                     title="Nudge grid +10 ms"
                   >
@@ -410,7 +412,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                     type="button"
                     onClick={() => handleShiftBeat(1)}
                     disabled={isSaving}
-                    className="px-2.5 py-1 bg-[#161616] hover:bg-[#222222] border border-[#2a2a2a] text-xs font-mono text-[#cfcfcf] hover:text-white transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+                    className="px-2.5 py-1 bg-surface-raised hover:bg-surface-hover border border-border-base text-xs font-mono text-content-secondary hover:text-white transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
                     data-testid="downbeat-shift-beat-btn"
                     title="Shift grid forward by 1 beat"
                   >
@@ -423,12 +425,12 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
 
           {/* ── Camelot 24-Key Picker ── */}
           <div
-            className="p-3 bg-[#0d0d0d] border border-[#1c1c1c] space-y-2.5 rounded-none"
+            className="p-3 bg-surface-panel border border-border-subtle space-y-2.5 rounded-none"
             data-testid="override-key-section"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#cfcfcf]">
+                <span className="text-xs font-bold uppercase tracking-wider text-content-secondary">
                   Musical Key (Camelot 24-Wheel)
                 </span>
                 {isKeyOverridden && <EditedBadge field="key_camelot" title="Key is overridden" />}
@@ -440,10 +442,10 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                 type="button"
                 onClick={() => void handleClearField(['key_camelot'], 'Key reset to analyzed value')}
                 disabled={!isKeyOverridden || isSaving}
-                className={`px-2 py-0.5 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+                className={`px-2 py-0.5 text-xs font-mono tracking-wider uppercase border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
                   isKeyOverridden
-                    ? 'border-[#444444] bg-[#161616] hover:bg-[#242424] text-[#cfcfcf]'
-                    : 'border-[#1f1f1f] bg-[#090909] text-[#666666] cursor-not-allowed opacity-50'
+                    ? 'border-border-strong bg-surface-raised hover:bg-surface-hover text-content-secondary'
+                    : 'border-border-subtle bg-surface-deep text-content-dim cursor-not-allowed opacity-50'
                 }`}
                 data-testid="key-reset-btn"
                 title="Reset Key back to initial analyzed value"
@@ -456,7 +458,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
             <div className="space-y-1.5" data-testid="key-picker-grid">
               {/* Minor Keys: 1A - 12A */}
               <div className="flex items-center gap-1 overflow-x-auto pb-1">
-                <span className="text-xs text-[#a8a8a8] w-16 font-bold shrink-0 uppercase">
+                <span className="text-xs text-content-muted w-16 font-bold shrink-0 uppercase">
                   Minor (A)
                 </span>
                 <div className="flex items-center gap-1">
@@ -471,7 +473,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
                         type="button"
                         onClick={() => handleSelectKey(k)}
                         disabled={isSaving}
-                        className={`w-9 h-7 flex items-center justify-center font-mono font-bold text-xs transition-all cursor-pointer rounded-[2px] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+                        className={`w-9 h-7 flex items-center justify-center font-mono font-bold text-xs transition-all cursor-pointer rounded-[2px] focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
                           isSelected
                             ? 'ring-2 ring-white scale-105 shadow-md font-extrabold z-10'
                             : 'opacity-80 hover:opacity-100 hover:scale-102 border border-black/40'
@@ -489,7 +491,7 @@ export const OverridePanel: React.FC<OverridePanelProps> = ({
 
               {/* Major Keys: 1B - 12B */}
               <div className="flex items-center gap-1 overflow-x-auto pb-1">
-                <span className="text-xs text-[#a8a8a8] w-16 font-bold shrink-0 uppercase">
+                <span className="text-xs text-content-muted w-16 font-bold shrink-0 uppercase">
                   Major (B)
                 </span>
                 <div className="flex items-center gap-1">

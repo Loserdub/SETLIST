@@ -23,7 +23,8 @@ export function MusicalRelationshipInspector({
   onHopToAnchor,
   onOpenBridgeModal,
 }: MusicalRelationshipInspectorProps) {
-  const { addToSetlist, addToast } = useAppStore();
+  const addToSetlist = useAppStore((s) => s.addToSetlist);
+  const addToast = useAppStore((s) => s.addToast);
   const [showTechnicalBreakdown, setShowTechnicalBreakdown] = useState(false);
 
   const anchorKey = anchorSong.camelot_code ?? anchorSong.musical_key ?? '—';
@@ -40,11 +41,11 @@ export function MusicalRelationshipInspector({
   if (!selectedNode) {
     return (
       <div
-        className="w-full h-full flex flex-col justify-between p-4 bg-[#0d0d0d] text-zinc-300 font-mono text-xs select-none"
+        className="w-full h-full flex flex-col justify-between p-4 bg-surface-panel text-zinc-300 font-mono text-xs select-none"
         data-testid="relationship-inspector-empty"
       >
         <div className="space-y-4">
-          <div className="border-b border-[#222222] pb-3">
+          <div className="border-b border-border-base pb-3">
             <span className="text-zinc-400 uppercase tracking-widest text-xs font-bold block mb-1">
               FOCAL TRACK PROFILE
             </span>
@@ -52,7 +53,7 @@ export function MusicalRelationshipInspector({
             <p className="text-zinc-400 text-xs truncate">{anchorSong.artist}</p>
           </div>
 
-          <div className="bg-[#141414] p-3 border border-[#222222] space-y-2">
+          <div className="bg-surface-raised p-3 border border-border-base space-y-2">
             <span className="text-xs text-zinc-400 uppercase font-bold block">
               ACOUSTIC ATTRIBUTES
             </span>
@@ -88,7 +89,7 @@ export function MusicalRelationshipInspector({
             </div>
           </div>
 
-          <div className="p-3 bg-[#111111] border border-[#1e1e1e] space-y-1.5 text-zinc-400 text-xs">
+          <div className="p-3 bg-surface-raised border border-border-subtle space-y-1.5 text-zinc-400 text-xs">
             <span className="text-white font-semibold block text-xs">
               Where can this track go?
             </span>
@@ -99,7 +100,7 @@ export function MusicalRelationshipInspector({
           </div>
         </div>
 
-        <div className="pt-3 border-t border-[#1f1f1f] text-xs text-zinc-400 text-center font-mono">
+        <div className="pt-3 border-t border-border-subtle text-xs text-zinc-400 text-center font-mono">
           Artist retains absolute sequencing authority.
         </div>
       </div>
@@ -143,11 +144,11 @@ export function MusicalRelationshipInspector({
 
   return (
     <div
-      className="w-full h-full flex flex-col bg-[#0b0b0b] text-zinc-300 font-mono text-xs overflow-hidden select-none border-l border-[#222222]"
+      className="w-full h-full flex flex-col bg-surface-panel text-zinc-300 font-mono text-xs overflow-hidden select-none border-l border-border-base"
       data-testid="musical-relationship-inspector"
     >
       {/* Inspector Header */}
-      <div className="p-4 border-b border-[#222222] bg-[#111111] space-y-2 shrink-0">
+      <div className="p-4 border-b border-border-base bg-surface-raised space-y-2 shrink-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
@@ -170,7 +171,7 @@ export function MusicalRelationshipInspector({
             type="button"
             onClick={onClose}
             aria-label="Close relationship inspector"
-            className="p-1 text-zinc-400 hover:text-white hover:bg-[#222222] transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-400"
+            className="p-1 text-zinc-400 hover:text-white hover:bg-surface-hover transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-400"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -179,7 +180,7 @@ export function MusicalRelationshipInspector({
         </div>
 
         {/* Primary Classification Strip */}
-        <div className="flex items-center justify-between text-xs font-mono pt-1 border-t border-[#1c1c1c]">
+        <div className="flex items-center justify-between text-xs font-mono pt-1 border-t border-border-subtle">
           <span className="text-zinc-400 uppercase">CLASSIFICATION:</span>
           <span className="text-sky-300 font-semibold">{rel.primary_classification}</span>
         </div>
@@ -190,7 +191,7 @@ export function MusicalRelationshipInspector({
         {/* The 4 Core Metric Comparison Cards */}
         <div className="space-y-2" data-testid="dimensional-comparison-hud">
           {/* KEY COMPARISON */}
-          <div className="p-2.5 bg-[#121212] border border-[#222222] space-y-1">
+          <div className="p-2.5 bg-surface-raised border border-border-base space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-xs text-zinc-400 uppercase font-bold tracking-wider">
                 KEY
@@ -226,7 +227,7 @@ export function MusicalRelationshipInspector({
           </div>
 
           {/* TEMPO COMPARISON */}
-          <div className="p-2.5 bg-[#121212] border border-[#222222] space-y-1">
+          <div className="p-2.5 bg-surface-raised border border-border-base space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-xs text-zinc-400 uppercase font-bold tracking-wider">
                 TEMPO
@@ -245,7 +246,7 @@ export function MusicalRelationshipInspector({
           </div>
 
           {/* ENERGY COMPARISON */}
-          <div className="p-2.5 bg-[#121212] border border-[#222222] space-y-1">
+          <div className="p-2.5 bg-surface-raised border border-border-base space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-xs text-zinc-400 uppercase font-bold tracking-wider">
                 ENERGY
@@ -274,7 +275,7 @@ export function MusicalRelationshipInspector({
           </div>
 
           {/* ROLE COMPARISON */}
-          <div className="p-2.5 bg-[#121212] border border-[#222222] space-y-1">
+          <div className="p-2.5 bg-surface-raised border border-border-base space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-xs text-zinc-400 uppercase font-bold tracking-wider">
                 ROLE
@@ -295,7 +296,7 @@ export function MusicalRelationshipInspector({
         </div>
 
         {/* Engine Verbatim Summary */}
-        <div className="p-3 bg-[#0f141a] border border-[#1e293b] space-y-1">
+        <div className="p-3 bg-surface-raised border border-border-base space-y-1">
           <span className="text-xs text-sky-400 uppercase font-bold tracking-wider block">
             MUSICAL SYNTHESIS
           </span>
@@ -316,7 +317,7 @@ export function MusicalRelationshipInspector({
           </button>
 
           {showTechnicalBreakdown && (
-            <div className="mt-2 p-2.5 bg-[#101010] border border-[#222222] space-y-2 text-xs font-mono">
+            <div className="mt-2 p-2.5 bg-surface-panel border border-border-base space-y-2 text-xs font-mono">
               <div className="grid grid-cols-2 gap-2 text-zinc-400">
                 <div>
                   <span className="text-zinc-400 block text-xs">HARMONIC FRICTION</span>
@@ -337,13 +338,13 @@ export function MusicalRelationshipInspector({
               </div>
 
               {rel.explanation.style.shared_tags.length > 0 && (
-                <div className="pt-1 border-t border-[#1c1c1c]">
+                <div className="pt-1 border-t border-border-subtle">
                   <span className="text-zinc-400 block text-xs mb-0.5">SHARED STYLISTIC TAGS</span>
                   <div className="flex flex-wrap gap-1">
                     {rel.explanation.style.shared_tags.map((tag) => (
                       <span
                         key={tag}
-                        className="px-1.5 py-0.5 bg-[#1a1a1a] border border-[#2e2e2e] text-zinc-300 text-xs font-mono rounded-none"
+                        className="px-1.5 py-0.5 bg-surface-elevated border border-border-base text-zinc-300 text-xs font-mono rounded-none"
                       >
                         {tag}
                       </span>
@@ -357,7 +358,7 @@ export function MusicalRelationshipInspector({
       </div>
 
       {/* Bottom Action Tray */}
-      <div className="p-3 border-t border-[#222222] bg-[#0e0e0e] space-y-2 shrink-0">
+      <div className="p-3 border-t border-border-base bg-surface-panel space-y-2 shrink-0">
         {/* Core Exploration Flow: Navigate Musical Topology */}
         <button
           type="button"
@@ -372,7 +373,7 @@ export function MusicalRelationshipInspector({
           <button
             type="button"
             onClick={() => onOpenBridgeModal(anchorSong.id, selectedNode.songId)}
-            className="flex-1 py-1.5 px-2 bg-[#161616] hover:bg-[#222222] text-zinc-300 hover:text-white border border-[#2d2d2d] uppercase transition-colors cursor-pointer text-xs font-mono focus-visible:ring-2 focus-visible:ring-sky-400 rounded-none"
+            className="flex-1 py-1.5 px-2 bg-surface-raised hover:bg-surface-hover text-zinc-300 hover:text-white border border-border-base uppercase transition-colors cursor-pointer text-xs font-mono focus-visible:ring-2 focus-visible:ring-sky-400 rounded-none"
             title="Discover intermediate bridge track between these two"
           >
             Find Bridge
@@ -380,7 +381,7 @@ export function MusicalRelationshipInspector({
           <button
             type="button"
             onClick={() => handleAddTrack(selectedNode.songId, selectedNode.title)}
-            className="flex-1 py-1.5 px-2 bg-[#182a18] hover:bg-[#203a20] text-emerald-300 border border-[#2d5a2d] font-semibold uppercase transition-colors cursor-pointer text-xs font-mono focus-visible:ring-2 focus-visible:ring-sky-400 rounded-none"
+            className="flex-1 py-1.5 px-2 bg-status-success-dim hover:bg-status-success-dim text-emerald-300 border border-status-success font-semibold uppercase transition-colors cursor-pointer text-xs font-mono focus-visible:ring-2 focus-visible:ring-sky-400 rounded-none"
             data-testid={`add-to-setlist-${selectedNode.songId}`}
           >
             + Add to Setlist

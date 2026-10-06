@@ -79,7 +79,7 @@ export const WaveformContainer: React.FC<WaveformContainerProps> = ({
   };
 
   return (
-    <div className={`flex flex-col bg-[#0a0a0a] border border-[#1c1c1c] rounded-none p-3 space-y-2.5 ${className}`}>
+    <div className={`flex flex-col bg-surface-panel border border-border-subtle rounded-none p-3 space-y-2.5 ${className}`}>
       {/* Waveform Controls Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
         {/* Playhead & Time Info + Quick Transport Button */}
@@ -88,33 +88,33 @@ export const WaveformContainer: React.FC<WaveformContainerProps> = ({
             <button
               type="button"
               onClick={onTogglePlayPause}
-              className={`flex items-center gap-1.5 px-2.5 py-1 font-mono text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 font-mono text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
                 isPlaying
-                  ? 'bg-[#1e3a5f] hover:bg-[#254b7a] text-[#38bdf8] border-[#38bdf8]'
-                  : 'bg-[#141414] hover:bg-[#202020] text-white border-[#2e2e2e]'
+                  ? 'bg-accent-blue-dim hover:bg-accent-blue-dim text-accent-blue border-accent-blue'
+                  : 'bg-surface-raised hover:bg-surface-hover text-white border-border-base'
               }`}
               title={isPlaying ? 'Pause [Space]' : 'Play [Space]'}
               data-testid="waveform-quick-play-pause-btn"
             >
               <span>{isPlaying ? '⏸' : '▶'}</span>
               <span>{isPlaying ? 'PAUSE' : 'PLAY'}</span>
-              <span className="text-xs text-[#a8a8a8] font-normal">[SPACE]</span>
+              <span className="text-xs text-content-muted font-normal">[SPACE]</span>
             </button>
           )}
 
-          <div className="flex items-center gap-2 bg-[#050505] px-2.5 py-1 rounded-none border border-[#242424]">
-            <span className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8]">Playhead</span>
-            <span className="font-mono text-xs font-bold text-[#ededed]">
+          <div className="flex items-center gap-2 bg-surface-deep px-2.5 py-1 rounded-none border border-border-base">
+            <span className="text-xs font-mono uppercase tracking-wider text-content-muted">Playhead</span>
+            <span className="font-mono text-xs font-bold text-content-primary">
               {formatTimeMs(playheadPositionMs ?? 0)}
             </span>
-            <span className="text-[#666666] font-mono">/</span>
-            <span className="font-mono text-xs text-[#a8a8a8]">
+            <span className="text-content-dim font-mono">/</span>
+            <span className="font-mono text-xs text-content-muted">
               {formatTimeMs(durationMs)}
             </span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-1.5 text-[#a8a8a8] font-mono text-xs">
-            <span className="text-[#a8a8a8]">Visible:</span>
+          <div className="hidden sm:flex items-center gap-1.5 text-content-muted font-mono text-xs">
+            <span className="text-content-muted">Visible:</span>
             <span>{formatTimeMs(visible.startTimeMs)} – {formatTimeMs(visible.endTimeMs)}</span>
           </div>
         </div>
@@ -122,24 +122,24 @@ export const WaveformContainer: React.FC<WaveformContainerProps> = ({
         {/* Zoom Controls & Presets */}
         <div className="flex items-center gap-2">
           {/* Zoom In / Out Buttons */}
-          <div className="flex items-center bg-[#050505] border border-[#242424] rounded-none p-0.5">
+          <div className="flex items-center bg-surface-deep border border-border-base rounded-none p-0.5">
             <button
               type="button"
               onClick={handleZoomOut}
               disabled={zoomLevel <= 1.01}
-              className="px-2 py-0.5 hover:bg-[#181818] text-[#ededed] disabled:opacity-30 disabled:hover:bg-transparent font-mono font-bold cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+              className="px-2 py-0.5 hover:bg-surface-elevated text-content-primary disabled:opacity-30 disabled:hover:bg-transparent font-mono font-bold cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
               title="Zoom Out"
             >
               −
             </button>
-            <span className="px-2 py-0.5 font-mono text-xs text-[#ededed] select-none">
+            <span className="px-2 py-0.5 font-mono text-xs text-content-primary select-none">
               {zoomLevel.toFixed(1)}x
             </span>
             <button
               type="button"
               onClick={handleZoomIn}
               disabled={zoomLevel >= 64.0}
-              className="px-2 py-0.5 hover:bg-[#181818] text-[#ededed] disabled:opacity-30 disabled:hover:bg-transparent font-mono font-bold cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+              className="px-2 py-0.5 hover:bg-surface-elevated text-content-primary disabled:opacity-30 disabled:hover:bg-transparent font-mono font-bold cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
               title="Zoom In"
             >
               +
@@ -147,7 +147,7 @@ export const WaveformContainer: React.FC<WaveformContainerProps> = ({
           </div>
 
           {/* Quick Presets */}
-          <div className="hidden md:flex items-center gap-1 bg-[#050505] p-0.5 rounded-none border border-[#242424]">
+          <div className="hidden md:flex items-center gap-1 bg-surface-deep p-0.5 rounded-none border border-border-base">
             {ZOOM_PRESETS.map((preset) => {
               const isActive = Math.abs(zoomLevel - preset.value) < 0.2;
               return (
@@ -158,10 +158,10 @@ export const WaveformContainer: React.FC<WaveformContainerProps> = ({
                     const anchor = playheadPositionMs ?? (visible.startTimeMs + visible.visibleDurationMs / 2);
                     handleZoomAtTime(preset.value, anchor);
                   }}
-                  className={`px-2 py-0.5 rounded-none text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+                  className={`px-2 py-0.5 rounded-none text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none ${
                     isActive
-                      ? 'bg-[#242424] text-white border border-[#38bdf8]/40'
-                      : 'text-[#a8a8a8] hover:text-white hover:bg-[#141414]'
+                      ? 'bg-surface-hover text-white border border-accent-blue/40'
+                      : 'text-content-muted hover:text-white hover:bg-surface-raised'
                   }`}
                 >
                   {preset.label}
@@ -171,22 +171,22 @@ export const WaveformContainer: React.FC<WaveformContainerProps> = ({
           </div>
 
           {/* Band Legend */}
-          <div className="hidden lg:flex items-center gap-2.5 ml-2 pl-3 border-l border-[#242424] text-xs font-mono uppercase tracking-wider">
-            <span className="flex items-center gap-1.5 text-[#60a5fa]">
-              <span className="w-1.5 h-1.5 rounded-none bg-[#3b82f6]" /> Low
+          <div className="hidden lg:flex items-center gap-2.5 ml-2 pl-3 border-l border-border-base text-xs font-mono uppercase tracking-wider">
+            <span className="flex items-center gap-1.5 text-accent-blue">
+              <span className="w-1.5 h-1.5 rounded-none bg-accent-blue" /> Low
             </span>
-            <span className="flex items-center gap-1.5 text-[#fbbf24]">
-              <span className="w-1.5 h-1.5 rounded-none bg-[#f59e0b]" /> Mid
+            <span className="flex items-center gap-1.5 text-accent-amber-glow">
+              <span className="w-1.5 h-1.5 rounded-none bg-accent-amber" /> Mid
             </span>
-            <span className="flex items-center gap-1.5 text-[#e4e4e7]">
-              <span className="w-1.5 h-1.5 rounded-none bg-[#ffffff]" /> High
+            <span className="flex items-center gap-1.5 text-content-primary">
+              <span className="w-1.5 h-1.5 rounded-none bg-white" /> High
             </span>
           </div>
         </div>
       </div>
 
       {/* Main Interactive 3-Band Waveform Canvas */}
-      <div className="h-48 sm:h-56 bg-[#050505] rounded-none overflow-hidden border border-[#242424]">
+      <div className="h-48 sm:h-56 bg-surface-deep rounded-none overflow-hidden border border-border-base">
         <WaveformCanvas
           analysis={analysis}
           durationMs={durationMs}

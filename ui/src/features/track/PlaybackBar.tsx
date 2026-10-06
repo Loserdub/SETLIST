@@ -68,7 +68,7 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
 
   return (
     <div
-      className={`p-3 bg-[#0a0a0d] border border-[#191922] flex flex-wrap items-center justify-between gap-4 select-none ${className}`}
+      className={`p-3 bg-surface-panel border border-border-subtle flex flex-wrap items-center justify-between gap-4 select-none ${className}`}
       data-testid="playback-bar"
     >
       {/* ── Left Section: Transport & Time Readout ─────────────────────────── */}
@@ -77,10 +77,10 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         <button
           type="button"
           onClick={handlePlayPause}
-          className={`hw-btn flex items-center gap-2 px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none active:translate-y-[1px] ${
+          className={`hw-btn flex items-center gap-2 px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none active:translate-y-[1px] ${
             isPlaying
-              ? 'bg-[#1e3a5f] hover:bg-[#254b7a] text-[#38bdf8] border-[#38bdf8]'
-              : 'bg-[#141418] hover:bg-[#202026] text-white border-[#272732]'
+              ? 'bg-accent-blue-dim hover:bg-accent-blue-dim text-accent-blue border-accent-blue'
+              : 'bg-surface-raised hover:bg-surface-hover text-white border-border-base'
           }`}
           data-testid="playback-play-pause-btn"
           title={isPlaying ? 'Pause [Space]' : 'Play [Space]'}
@@ -102,7 +102,7 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         <button
           type="button"
           onClick={() => onSeek(0)}
-          className="hw-btn px-2.5 py-1.5 bg-[#111114] hover:bg-[#1a1a1e] text-[#a1a1aa] hover:text-white border border-[#22222c] font-mono text-xs uppercase tracking-wider transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none active:translate-y-[1px]"
+          className="hw-btn px-2.5 py-1.5 bg-surface-raised hover:bg-surface-elevated text-content-muted hover:text-white border border-border-base font-mono text-xs uppercase tracking-wider transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none active:translate-y-[1px]"
           title="Jump to Start (0:00)"
           data-testid="playback-jump-start-btn"
         >
@@ -113,7 +113,7 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         <button
           type="button"
           onClick={() => handleSeekDelta(-5000)}
-          className="hw-btn px-2.5 py-1.5 bg-[#111114] hover:bg-[#1a1a1e] text-[#a1a1aa] hover:text-white border border-[#22222c] font-mono text-xs uppercase tracking-wider transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none active:translate-y-[1px]"
+          className="hw-btn px-2.5 py-1.5 bg-surface-raised hover:bg-surface-elevated text-content-muted hover:text-white border border-border-base font-mono text-xs uppercase tracking-wider transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none active:translate-y-[1px]"
           title="Seek -5s [←]"
           data-testid="playback-seek-back-5s"
         >
@@ -124,7 +124,7 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         <button
           type="button"
           onClick={() => handleSeekDelta(5000)}
-          className="hw-btn px-2.5 py-1.5 bg-[#111114] hover:bg-[#1a1a1e] text-[#a1a1aa] hover:text-white border border-[#22222c] font-mono text-xs uppercase tracking-wider transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none active:translate-y-[1px]"
+          className="hw-btn px-2.5 py-1.5 bg-surface-raised hover:bg-surface-elevated text-content-muted hover:text-white border border-border-base font-mono text-xs uppercase tracking-wider transition-colors cursor-pointer rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none active:translate-y-[1px]"
           title="Seek +5s [→]"
           data-testid="playback-seek-fwd-5s"
         >
@@ -139,8 +139,8 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
           <span className="text-sm font-bold text-white te-num tabular-nums tracking-wide">
             {formatTimeMs(positionMs)}
           </span>
-          <span className="text-[#555566] text-xs">/</span>
-          <span className="text-xs text-[#9898a4] te-num tabular-nums">
+          <span className="text-content-dim text-xs">/</span>
+          <span className="text-xs text-content-muted te-num tabular-nums">
             {formatTimeMs(durationMs)}
           </span>
         </div>
@@ -149,16 +149,16 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         <div
           className={`px-2 py-0.5 text-xs font-mono font-bold uppercase tracking-wider border rounded-[2px] flex items-center gap-1.5 ${
             isPlaying
-              ? 'bg-[#064e3b] text-[#34d399] border-[#059669]'
+              ? 'bg-status-success-dim text-status-success border-status-success'
               : state === 'paused'
-              ? 'bg-[#451a03] text-[#fbbf24] border-[#d97706]'
-              : 'bg-[#181818] text-[#a8a8a8] border-[#27272a]'
+              ? 'bg-status-warning-dim text-accent-amber-glow border-accent-amber-hover'
+              : 'bg-surface-elevated text-content-muted border-border-base'
           }`}
           data-testid="playback-status-badge"
         >
           <span
             className={`w-1.5 h-1.5 rounded-full ${
-              isPlaying ? 'bg-[#34d399] shadow-[0_0_4px_#34d399]' : state === 'paused' ? 'bg-[#fbbf24]' : 'bg-[#555555]'
+              isPlaying ? 'bg-status-success shadow-[0_0_4px_rgba(16,185,129,0.6)]' : state === 'paused' ? 'bg-accent-amber-glow' : 'bg-content-dim'
             }`}
           />
           <span>{state}</span>
@@ -169,10 +169,10 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
       <div className="flex items-center gap-3">
         {/* Play Speed Controls */}
         <div
-          className="flex items-center gap-0.5 bg-[#050505] p-1 border border-[#222222]"
+          className="flex items-center gap-0.5 bg-surface-deep p-1 border border-border-base"
           data-testid="playback-speed-controls"
         >
-          <span className="text-xs font-mono text-[#a8a8a8] px-1 uppercase tracking-wider hidden sm:inline">
+          <span className="text-xs font-mono text-content-muted px-1 uppercase tracking-wider hidden sm:inline">
             Speed:
           </span>
           {SPEED_OPTIONS.map((rate) => {
@@ -182,10 +182,10 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
                 key={rate}
                 type="button"
                 onClick={() => onSetSpeed?.(rate)}
-                className={`hw-btn px-1.5 py-0.5 font-mono text-xs uppercase transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none active:translate-y-[1px] ${
+                className={`hw-btn px-1.5 py-0.5 font-mono text-xs uppercase transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none active:translate-y-[1px] ${
                   isActive
-                    ? 'bg-[#1e3a5f] text-[#38bdf8] border-[#38bdf8] font-bold'
-                    : 'bg-[#101010] hover:bg-[#1a1a1a] text-[#a8a8a8] hover:text-white border-transparent'
+                    ? 'bg-accent-blue-dim text-accent-blue border-accent-blue font-bold'
+                    : 'bg-surface-panel hover:bg-surface-elevated text-content-muted hover:text-white border-transparent'
                 }`}
                 data-testid={`playback-speed-${rate}`}
                 title={`Set playback speed to ${rate}x`}
@@ -200,17 +200,17 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
         <button
           type="button"
           onClick={onToggleClick}
-          className={`hw-btn flex items-center gap-2 px-3 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none active:translate-y-[1px] ${
+          className={`hw-btn flex items-center gap-2 px-3 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors cursor-pointer border rounded-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none active:translate-y-[1px] ${
             clickEnabled
-              ? 'bg-[#142332] text-[#38bdf8] border-[#1e3a5f]'
-              : 'bg-[#101010] hover:bg-[#181818] text-[#a8a8a8] border-[#222222]'
+              ? 'bg-accent-blue-subtle text-accent-blue border-accent-blue-dim'
+              : 'bg-surface-panel hover:bg-surface-elevated text-content-muted border-border-base'
           }`}
           data-testid="playback-click-toggle"
           title="Toggle beat grid click track (metronome)"
         >
           <span
             className={`w-2 h-2 rounded-full ${
-              clickEnabled ? 'bg-[#38bdf8] shadow-[0_0_5px_#38bdf8]' : 'bg-[#666666]'
+              clickEnabled ? 'bg-accent-blue shadow-[0_0_5px_rgba(56,189,248,0.6)]' : 'bg-content-dim'
             }`}
           />
           <span>Click: {clickEnabled ? 'ON' : 'OFF'}</span>
@@ -218,13 +218,13 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
 
         {/* Master Volume Controls */}
         <div
-          className="flex items-center gap-2 bg-[#050505] px-2.5 py-1 border border-[#222222]"
+          className="flex items-center gap-2 bg-surface-deep px-2.5 py-1 border border-border-base"
           data-testid="playback-volume-controls"
         >
           <button
             type="button"
             onClick={toggleMute}
-            className="hw-btn text-xs hover:text-white transition-colors cursor-pointer text-[#a8a8a8] focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+            className="hw-btn text-xs hover:text-white transition-colors cursor-pointer text-content-muted focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:outline-none"
             title={currentVolume === 0 ? 'Unmute' : 'Mute'}
             aria-label={currentVolume === 0 ? 'Unmute' : 'Mute'}
             data-testid="playback-mute-toggle"
@@ -238,18 +238,18 @@ export const PlaybackBar: React.FC<PlaybackBarProps> = ({
             step="0.05"
             value={currentVolume}
             onChange={(e) => void handleVolumeChange(parseFloat(e.target.value))}
-            className="w-16 sm:w-20 h-1 bg-[#1a1a22] accent-[#38bdf8] cursor-pointer"
+            className="w-16 sm:w-20 h-1 bg-surface-elevated accent-accent-blue cursor-pointer"
             title={`Volume: ${Math.round(currentVolume * 100)}%`}
             aria-label="Master volume slider"
             data-testid="playback-volume-slider"
           />
-          <span className="text-xs font-mono text-[#a8a8a8] w-7 text-right tabular-nums">
+          <span className="text-xs font-mono text-content-muted w-7 text-right tabular-nums">
             {Math.round(currentVolume * 100)}%
           </span>
         </div>
 
         {/* Keyboard Shortcuts Hint */}
-        <div className="hidden xl:flex items-center gap-2 text-xs font-mono text-[#a8a8a8]">
+        <div className="hidden xl:flex items-center gap-2 text-xs font-mono text-content-muted">
           <span>[Space] Play/Pause</span>
           <span>•</span>
           <span>[←/→] ±5s</span>
