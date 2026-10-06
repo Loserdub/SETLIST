@@ -1102,4 +1102,20 @@ mod tests {
         assert_eq!(reloaded.energy_model.divisor, 12.0);
         assert_eq!(reloaded.key_penalties[0].mode_flip, 0.15);
     }
+
+    #[test]
+    fn test_real_db_if_present() {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            let db_path = std::path::PathBuf::from(appdata)
+                .join("com.setlist.desktop")
+                .join("library.db");
+            if db_path.exists() {
+                let conn = rusqlite::Connection::open(&db_path).expect("open real db");
+                let tracks =
+                    list_tracks(&conn, &TrackFilter::new()).expect("list_tracks from real db");
+                println!("Loaded {} tracks successfully from real db!", tracks.len());
+                assert!(tracks.len() >= 500);
+            }
+        }
+    }
 }

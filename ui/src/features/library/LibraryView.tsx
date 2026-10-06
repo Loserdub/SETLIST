@@ -771,7 +771,7 @@ export function LibraryView() {
 
   return (
     <DropZoneOverlay onDropPaths={handleIngestPaths}>
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#09090b] text-[#f4f4f5]">
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#09090b] text-[#f4f4f5]">
       {/* ── Top Header & Studio Console ── */}
       <header className="px-5 py-3 border-b border-[#27272a] bg-[#0c0c0f] flex flex-col gap-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -1180,6 +1180,7 @@ export function LibraryView() {
               void loadTracks();
             }}
             onLoadBenchmark={toggleBenchmarkMode}
+            onReload={() => void loadTracks()}
             isLoading={isLoadingTracks}
           />
         ) : rows.length === 0 ? (

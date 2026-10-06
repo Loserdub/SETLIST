@@ -185,7 +185,7 @@ export const TrackView: React.FC = () => {
 
   if (!selectedTrack) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center h-screen bg-[#080808] text-[#ededed] p-8 text-center select-none font-mono">
+      <div className="flex-1 flex flex-col items-center justify-center h-full w-full bg-[#080808] text-[#ededed] p-8 text-center select-none font-mono">
         <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-[#cccccc]">No Track Selected</h2>
         <p className="text-xs text-[#a8a8a8] max-w-sm mt-1.5 mb-6 font-sans">
           Select a track from your library to inspect its beat grid, 3-band waveform, cue points, and structural segments.
@@ -193,7 +193,7 @@ export const TrackView: React.FC = () => {
         <button
           type="button"
           onClick={() => setRoute('library')}
-          className="px-3.5 py-1.5 bg-[#181818] hover:bg-[#222222] text-[#ededed] text-xs font-mono uppercase tracking-wider border border-[#2b2b2b] transition-colors cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8]"
+          className="px-3.5 py-1.5 bg-[#181818] hover:bg-[#222222] text-[#ededed] text-xs font-mono uppercase tracking-wider border border-[#2b2b2b] transition-colors cursor-pointer rounded-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400"
         >
           Browse Library
         </button>
@@ -268,7 +268,7 @@ export const TrackView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#080808] text-[#ededed]">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#080808] text-[#ededed]">
       {/* ── Scrollable Track Inspection Area ───────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {/* ── Top Header Card ────────────────────────────────────────────────── */}

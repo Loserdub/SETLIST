@@ -7,6 +7,8 @@ use crate::profiles::target_energy;
 use crate::scoring::{transition_cost_with_config, CostModelConfig, TransitionCost};
 use core_types::{CostWeights, EnergyProfile, TrackAnalysis};
 
+pub use crate::relationship::ScoreMatrix;
+
 /// An `n x n` directed cost matrix storing transition costs between all pairs of tracks.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostMatrix {

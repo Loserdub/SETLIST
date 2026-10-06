@@ -21,3 +21,11 @@ Write-Host "Build succeeded!" -ForegroundColor Green
 Write-Host "Path:          $($ExeItem.FullName)"
 Write-Host "Size:          $([math]::Round($ExeItem.Length / 1MB, 2)) MB ($($ExeItem.Length) bytes)"
 Write-Host "Last Modified: $($ExeItem.LastWriteTime)"
+
+# Refresh desktop shortcut to point to latest binary
+$ShortcutScript = Join-Path $PSScriptRoot "make-desktop-shortcut.ps1"
+if (Test-Path $ShortcutScript) {
+    Write-Host "Refreshing desktop shortcut..." -ForegroundColor Cyan
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $ShortcutScript
+}
+

@@ -309,33 +309,43 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadTracks: async (customBackend) => {
     const backend = customBackend ?? getBackend(get().useMockBackend);
     set({ isLoadingTracks: true, tracksError: null });
-    try {
-      const tracks = await backend.listTracks();
-      const currentSelectedId = get().selectedTrackId;
-      const updatedSelected = tracks.find((t) => t.id === currentSelectedId) ?? (tracks[0] ?? null);
-      const tracksMap = new Map<string, Track>(tracks.map((t) => [t.id, t]));
-      set((state) => ({
-        tracks,
-        isLoadingTracks: false,
-        hasLoadedTracks: true,
-        selectedTrackId: updatedSelected?.id ?? null,
-        selectedTrack: updatedSelected,
-        setlist: state.setlist.map((entry) => {
-          if (!entry.track && tracksMap.has(entry.track_id)) {
-            return { ...entry, track: tracksMap.get(entry.track_id) ?? null };
-          }
-          return entry;
-        }),
-      }));
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      set({ tracksError: msg, isLoadingTracks: false, hasLoadedTracks: true });
-      get().addToast({
-        type: 'error',
-        message: 'Failed to load tracks from library',
-        details: msg,
-      });
+
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const tracks = await backend.listTracks();
+        const currentSelectedId = get().selectedTrackId;
+        const updatedSelected = tracks.find((t) => t.id === currentSelectedId) ?? (tracks[0] ?? null);
+        const tracksMap = new Map<string, Track>(tracks.map((t) => [t.id, t]));
+        set((state) => ({
+          tracks,
+          isLoadingTracks: false,
+          hasLoadedTracks: true,
+          selectedTrackId: updatedSelected?.id ?? null,
+          selectedTrack: updatedSelected,
+          setlist: state.setlist.map((entry) => {
+            if (!entry.track && tracksMap.has(entry.track_id)) {
+              return { ...entry, track: tracksMap.get(entry.track_id) ?? null };
+            }
+            return entry;
+          }),
+        }));
+        return;
+      } catch (err: unknown) {
+        lastError = err;
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+        }
+      }
     }
+
+    const msg = lastError instanceof Error ? lastError.message : String(lastError);
+    set({ tracksError: msg, isLoadingTracks: false, hasLoadedTracks: true });
+    get().addToast({
+      type: 'error',
+      message: 'Failed to load tracks from library',
+      details: msg,
+    });
   },
 
   scanFolder: async (path: string, customBackend) => {
@@ -799,45 +809,53 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    try {
-      const active = await backend.getActiveSetlist();
-      if (!active) {
-        set({ hasLoadedActiveSetlist: true });
-        return;
-      }
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const active = await backend.getActiveSetlist();
+        if (!active) {
+          set({ hasLoadedActiveSetlist: true });
+          return;
+        }
 
-      let tracks = get().tracks;
-      if (
-        active.items.length > 0 &&
-        tracks.length === 0 &&
-        !get().hasLoadedTracks &&
-        !get().isLoadingTracks &&
-        typeof backend.listTracks === 'function'
-      ) {
-        try {
-          await get().loadTracks(backend);
-          tracks = get().tracks;
-        } catch {
-          // Proceed with current state if track loading fails
+        let tracks = get().tracks;
+        if (
+          active.items.length > 0 &&
+          tracks.length === 0 &&
+          !get().hasLoadedTracks &&
+          !get().isLoadingTracks &&
+          typeof backend.listTracks === 'function'
+        ) {
+          try {
+            await get().loadTracks(backend);
+            tracks = get().tracks;
+          } catch {
+            // Proceed with current state if track loading fails
+          }
+        }
+
+        const tracksMap = new Map<string, Track>(tracks.map((t) => [t.id, t]));
+        const entries = active.items.map((item) => setlistItemToEntry(item, tracksMap));
+
+        set((state) => ({
+          activeSetlistId: active.id,
+          setlistName: active.name,
+          energyProfile: active.energy_profile,
+          setlist: recalculateSetlistTargetEnergy(entries, active.energy_profile),
+          pins: validatePins(entries.length, state.pins),
+          hasLoadedActiveSetlist: true,
+          setlistVersion: (state.setlistVersion ?? 0) + 1,
+        }));
+        return;
+      } catch (err: unknown) {
+        lastError = err;
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
         }
       }
-
-      const tracksMap = new Map<string, Track>(tracks.map((t) => [t.id, t]));
-      const entries = active.items.map((item) => setlistItemToEntry(item, tracksMap));
-
-      set((state) => ({
-        activeSetlistId: active.id,
-        setlistName: active.name,
-        energyProfile: active.energy_profile,
-        setlist: recalculateSetlistTargetEnergy(entries, active.energy_profile),
-        pins: validatePins(entries.length, state.pins),
-        hasLoadedActiveSetlist: true,
-        setlistVersion: (state.setlistVersion ?? 0) + 1,
-      }));
-    } catch (err: unknown) {
-      console.error('Failed to load active setlist from database:', err);
-      set({ hasLoadedActiveSetlist: true });
     }
+    console.error('Failed to load active setlist from database:', lastError);
+    set({ hasLoadedActiveSetlist: true });
   },
 
   persistActiveSetlist: async (customBackend) => {

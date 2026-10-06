@@ -93,7 +93,7 @@ export function StartScreen({
 
   return (
     <div
-      className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#080808] text-[#ededed] select-none"
+      className="flex-1 flex flex-col h-full overflow-y-auto bg-[#080808] text-[#ededed] select-none"
       data-testid="start-screen"
     >
       {/* ── Top Header ── */}

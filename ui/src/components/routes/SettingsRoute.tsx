@@ -83,7 +83,7 @@ export function SettingsRoute() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#080808] text-[#ededed] p-6 space-y-6 max-w-5xl">
+    <div className="flex-1 flex flex-col h-full w-full overflow-y-auto bg-[#080808] text-[#ededed] p-6 space-y-6">
       {/* Header & Global Save Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1c1c1c] pb-5">
         <div>

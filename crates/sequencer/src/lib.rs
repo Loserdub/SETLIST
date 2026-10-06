@@ -28,7 +28,7 @@ pub use profiles::{dE_target, de_target, target_energy};
 pub use relationship::{
     evaluate_bpm_relationship, evaluate_energy_relationship, evaluate_harmonic_relationship,
     evaluate_song_relationship, evaluate_style_relationship, evaluate_tuning_relationship,
-    parse_key_to_camelot, CatalogGraph,
+    parse_key_to_camelot, CatalogGraph, ScoreMatrix,
 };
 pub use scoring::{
     phi_energy, phi_energy_with_config, phi_key, phi_key_from_distance,
@@ -38,8 +38,8 @@ pub use scoring::{
     TransitionCost,
 };
 pub use solve::{
-    evaluate_path_cost, order_tracks, order_tracks_with_config, solve_open_hamiltonian_path,
-    OrderedSetlist, TrackPins,
+    evaluate_path_cost, order_tracks, order_tracks_with_config,
+    solve_open_hamiltonian_path, OrderedSetlist, TrackPins,
 };
 
 /// Error returned when sequencing or transition advising operations fail.
@@ -51,6 +51,9 @@ pub enum SequencerError {
     /// Solver was unable to find a viable sequence.
     #[error("solver failure: {0}")]
     SolverFailed(String),
+    /// Operation was cancelled.
+    #[error("operation cancelled")]
+    Cancelled,
 }
 
 /// Evaluates transition cost C_ij between two analyzed tracks using the given weights.

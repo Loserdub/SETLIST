@@ -186,12 +186,27 @@ pub fn extract_row_fields(
     )
 }
 
-/// Generates a set sheet in CSV format.
+/// Configuration options for CSV set sheet export.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CsvExportOptions {
+    /// Whether to overwrite existing destination files (default: false).
+    pub overwrite: bool,
+    /// Whether to prepend a UTF-8 Byte Order Mark (BOM: `\u{FEFF}`) for Excel compatibility (default: false).
+    pub include_bom: bool,
+}
+
+/// Generates a set sheet in CSV format with optional UTF-8 BOM.
 #[must_use]
-pub fn generate_set_sheet_csv(entries: &[SetlistEntry]) -> String {
-    let mut out = String::from(
-        "Order,Title,Artist,BPM,Camelot Key,Energy,Transition Type,Recommended Bars,Out Cue,In Cue\n",
-    );
+pub fn generate_set_sheet_csv_with_bom(entries: &[SetlistEntry], include_bom: bool) -> String {
+    let mut out = if include_bom {
+        String::from(
+            "\u{FEFF}Order,Title,Artist,BPM,Camelot Key,Energy,Transition Type,Recommended Bars,Out Cue,In Cue\n",
+        )
+    } else {
+        String::from(
+            "Order,Title,Artist,BPM,Camelot Key,Energy,Transition Type,Recommended Bars,Out Cue,In Cue\n",
+        )
+    };
 
     for (idx, entry) in entries.iter().enumerate() {
         let (order, title, artist, bpm, key, energy, trans, bars, out_cue, in_cue) =
@@ -215,6 +230,12 @@ pub fn generate_set_sheet_csv(entries: &[SetlistEntry]) -> String {
     out
 }
 
+/// Generates a set sheet in CSV format without UTF-8 BOM.
+#[must_use]
+pub fn generate_set_sheet_csv(entries: &[SetlistEntry]) -> String {
+    generate_set_sheet_csv_with_bom(entries, false)
+}
+
 /// Generates a set sheet in GitHub Flavored Markdown table format.
 #[must_use]
 pub fn generate_set_sheet_markdown(entries: &[SetlistEntry], title: Option<&str>) -> String {
@@ -230,9 +251,15 @@ pub fn generate_set_sheet_markdown(entries: &[SetlistEntry], title: Option<&str>
         let (order, title, artist, bpm, key, energy, trans, bars, out_cue, in_cue) =
             extract_row_fields(idx, entry);
 
-        // Sanitize markdown pipe character in values
-        let clean_title = title.replace('|', "\\|");
-        let clean_artist = artist.replace('|', "\\|");
+        // Sanitize markdown pipe character and newlines so rows stay on a single line
+        let clean_title = title
+            .replace('|', "\\|")
+            .replace("\r\n", " ")
+            .replace(['\r', '\n'], " ");
+        let clean_artist = artist
+            .replace('|', "\\|")
+            .replace("\r\n", " ")
+            .replace(['\r', '\n'], " ");
 
         out.push_str(&format!(
             "| {order} | {clean_title} | {clean_artist} | {bpm} | {key} | {energy} | {trans} | {bars} | {out_cue} | {in_cue} |\n"
@@ -240,6 +267,32 @@ pub fn generate_set_sheet_markdown(entries: &[SetlistEntry], title: Option<&str>
     }
 
     out
+}
+
+/// Exports setlist sheet to a CSV file with full options.
+///
+/// # Errors
+/// - Returns [`ExportError::FileExists`] if the destination file already exists and `options.overwrite` is false.
+/// - Returns [`ExportError::Io`] if file operations fail.
+pub fn export_set_sheet_csv_full<P: AsRef<Path>>(
+    entries: &[SetlistEntry],
+    output_path: P,
+    options: &CsvExportOptions,
+) -> Result<(), ExportError> {
+    let path = output_path.as_ref();
+    if path.exists() && !options.overwrite {
+        return Err(ExportError::FileExists(path.to_path_buf()));
+    }
+
+    let csv_content = generate_set_sheet_csv_with_bom(entries, options.include_bom);
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+
+    fs::write(path, csv_content.as_bytes())?;
+    Ok(())
 }
 
 /// Exports setlist sheet to a CSV file with overwrite control.
@@ -252,20 +305,14 @@ pub fn export_set_sheet_csv_with_options<P: AsRef<Path>>(
     output_path: P,
     overwrite: bool,
 ) -> Result<(), ExportError> {
-    let path = output_path.as_ref();
-    if path.exists() && !overwrite {
-        return Err(ExportError::FileExists(path.to_path_buf()));
-    }
-
-    let csv_content = generate_set_sheet_csv(entries);
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
-    }
-
-    fs::write(path, csv_content)?;
-    Ok(())
+    export_set_sheet_csv_full(
+        entries,
+        output_path,
+        &CsvExportOptions {
+            overwrite,
+            include_bom: false,
+        },
+    )
 }
 
 /// Exports setlist sheet to a CSV file.
@@ -591,5 +638,61 @@ mod tests {
         let (out_cue, in_cue) = resolve_cues(&e);
         assert_eq!(out_cue, "D");
         assert_eq!(in_cue, "C");
+    }
+
+    #[test]
+    fn test_csv_utf8_bom() {
+        let e1 = make_entry(
+            1,
+            "BOM Track",
+            "Artist",
+            120.0,
+            8,
+            CamelotLetter::A,
+            5,
+            None,
+        );
+        let csv_no_bom = generate_set_sheet_csv(&[e1.clone()]);
+        let csv_with_bom = generate_set_sheet_csv_with_bom(&[e1], true);
+
+        assert!(!csv_no_bom.starts_with('\u{FEFF}'));
+        assert!(csv_with_bom.starts_with('\u{FEFF}'));
+        assert_eq!(&csv_with_bom['\u{FEFF}'.len_utf8()..], &csv_no_bom);
+    }
+
+    #[test]
+    fn test_csv_and_markdown_markup_and_newlines() {
+        let title_weird = "Multi\nLine, Title \"With Quotes\" | and <Markup>";
+        let artist_weird = "Artist\r\nWith Carriage\nReturn";
+        let e1 = make_entry(
+            1,
+            title_weird,
+            artist_weird,
+            128.0,
+            8,
+            CamelotLetter::A,
+            6,
+            None,
+        );
+
+        // 1. CSV test
+        let csv = generate_set_sheet_csv(&[e1.clone()]);
+        // Escaped title should be wrapped in quotes and have quotes doubled
+        assert!(csv.contains("\"Multi\nLine, Title \"\"With Quotes\"\" | and <Markup>\""));
+        assert!(csv.contains("\"Artist\r\nWith Carriage\nReturn\""));
+
+        // 2. Markdown test
+        let md = generate_set_sheet_markdown(&[e1], Some("Markdown Test"));
+        // Newlines must be replaced with spaces and pipe escaped
+        assert!(md.contains("Multi Line, Title \"With Quotes\" \\| and <Markup>"));
+        assert!(md.contains("Artist With Carriage Return"));
+
+        // Count lines in markdown: header(2) + separator(1) + 1 table row = exactly 4 lines in table section
+        let table_rows: Vec<&str> = md.lines().filter(|l| l.starts_with('|')).collect();
+        assert_eq!(
+            table_rows.len(),
+            3,
+            "table should have exactly header, separator, and 1 track row"
+        );
     }
 }

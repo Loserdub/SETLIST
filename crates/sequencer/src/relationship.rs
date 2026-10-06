@@ -5,6 +5,11 @@
 //! bridge track detection, and opener/closer heuristics.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use rayon::prelude::*;
+
+use crate::SequencerError;
 
 use core_types::{
     BpmCompatibility, BpmExplanation, BridgeCandidateAnalysis, BridgeRole, Camelot, CamelotLetter,
@@ -678,22 +683,169 @@ pub fn evaluate_song_relationship(from: &Song, to: &Song) -> SongRelationship {
     }
 }
 
+/// Precomputed pairwise compatibility score matrix for a catalog of songs.
+///
+/// Stores flattened `n * n` transition scores evaluated using [`evaluate_song_relationship`].
+/// Supports fast O(1) lookups and parallel construction using Rayon.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScoreMatrix {
+    /// Total number of songs `n`.
+    pub n: usize,
+    /// Row-major flattened overall_score values (length `n * n`).
+    pub scores: Vec<f32>,
+    /// Stable map from song ID to row index.
+    pub id_to_row: HashMap<String, usize>,
+    /// Row index to song ID.
+    pub row_to_id: Vec<String>,
+}
+
+impl ScoreMatrix {
+    /// Builds a score matrix for the given slice of songs with an optional cancellation hook.
+    pub fn build_with_cancel(songs: &[Song], cancel: Option<&AtomicBool>) -> Result<Self, SequencerError> {
+        let n = songs.len();
+        let mut id_to_row = HashMap::with_capacity(n);
+        let mut row_to_id = Vec::with_capacity(n);
+
+        for (idx, song) in songs.iter().enumerate() {
+            id_to_row.insert(song.id.clone(), idx);
+            row_to_id.push(song.id.clone());
+        }
+
+        if n == 0 {
+            return Ok(Self {
+                n: 0,
+                scores: Vec::new(),
+                id_to_row,
+                row_to_id,
+            });
+        }
+
+        if let Some(c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                return Err(SequencerError::Cancelled);
+            }
+        }
+
+        let mut scores = vec![0.0f32; n * n];
+
+        scores.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
+            if let Some(c) = cancel {
+                if c.load(Ordering::Relaxed) {
+                    return;
+                }
+            }
+            let song_i = &songs[i];
+            for (j, score_slot) in row.iter_mut().enumerate() {
+                if i != j {
+                    *score_slot = evaluate_song_relationship(song_i, &songs[j]).overall_score;
+                }
+            }
+        });
+
+        if let Some(c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                return Err(SequencerError::Cancelled);
+            }
+        }
+
+        Ok(Self {
+            n,
+            scores,
+            id_to_row,
+            row_to_id,
+        })
+    }
+
+    /// Builds a score matrix for the given slice of songs in parallel using Rayon.
+    #[must_use]
+    pub fn build(songs: &[Song]) -> Self {
+        Self::build_with_cancel(songs, None).unwrap_or_else(|_| Self {
+            n: 0,
+            scores: Vec::new(),
+            id_to_row: HashMap::new(),
+            row_to_id: Vec::new(),
+        })
+    }
+
+    /// Alias to [`ScoreMatrix::build`].
+    #[must_use]
+    pub fn new(songs: &[Song]) -> Self {
+        Self::build(songs)
+    }
+
+    /// Returns the compatibility score from `from_row` to `to_row`.
+    /// Returns 0.0 if either row is out of bounds or if `from_row == to_row`.
+    #[inline]
+    #[must_use]
+    pub fn get(&self, from_row: usize, to_row: usize) -> f32 {
+        if from_row >= self.n || to_row >= self.n {
+            0.0
+        } else {
+            self.scores[from_row * self.n + to_row]
+        }
+    }
+
+    /// Returns the compatibility score between two songs by ID, or None if either ID is missing.
+    #[inline]
+    #[must_use]
+    pub fn get_by_id(&self, from_id: &str, to_id: &str) -> Option<f32> {
+        let from_row = *self.id_to_row.get(from_id)?;
+        let to_row = *self.id_to_row.get(to_id)?;
+        Some(self.get(from_row, to_row))
+    }
+
+    /// Returns the row index for a song ID.
+    #[inline]
+    #[must_use]
+    pub fn row(&self, song_id: &str) -> Option<usize> {
+        self.id_to_row.get(song_id).copied()
+    }
+}
+
 /// Catalog graph representation providing relational intelligence across an artist's catalog.
 #[derive(Debug, Clone)]
 pub struct CatalogGraph {
     /// Song storage indexed by unique song ID.
     songs: HashMap<String, Song>,
+    /// Precomputed score matrix across songs.
+    score_matrix: ScoreMatrix,
+    /// Ordered slice of songs corresponding to rows in score_matrix.
+    ordered_songs: Vec<Song>,
 }
 
 impl CatalogGraph {
-    /// Constructs a catalog graph from a slice or vector of songs.
-    #[must_use]
-    pub fn new(songs: impl IntoIterator<Item = Song>) -> Self {
+    /// Constructs a catalog graph from songs with an optional cancellation hook.
+    pub fn new_with_cancel(
+        songs: impl IntoIterator<Item = Song>,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Self, SequencerError> {
         let mut map = HashMap::new();
         for song in songs {
             map.insert(song.id.clone(), song);
         }
-        Self { songs: map }
+        let ordered_songs: Vec<Song> = map.values().cloned().collect();
+        let score_matrix = ScoreMatrix::build_with_cancel(&ordered_songs, cancel)?;
+        Ok(Self {
+            songs: map,
+            score_matrix,
+            ordered_songs,
+        })
+    }
+
+    /// Constructs a catalog graph from a slice or vector of songs.
+    #[must_use]
+    pub fn new(songs: impl IntoIterator<Item = Song>) -> Self {
+        Self::new_with_cancel(songs, None).unwrap_or_else(|_| Self {
+            songs: HashMap::new(),
+            score_matrix: ScoreMatrix::build(&[]),
+            ordered_songs: Vec::new(),
+        })
+    }
+
+    /// Returns a reference to the precomputed pairwise score matrix.
+    #[must_use]
+    pub fn score_matrix(&self) -> &ScoreMatrix {
+        &self.score_matrix
     }
 
     /// Returns a reference to a song by its unique ID.
@@ -932,25 +1084,25 @@ impl CatalogGraph {
     /// across tempo, harmonic Camelot alignment, and energy trajectories.
     #[must_use]
     pub fn find_clusters(&self) -> Vec<CatalogCluster> {
-        let song_list: Vec<&Song> = self.songs.values().collect();
-        if song_list.len() < 2 {
+        let n = self.ordered_songs.len();
+        if n < 2 {
             return Vec::new();
         }
 
-        // Build adjacency graph for pairs with mutual high compatibility (score >= 0.70)
+        // Build adjacency graph for pairs with mutual high compatibility (score >= 0.68)
         let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
-        for s in &song_list {
+        for s in &self.ordered_songs {
             adj.insert(&s.id, Vec::new());
         }
 
-        for i in 0..song_list.len() {
-            for j in (i + 1)..song_list.len() {
-                let s_a = song_list[i];
-                let s_b = song_list[j];
-                let rel_ab = evaluate_song_relationship(s_a, s_b);
-                let rel_ba = evaluate_song_relationship(s_b, s_a);
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let s_a = &self.ordered_songs[i];
+                let s_b = &self.ordered_songs[j];
+                let score_ab = self.score_matrix.get(i, j);
+                let score_ba = self.score_matrix.get(j, i);
 
-                if rel_ab.overall_score >= 0.68 && rel_ba.overall_score >= 0.68 {
+                if score_ab >= 0.68 && score_ba >= 0.68 {
                     if let Some(neighbors) = adj.get_mut(s_a.id.as_str()) {
                         neighbors.push(s_b.id.as_str());
                     }
@@ -965,7 +1117,7 @@ impl CatalogGraph {
         let mut visited: HashSet<&str> = HashSet::new();
         let mut raw_clusters = Vec::new();
 
-        for song in &song_list {
+        for song in &self.ordered_songs {
             let id = song.id.as_str();
             if visited.contains(id) {
                 continue;
@@ -1030,10 +1182,13 @@ impl CatalogGraph {
 
             // Calculate cluster cohesion: average pairwise compatibility within cluster
             let mut pair_scores = Vec::new();
-            for i in 0..member_songs.len() {
-                for j in (i + 1)..member_songs.len() {
-                    let rel = evaluate_song_relationship(member_songs[i], member_songs[j]);
-                    pair_scores.push(rel.overall_score);
+            for (i, song_a) in member_songs.iter().enumerate() {
+                let row_i = self.score_matrix.id_to_row.get(&song_a.id).copied();
+                for song_b in &member_songs[(i + 1)..] {
+                    let row_j = self.score_matrix.id_to_row.get(&song_b.id).copied();
+                    if let (Some(ri), Some(rj)) = (row_i, row_j) {
+                        pair_scores.push(self.score_matrix.get(ri, rj));
+                    }
                 }
             }
             let cohesion_score = if !pair_scores.is_empty() {
@@ -1256,13 +1411,13 @@ impl CatalogGraph {
     /// creative application suggestions (e.g. dramatic resets, hard cuts, tempo modulations).
     #[must_use]
     pub fn find_outliers(&self) -> Vec<CatalogOutlier> {
-        let total_songs = self.songs.len();
-        if total_songs < 2 {
+        let n = self.ordered_songs.len();
+        if n < 2 {
             return Vec::new();
         }
 
         // Compute average BPM across analyzed songs
-        let bpms: Vec<f64> = self.songs.values().filter_map(|s| s.bpm).collect();
+        let bpms: Vec<f64> = self.ordered_songs.iter().filter_map(|s| s.bpm).collect();
         let avg_bpm = if !bpms.is_empty() {
             Some(bpms.iter().sum::<f64>() / (bpms.len() as f64))
         } else {
@@ -1271,27 +1426,18 @@ impl CatalogGraph {
 
         let mut outliers = Vec::new();
 
-        for song in self.songs.values() {
-            let outgoing = self.get_outgoing_relationships(&song.id);
-            let incoming = self.get_incoming_relationships(&song.id);
-
+        for (i, song) in self.ordered_songs.iter().enumerate() {
             let mut max_score: f32 = 0.0;
             let mut strong_connections = 0;
             let mut viable_connections = 0;
 
-            for other in self.songs.values() {
-                if other.id == song.id {
+            for j in 0..n {
+                if i == j {
                     continue;
                 }
-                let out_rel = outgoing.iter().find(|r| r.to_song_id == other.id);
-                let in_rel = incoming.iter().find(|r| r.from_song_id == other.id);
-
-                let best_pair_score = match (out_rel, in_rel) {
-                    (Some(o), Some(i)) => o.overall_score.max(i.overall_score),
-                    (Some(o), None) => o.overall_score,
-                    (None, Some(i)) => i.overall_score,
-                    (None, None) => 0.0,
-                };
+                let out_score = self.score_matrix.get(i, j);
+                let in_score = self.score_matrix.get(j, i);
+                let best_pair_score = out_score.max(in_score);
 
                 if best_pair_score > max_score {
                     max_score = best_pair_score;
@@ -1419,7 +1565,7 @@ impl CatalogGraph {
     /// Computes high-level catalog connectivity statistics and health metrics.
     #[must_use]
     pub fn get_catalog_summary_stats(&self) -> CatalogSummaryStats {
-        let total_songs = self.songs.len();
+        let total_songs = self.ordered_songs.len();
         if total_songs < 2 {
             return CatalogSummaryStats {
                 total_songs,
@@ -1432,17 +1578,18 @@ impl CatalogGraph {
         }
 
         let total_possible = total_songs * (total_songs - 1);
+        let n = self.score_matrix.n;
         let mut strong_count = 0;
-        let mut total_score = 0.0;
+        let mut total_score = 0.0f32;
 
-        for from_song in self.songs.values() {
-            for to_song in self.songs.values() {
-                if from_song.id == to_song.id {
+        for i in 0..n {
+            for j in 0..n {
+                if i == j {
                     continue;
                 }
-                let rel = evaluate_song_relationship(from_song, to_song);
-                total_score += rel.overall_score;
-                if rel.overall_score >= 0.70 {
+                let score = self.score_matrix.get(i, j);
+                total_score += score;
+                if score >= 0.70 {
                     strong_count += 1;
                 }
             }
@@ -1711,6 +1858,335 @@ impl CatalogGraph {
         let limit = constraints.limit.unwrap_or(5);
         unique_paths.truncate(limit);
         unique_paths
+    }
+}
+
+#[cfg(test)]
+impl CatalogGraph {
+    /// Reference implementation of `find_clusters` preserving the original algorithm.
+    #[must_use]
+    pub fn reference_find_clusters(&self) -> Vec<CatalogCluster> {
+        let song_list: Vec<&Song> = self.songs.values().collect();
+        if song_list.len() < 2 {
+            return Vec::new();
+        }
+
+        // Build adjacency graph for pairs with mutual high compatibility (score >= 0.70)
+        let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        for s in &song_list {
+            adj.insert(&s.id, Vec::new());
+        }
+
+        for i in 0..song_list.len() {
+            for j in (i + 1)..song_list.len() {
+                let s_a = song_list[i];
+                let s_b = song_list[j];
+                let rel_ab = evaluate_song_relationship(s_a, s_b);
+                let rel_ba = evaluate_song_relationship(s_b, s_a);
+
+                if rel_ab.overall_score >= 0.68 && rel_ba.overall_score >= 0.68 {
+                    if let Some(neighbors) = adj.get_mut(s_a.id.as_str()) {
+                        neighbors.push(s_b.id.as_str());
+                    }
+                    if let Some(neighbors) = adj.get_mut(s_b.id.as_str()) {
+                        neighbors.push(s_a.id.as_str());
+                    }
+                }
+            }
+        }
+
+        // Find connected components using Breadth-First Search (BFS)
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut raw_clusters = Vec::new();
+
+        for song in &song_list {
+            let id = song.id.as_str();
+            if visited.contains(id) {
+                continue;
+            }
+
+            let mut component = Vec::new();
+            let mut queue = vec![id];
+            visited.insert(id);
+
+            while let Some(current) = queue.pop() {
+                component.push(current);
+                if let Some(neighbors) = adj.get(current) {
+                    for &nbr in neighbors {
+                        if !visited.contains(nbr) {
+                            visited.insert(nbr);
+                            queue.push(nbr);
+                        }
+                    }
+                }
+            }
+
+            // Retain clusters with at least 2 tracks
+            if component.len() >= 2 {
+                raw_clusters.push(component);
+            }
+        }
+
+        // Build structured CatalogCluster models
+        let mut clusters = Vec::new();
+        for (idx, member_ids) in raw_clusters.into_iter().enumerate() {
+            let member_songs: Vec<&Song> = member_ids
+                .iter()
+                .filter_map(|id| self.get_song(id))
+                .collect();
+
+            // Calculate center BPM
+            let bpms: Vec<f64> = member_songs.iter().filter_map(|s| s.bpm).collect();
+            let center_bpm = if !bpms.is_empty() {
+                Some(bpms.iter().sum::<f64>() / (bpms.len() as f64))
+            } else {
+                None
+            };
+
+            // Collect Camelot keys
+            let mut keys: Vec<String> = member_songs
+                .iter()
+                .filter_map(|s| s.camelot_code.clone().or_else(|| s.musical_key.clone()))
+                .collect();
+            keys.sort();
+            keys.dedup();
+
+            // Calculate average energy
+            let energies: Vec<f32> = member_songs
+                .iter()
+                .filter_map(|s| s.energy_rating.map(|e| e as f32))
+                .collect();
+            let average_energy = if !energies.is_empty() {
+                Some(energies.iter().sum::<f32>() / (energies.len() as f32))
+            } else {
+                None
+            };
+
+            // Calculate cluster cohesion: average pairwise compatibility within cluster
+            let mut pair_scores = Vec::new();
+            for i in 0..member_songs.len() {
+                for j in (i + 1)..member_songs.len() {
+                    let rel = evaluate_song_relationship(member_songs[i], member_songs[j]);
+                    pair_scores.push(rel.overall_score);
+                }
+            }
+            let cohesion_score = if !pair_scores.is_empty() {
+                pair_scores.iter().sum::<f32>() / (pair_scores.len() as f32)
+            } else {
+                0.80
+            };
+
+            // Generate descriptive label
+            let tempo_str = center_bpm
+                .map(|b| format!("~{:.0} BPM", b))
+                .unwrap_or_else(|| "Mixed BPM".to_string());
+            let keys_str = if !keys.is_empty() {
+                format!(" ({})", keys.join(", "))
+            } else {
+                String::new()
+            };
+            let label = format!("Cluster #{}: {}{}", idx + 1, tempo_str, keys_str);
+
+            let description = format!(
+                "A cohesive group of {} songs featuring aligned tempo ({}) and harmonious key progression.",
+                member_songs.len(),
+                tempo_str
+            );
+
+            clusters.push(CatalogCluster {
+                id: format!("cluster_{}", idx + 1),
+                label,
+                song_ids: member_ids.into_iter().map(String::from).collect(),
+                center_bpm,
+                camelot_keys: keys,
+                average_energy,
+                cohesion_score,
+                description,
+            });
+        }
+
+        // Sort by member count descending, then cohesion score descending
+        clusters.sort_by(|a, b| {
+            b.song_ids.len().cmp(&a.song_ids.len()).then_with(|| {
+                b.cohesion_score
+                    .partial_cmp(&a.cohesion_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        });
+
+        clusters
+    }
+
+    /// Reference implementation of `find_outliers` preserving the original algorithm.
+    #[must_use]
+    pub fn reference_find_outliers(&self) -> Vec<CatalogOutlier> {
+        let total_songs = self.songs.len();
+        if total_songs < 2 {
+            return Vec::new();
+        }
+
+        // Compute average BPM across analyzed songs
+        let bpms: Vec<f64> = self.songs.values().filter_map(|s| s.bpm).collect();
+        let avg_bpm = if !bpms.is_empty() {
+            Some(bpms.iter().sum::<f64>() / (bpms.len() as f64))
+        } else {
+            None
+        };
+
+        let mut outliers = Vec::new();
+
+        for song in self.songs.values() {
+            let outgoing = self.get_outgoing_relationships(&song.id);
+            let incoming = self.get_incoming_relationships(&song.id);
+
+            let mut max_score: f32 = 0.0;
+            let mut strong_connections = 0;
+            let mut viable_connections = 0;
+
+            for other in self.songs.values() {
+                if other.id == song.id {
+                    continue;
+                }
+                let out_rel = outgoing.iter().find(|r| r.to_song_id == other.id);
+                let in_rel = incoming.iter().find(|r| r.from_song_id == other.id);
+
+                let best_pair_score = match (out_rel, in_rel) {
+                    (Some(o), Some(i)) => o.overall_score.max(i.overall_score),
+                    (Some(o), None) => o.overall_score,
+                    (None, Some(i)) => i.overall_score,
+                    (None, None) => 0.0,
+                };
+
+                if best_pair_score > max_score {
+                    max_score = best_pair_score;
+                }
+                if best_pair_score >= 0.70 {
+                    strong_connections += 1;
+                }
+                if best_pair_score >= 0.50 {
+                    viable_connections += 1;
+                }
+            }
+
+            let mut reasons = Vec::new();
+
+            if song.bpm.is_none() || song.camelot_code.is_none() && song.musical_key.is_none() {
+                reasons.push(
+                    "Missing BPM or musical key analysis — track metadata incomplete.".to_string(),
+                );
+            }
+
+            if let (Some(bpm), Some(avg)) = (song.bpm, avg_bpm) {
+                let delta = (bpm - avg).abs();
+                if delta >= 18.0 {
+                    reasons.push(format!(
+                        "Unusual tempo ({:.1} BPM vs catalog average ~{:.1} BPM).",
+                        bpm, avg
+                    ));
+                }
+            }
+
+            if let Some(e) = song.energy_rating {
+                if e == 10 {
+                    reasons.push("Extreme maximum energy (rating 10/10); functions best as an explosive climax or hard drop.".to_string());
+                } else if e == 1 {
+                    reasons.push("Minimal acoustic energy (rating 1/10); functions best as a quiet intro or atmospheric encore.".to_string());
+                }
+            }
+
+            if strong_connections == 0 {
+                reasons.push("No strong (≥70% compatibility) harmonic or tempo transitions found in the catalog.".to_string());
+            } else if strong_connections == 1 {
+                reasons.push("Only 1 strong connection found in the catalog.".to_string());
+            }
+
+            // Flag as outlier if it has <= 1 strong connection, max score < 0.68, or missing key/tempo
+            let is_outlier = strong_connections <= 1
+                || max_score < 0.68
+                || song.bpm.is_none()
+                || (song.camelot_code.is_none() && song.musical_key.is_none());
+
+            if is_outlier {
+                reasons.push("Creative opportunity: suitable for intentional hard cuts, energy resets, or bridge-mediated transitions.".to_string());
+
+                outliers.push(CatalogOutlier {
+                    song_id: song.id.clone(),
+                    title: song.title.clone(),
+                    artist: song.artist.clone(),
+                    strong_connection_count: strong_connections,
+                    total_viable_count: viable_connections,
+                    max_compatibility_score: max_score,
+                    bpm: song.bpm,
+                    camelot_code: song
+                        .camelot_code
+                        .clone()
+                        .or_else(|| song.musical_key.clone()),
+                    energy_rating: song.energy_rating,
+                    reasons,
+                });
+            }
+        }
+
+        // Sort by least connected (lowest max score) first
+        outliers.sort_by(|a, b| {
+            a.max_compatibility_score
+                .partial_cmp(&b.max_compatibility_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.strong_connection_count.cmp(&b.strong_connection_count))
+        });
+
+        outliers
+    }
+
+    /// Reference implementation of `get_catalog_summary_stats` preserving the original algorithm.
+    #[must_use]
+    pub fn reference_get_catalog_summary_stats(&self) -> CatalogSummaryStats {
+        let total_songs = self.songs.len();
+        if total_songs < 2 {
+            return CatalogSummaryStats {
+                total_songs,
+                total_possible_transitions: 0,
+                strong_transitions_count: 0,
+                average_compatibility: 0.0,
+                cluster_count: 0,
+                outlier_count: total_songs,
+            };
+        }
+
+        let total_possible = total_songs * (total_songs - 1);
+        let mut strong_count = 0;
+        let mut total_score = 0.0;
+
+        for from_song in self.songs.values() {
+            for to_song in self.songs.values() {
+                if from_song.id == to_song.id {
+                    continue;
+                }
+                let rel = evaluate_song_relationship(from_song, to_song);
+                total_score += rel.overall_score;
+                if rel.overall_score >= 0.70 {
+                    strong_count += 1;
+                }
+            }
+        }
+
+        let average_compatibility = if total_possible > 0 {
+            total_score / (total_possible as f32)
+        } else {
+            0.0
+        };
+
+        let clusters = self.reference_find_clusters();
+        let outliers = self.reference_find_outliers();
+
+        CatalogSummaryStats {
+            total_songs,
+            total_possible_transitions: total_possible,
+            strong_transitions_count: strong_count,
+            average_compatibility,
+            cluster_count: clusters.len(),
+            outlier_count: outliers.len(),
+        }
     }
 }
 
@@ -2154,5 +2630,178 @@ mod tests {
         let path = &paths[0];
         assert_eq!(path.songs.len(), 3);
         assert_eq!(path.total_duration_seconds, 720.0); // 12 minutes
+    }
+
+    fn generate_fixed_seed_test_catalog(count: usize, seed: u64) -> Vec<Song> {
+        let mut rng = crate::solve::SimpleRng::new(seed);
+        let mut songs = Vec::with_capacity(count);
+        for i in 0..count {
+            let has_bpm = rng.next_f32() > 0.05;
+            let bpm = if has_bpm {
+                Some(100.0 + (rng.next_f32() * 60.0) as f64)
+            } else {
+                None
+            };
+            let has_key = rng.next_f32() > 0.05;
+            let camelot_code = if has_key {
+                let num = rng.gen_range(1, 13);
+                let letter = if rng.next_f32() < 0.5 { "A" } else { "B" };
+                Some(format!("{}{}", num, letter))
+            } else {
+                None
+            };
+            let energy = Some(rng.gen_range(1, 11) as u8);
+            songs.push(Song {
+                id: format!("song_{:04}", i),
+                title: format!("Test Song {}", i),
+                artist: "Test Artist".to_string(),
+                duration_seconds: 180.0 + (rng.next_f32() * 120.0) as f64,
+                bpm,
+                musical_key: camelot_code.clone(),
+                mode: None,
+                camelot_code,
+                tuning: Some("Standard".to_string()),
+                capo: Some(0),
+                energy_rating: energy,
+                lead_performer: None,
+                tags: vec!["electronic".to_string()],
+                notes: None,
+            });
+        }
+        songs
+    }
+
+    #[test]
+    fn test_matrix_equivalence_on_80_synthetic_songs() {
+        let songs = generate_fixed_seed_test_catalog(80, 42);
+        let graph = CatalogGraph::new(songs);
+
+        // 1. Stats equivalence
+        let new_stats = graph.get_catalog_summary_stats();
+        let ref_stats = graph.reference_get_catalog_summary_stats();
+
+        assert_eq!(new_stats.total_songs, ref_stats.total_songs);
+        assert_eq!(
+            new_stats.total_possible_transitions,
+            ref_stats.total_possible_transitions
+        );
+        assert_eq!(
+            new_stats.strong_transitions_count,
+            ref_stats.strong_transitions_count
+        );
+        assert!(
+            (new_stats.average_compatibility - ref_stats.average_compatibility).abs() < 1e-6,
+            "average_compatibility mismatch: {} vs {}",
+            new_stats.average_compatibility,
+            ref_stats.average_compatibility
+        );
+        assert_eq!(new_stats.cluster_count, ref_stats.cluster_count);
+        assert_eq!(new_stats.outlier_count, ref_stats.outlier_count);
+
+        // 2. Clusters equivalence
+        let new_clusters = graph.find_clusters();
+        let ref_clusters = graph.reference_find_clusters();
+
+        assert_eq!(new_clusters.len(), ref_clusters.len());
+        for (idx, (nc, rc)) in new_clusters.iter().zip(&ref_clusters).enumerate() {
+            assert_eq!(nc.id, rc.id, "Cluster {} id mismatch", idx);
+            assert_eq!(nc.label, rc.label, "Cluster {} label mismatch", idx);
+            assert_eq!(
+                nc.song_ids, rc.song_ids,
+                "Cluster {} song_ids mismatch",
+                idx
+            );
+            assert_eq!(
+                nc.camelot_keys, rc.camelot_keys,
+                "Cluster {} keys mismatch",
+                idx
+            );
+            assert_eq!(
+                nc.description, rc.description,
+                "Cluster {} desc mismatch",
+                idx
+            );
+            if let (Some(nb), Some(rb)) = (nc.center_bpm, rc.center_bpm) {
+                assert!(
+                    (nb - rb).abs() < 1e-6,
+                    "Cluster {} center_bpm mismatch: {} vs {}",
+                    idx,
+                    nb,
+                    rb
+                );
+            } else {
+                assert_eq!(
+                    nc.center_bpm, rc.center_bpm,
+                    "Cluster {} center_bpm mismatch",
+                    idx
+                );
+            }
+            if let (Some(ne), Some(re)) = (nc.average_energy, rc.average_energy) {
+                assert!(
+                    (ne - re).abs() < 1e-6,
+                    "Cluster {} average_energy mismatch: {} vs {}",
+                    idx,
+                    ne,
+                    re
+                );
+            } else {
+                assert_eq!(
+                    nc.average_energy, rc.average_energy,
+                    "Cluster {} average_energy mismatch",
+                    idx
+                );
+            }
+            assert!(
+                (nc.cohesion_score - rc.cohesion_score).abs() < 1e-6,
+                "Cluster {} cohesion_score mismatch: {} vs {}",
+                idx,
+                nc.cohesion_score,
+                rc.cohesion_score
+            );
+        }
+
+        // 3. Outliers equivalence
+        let new_outliers = graph.find_outliers();
+        let ref_outliers = graph.reference_find_outliers();
+
+        assert_eq!(new_outliers.len(), ref_outliers.len());
+        for (idx, (no, ro)) in new_outliers.iter().zip(&ref_outliers).enumerate() {
+            assert_eq!(no.song_id, ro.song_id, "Outlier {} song_id mismatch", idx);
+            assert_eq!(no.title, ro.title, "Outlier {} title mismatch", idx);
+            assert_eq!(no.artist, ro.artist, "Outlier {} artist mismatch", idx);
+            assert_eq!(
+                no.strong_connection_count, ro.strong_connection_count,
+                "Outlier {} strong_connection_count mismatch",
+                idx
+            );
+            assert_eq!(
+                no.total_viable_count, ro.total_viable_count,
+                "Outlier {} total_viable_count mismatch",
+                idx
+            );
+            if let (Some(nb), Some(rb)) = (no.bpm, ro.bpm) {
+                assert!((nb - rb).abs() < 1e-6, "Outlier {} bpm mismatch", idx);
+            } else {
+                assert_eq!(no.bpm, ro.bpm, "Outlier {} bpm mismatch", idx);
+            }
+            assert_eq!(
+                no.camelot_code, ro.camelot_code,
+                "Outlier {} camelot_code mismatch",
+                idx
+            );
+            assert_eq!(
+                no.energy_rating, ro.energy_rating,
+                "Outlier {} energy_rating mismatch",
+                idx
+            );
+            assert_eq!(no.reasons, ro.reasons, "Outlier {} reasons mismatch", idx);
+            assert!(
+                (no.max_compatibility_score - ro.max_compatibility_score).abs() < 1e-6,
+                "Outlier {} max_compatibility_score mismatch: {} vs {}",
+                idx,
+                no.max_compatibility_score,
+                ro.max_compatibility_score
+            );
+        }
     }
 }

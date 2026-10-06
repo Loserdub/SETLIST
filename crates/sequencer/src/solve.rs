@@ -5,6 +5,9 @@
 //! - Simulated Annealing with 2-opt and Or-opt moves for n > 12.
 //! - First anchor, last anchor, and must-exclude constraints.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use crate::matrix::{build_cost_matrix_with_config, CostMatrix};
 use crate::profiles::dE_target;
 use crate::scoring::{transition_cost_with_config, CostModelConfig, TransitionCost};
@@ -233,6 +236,9 @@ pub(crate) fn evaluate_dynamic_cost(
     total
 }
 
+/// Number of nearest neighbor candidates to consider per track in 2-opt refinement.
+pub const K_NEIGHBORS: usize = 25;
+
 fn refine_dynamic_trajectory(
     order: &mut [usize],
     tracks: &[TrackAnalysis],
@@ -266,6 +272,43 @@ fn refine_dynamic_trajectory(
         edge_costs.push(cost);
     }
 
+    // If m is small enough (<= K_NEIGHBORS), check all pairs.
+    // Otherwise, build a neighbor list of top K_NEIGHBORS candidates for each track.
+    let neighbor_list: Option<Vec<Vec<usize>>> = if m > K_NEIGHBORS {
+        let mut nbrs = Vec::with_capacity(tracks.len());
+        for u in 0..tracks.len() {
+            let mut candidates: Vec<(usize, f32)> = (0..tracks.len())
+                .filter(|&v| v != u)
+                .map(|v| {
+                    let cost =
+                        transition_cost_with_config(&tracks[u], &tracks[v], weights, 0.0, config)
+                            .total;
+                    (v, cost)
+                })
+                .collect();
+            candidates.sort_unstable_by(|a, b| {
+                a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            nbrs.push(
+                candidates
+                    .into_iter()
+                    .take(K_NEIGHBORS)
+                    .map(|(v, _)| v)
+                    .collect(),
+            );
+        }
+        Some(nbrs)
+    } else {
+        None
+    };
+
+    // Position mapping for fast neighbor index lookup: pos_of[track_id] = current index in order
+    let max_track_id = order.iter().copied().max().unwrap_or(0);
+    let mut pos_of = vec![usize::MAX; max_track_id + 1];
+    for (pos, &t) in order.iter().enumerate() {
+        pos_of[t] = pos;
+    }
+
     let mut improved = true;
     let mut passes = 0;
     let mut candidate_edge_costs: Vec<f32> = Vec::with_capacity(m);
@@ -275,12 +318,46 @@ fn refine_dynamic_trajectory(
         passes += 1;
 
         for i in start_idx..end_idx {
-            for j in (i + 1)..=end_idx {
+            // Determine candidate j values for 2-opt
+            let mut j_candidates: Vec<usize> = Vec::new();
+            if let Some(ref nbrs) = neighbor_list {
+                let u = if i > 0 { order[i - 1] } else { order[i] };
+                if let Some(u_nbrs) = nbrs.get(u) {
+                    for &target_track in u_nbrs {
+                        if target_track < pos_of.len() {
+                            let pos = pos_of[target_track];
+                            if pos > i && pos <= end_idx {
+                                j_candidates.push(pos);
+                            }
+                        }
+                    }
+                }
+                let w = order[i];
+                if let Some(w_nbrs) = nbrs.get(w) {
+                    for &target_track in w_nbrs {
+                        if target_track < pos_of.len() {
+                            let pos = pos_of[target_track];
+                            if pos > 0 {
+                                let j = pos - 1;
+                                if j > i && j <= end_idx {
+                                    j_candidates.push(j);
+                                }
+                            }
+                        }
+                    }
+                }
+                j_candidates.sort_unstable();
+                j_candidates.dedup();
+            }
+
+            let j_iter: Box<dyn Iterator<Item = usize>> = if neighbor_list.is_some() {
+                Box::new(j_candidates.into_iter())
+            } else {
+                Box::new((i + 1)..=end_idx)
+            };
+
+            for j in j_iter {
                 // The 2-opt reversal of order[i..=j] only alters edges connecting to or within [i, j]:
-                // - Edge i - 1 (if i > 0): connects order[i - 1] to the new first element order[j]
-                // - Internal edges k in i..j: reversed sequence order[j - (k - i)] -> order[j - (k - i) - 1]
-                // - Edge j (if j < m - 1): connects the new last element order[i] to order[j + 1]
-                // All other edges k < k_start and k > k_end remain strictly identical.
                 let k_start = if i > 0 { i - 1 } else { i };
                 let k_end = if j < m - 1 { j } else { j - 1 };
 
@@ -318,6 +395,9 @@ fn refine_dynamic_trajectory(
                 let delta = new_cost_sum - old_cost_sum;
                 if delta < -1e-4 {
                     order[i..=j].reverse();
+                    for p in i..=j {
+                        pos_of[order[p]] = p;
+                    }
                     for (idx, k) in (k_start..=k_end).enumerate() {
                         edge_costs[k] = candidate_edge_costs[idx];
                     }
@@ -528,14 +608,49 @@ fn solve_simulated_annealing(
     let mut temp = t_init;
 
     for _ in 0..iterations {
-        let mut candidate = current.clone();
         let move_type = rng.next_u64() % 2;
 
         if move_type == 0 {
-            // 2-opt move: reverse subsegment candidate[i..=j]
+            // 2-opt move: reverse subsegment current[i..=j]
             let i = rng.gen_range(start_idx, end_idx);
             let j = rng.gen_range(i + 1, end_idx + 1);
-            candidate[i..=j].reverse();
+
+            let mut old_cost = 0.0;
+            let mut new_cost = 0.0;
+            if i > 0 {
+                old_cost += matrix.cost(current[i - 1], current[i]);
+                new_cost += matrix.cost(current[i - 1], current[j]);
+            }
+            if j < m - 1 {
+                old_cost += matrix.cost(current[j], current[j + 1]);
+                new_cost += matrix.cost(current[i], current[j + 1]);
+            }
+            for k in i..j {
+                old_cost += matrix.cost(current[k], current[k + 1]);
+                new_cost += matrix.cost(current[k + 1], current[k]);
+            }
+
+            let delta = new_cost - old_cost;
+            let accept = delta <= 0.0 || rng.next_f32() < (-delta / temp).exp();
+
+            if accept {
+                current[i..=j].reverse();
+                current_cost += delta;
+                #[cfg(debug_assertions)]
+                {
+                    let full = evaluate_path_cost(&current, matrix);
+                    debug_assert!(
+                        (full - current_cost).abs() < 1e-3,
+                        "full cost {} vs incremental cost {}",
+                        full,
+                        current_cost
+                    );
+                }
+                if current_cost < best_cost {
+                    best.clone_from(&current);
+                    best_cost = current_cost;
+                }
+            }
         } else {
             // Or-opt move: relocate a block of length 1, 2, or 3
             let span = end_idx - start_idx + 1;
@@ -548,22 +663,82 @@ fn solve_simulated_annealing(
 
             if i != j {
                 if i < j {
-                    candidate[i..j + len].rotate_left(len);
+                    // Block current[i..i+len] moved right to position j
+                    let mut old_cost = 0.0;
+                    let mut new_cost = 0.0;
+
+                    if i > 0 {
+                        old_cost += matrix.cost(current[i - 1], current[i]);
+                        new_cost += matrix.cost(current[i - 1], current[i + len]);
+                    }
+                    old_cost += matrix.cost(current[i + len - 1], current[i + len]);
+                    new_cost += matrix.cost(current[j + len - 1], current[i]);
+
+                    if j + len < m {
+                        old_cost += matrix.cost(current[j + len - 1], current[j + len]);
+                        new_cost += matrix.cost(current[i + len - 1], current[j + len]);
+                    }
+
+                    let delta = new_cost - old_cost;
+                    let accept = delta <= 0.0 || rng.next_f32() < (-delta / temp).exp();
+
+                    if accept {
+                        current[i..j + len].rotate_left(len);
+                        current_cost += delta;
+                        #[cfg(debug_assertions)]
+                        {
+                            let full = evaluate_path_cost(&current, matrix);
+                            debug_assert!(
+                                (full - current_cost).abs() < 1e-3,
+                                "full cost {} vs incremental cost {}",
+                                full,
+                                current_cost
+                            );
+                        }
+                        if current_cost < best_cost {
+                            best.clone_from(&current);
+                            best_cost = current_cost;
+                        }
+                    }
                 } else {
-                    candidate[j..i + len].rotate_right(len);
+                    // j < i: Block current[i..i+len] moved left to position j
+                    let mut old_cost = 0.0;
+                    let mut new_cost = 0.0;
+
+                    if j > 0 {
+                        old_cost += matrix.cost(current[j - 1], current[j]);
+                        new_cost += matrix.cost(current[j - 1], current[i]);
+                    }
+                    old_cost += matrix.cost(current[i - 1], current[i]);
+                    new_cost += matrix.cost(current[i + len - 1], current[j]);
+
+                    if i + len < m {
+                        old_cost += matrix.cost(current[i + len - 1], current[i + len]);
+                        new_cost += matrix.cost(current[i - 1], current[i + len]);
+                    }
+
+                    let delta = new_cost - old_cost;
+                    let accept = delta <= 0.0 || rng.next_f32() < (-delta / temp).exp();
+
+                    if accept {
+                        current[j..i + len].rotate_right(len);
+                        current_cost += delta;
+                        #[cfg(debug_assertions)]
+                        {
+                            let full = evaluate_path_cost(&current, matrix);
+                            debug_assert!(
+                                (full - current_cost).abs() < 1e-3,
+                                "full cost {} vs incremental cost {}",
+                                full,
+                                current_cost
+                            );
+                        }
+                        if current_cost < best_cost {
+                            best.clone_from(&current);
+                            best_cost = current_cost;
+                        }
+                    }
                 }
-            }
-        }
-
-        let candidate_cost = evaluate_path_cost(&candidate, matrix);
-        let delta = candidate_cost - current_cost;
-
-        if delta <= 0.0 || rng.next_f32() < (-delta / temp).exp() {
-            current = candidate;
-            current_cost = candidate_cost;
-            if current_cost < best_cost {
-                best = current.clone();
-                best_cost = current_cost;
             }
         }
 
@@ -1019,6 +1194,43 @@ mod tests {
             let mut sorted = order.clone();
             sorted.sort_unstable();
             assert_eq!(sorted, (0..n).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn test_order_tracks_large_set_cost_quality_over_20_seeded_catalogs() {
+        let weights = CostWeights::default();
+        for seed in 1..=20 {
+            let n = 25;
+            let tracks: Vec<TrackAnalysis> = (0..n)
+                .map(|i| {
+                    let mut rng = SimpleRng::new(seed * 1000 + i as u64);
+                    let bpm = 110.0 + (rng.next_f32() * 40.0) as f64;
+                    let camelot = rng.gen_range(1, 13) as u8;
+                    let energy = rng.gen_range(1, 11) as u8;
+                    make_dummy_analysis(bpm, camelot, energy)
+                })
+                .collect();
+
+            let pins = TrackPins::new().with_first(0).with_last(n - 1);
+            let result = order_tracks(&tracks, &weights, EnergyProfile::LinearRamp, &pins, seed)
+                .expect("solver should succeed");
+
+            assert_eq!(result.order.len(), n);
+            assert_eq!(result.order.first(), Some(&0));
+            assert_eq!(result.order.last(), Some(&(n - 1)));
+
+            // Permutation validity
+            let mut sorted = result.order.clone();
+            sorted.sort_unstable();
+            assert_eq!(sorted, (0..n).collect::<Vec<_>>());
+
+            // Edge costs non-empty and finite
+            assert_eq!(result.edge_costs.len(), n - 1);
+            for ec in &result.edge_costs {
+                assert!(ec.total >= 0.0 && ec.total.is_finite());
+            }
+            assert!(result.total_cost >= 0.0 && result.total_cost.is_finite());
         }
     }
 }

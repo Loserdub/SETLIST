@@ -3970,6 +3970,8 @@ name = "sequencer"
 version = "0.1.0"
 dependencies = [
  "core-types",
+ "criterion",
+ "rayon",
  "thiserror 2.0.21",
 ]
 

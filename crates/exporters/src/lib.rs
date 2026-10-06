@@ -4,15 +4,19 @@ pub mod m3u8;
 pub mod rekordbox;
 pub mod set_sheet;
 
-pub use m3u8::{export_m3u8, export_m3u8_with_options, generate_m3u8, resolve_absolute_path};
+pub use m3u8::{
+    export_m3u8, export_m3u8_with_mode, export_m3u8_with_options, generate_m3u8,
+    generate_m3u8_with_mode, resolve_absolute_path, resolve_relative_path, M3u8PathMode,
+};
 pub use rekordbox::{
-    encode_location, export_rekordbox_xml, export_rekordbox_xml_with_options, format_tonality,
-    generate_rekordbox_xml, parse_hex_color, KeyNotation, ProductInfo, RekordboxExportOptions,
+    encode_location, escape_xml_attr, export_rekordbox_xml, export_rekordbox_xml_with_options,
+    format_tonality, generate_rekordbox_xml, parse_hex_color, KeyNotation, ProductInfo,
+    RekordboxExportOptions,
 };
 pub use set_sheet::{
-    export_set_sheet_csv, export_set_sheet_csv_with_options, export_set_sheet_markdown,
-    export_set_sheet_markdown_with_options, generate_set_sheet_csv, generate_set_sheet_markdown,
-    resolve_cues,
+    export_set_sheet_csv, export_set_sheet_csv_full, export_set_sheet_csv_with_options,
+    export_set_sheet_markdown, export_set_sheet_markdown_with_options, generate_set_sheet_csv,
+    generate_set_sheet_csv_with_bom, generate_set_sheet_markdown, resolve_cues, CsvExportOptions,
 };
 
 use core_types::SetlistEntry;

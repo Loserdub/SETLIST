@@ -66,6 +66,23 @@ impl Default for RekordboxExportOptions {
     }
 }
 
+/// Escapes an XML attribute value for the predefined XML entities: `&`, `<`, `>`, `"`, and `'`.
+#[must_use]
+pub fn escape_xml_attr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Encodes an individual URI path component according to RFC 3986 percent-encoding.
 #[must_use]
 pub fn encode_path_component(s: &str) -> String {
@@ -96,24 +113,23 @@ pub fn encode_path_component(s: &str) -> String {
 
 /// Formats a local filesystem path as a percent-encoded `file://localhost/` URI.
 ///
-/// Handles Windows drive letters (e.g. `C:\`), spaces, symbols, and Unicode characters.
+/// Handles Windows drive letters (e.g. `C:\`), verbatim `\\?\` prefixes, spaces,
+/// symbols, emoji, and non-ASCII characters according to Pioneer Rekordbox XML specifications.
 #[must_use]
 pub fn encode_location<P: AsRef<Path>>(path: P) -> String {
     let path_str = path.as_ref().to_string_lossy();
-    let normalized = path_str.replace('\\', "/");
+    let raw = path_str.strip_prefix(r"\\?\").unwrap_or(&path_str);
+    let normalized = raw.replace('\\', "/");
 
     let parts: Vec<&str> = normalized.split('/').collect();
     let mut encoded_parts = Vec::new();
 
-    for (i, part) in parts.iter().enumerate() {
+    for part in parts {
         if part.is_empty() {
             continue;
         }
         // Preserve Windows drive letter without percent-encoding the colon (e.g. "C:")
-        if i == 0
-            && part.len() == 2
-            && part.as_bytes()[1] == b':'
-            && part.as_bytes()[0].is_ascii_alphabetic()
+        if part.len() == 2 && part.as_bytes()[1] == b':' && part.as_bytes()[0].is_ascii_alphabetic()
         {
             encoded_parts.push(part.to_string());
         } else {
@@ -862,5 +878,220 @@ mod tests {
         // Cleanup
         let _ = fs::remove_file(temp_file);
         let _ = fs::remove_dir(temp_dir);
+    }
+
+    #[test]
+    fn test_attribute_escaping_and_markup() {
+        let title_with_markup = r#"<Rock & Roll> "Live" at St. John's & O'Connor's"#;
+        let artist_with_markup = r#"The "Artists" & <Crew> '2026'"#;
+        let long_album = "A".repeat(5000);
+
+        let track = create_test_track("t_markup", title_with_markup, r"C:\Music\Song.mp3", 125.0);
+        let mut entry = SetlistEntry {
+            position: 1,
+            track_id: "t_markup".to_string(),
+            track: Some(track),
+            transition: None,
+            target_energy: None,
+        };
+        if let Some(ref mut t) = entry.track {
+            t.tags.artist = Some(artist_with_markup.to_string());
+            t.tags.album = Some(long_album);
+        }
+
+        let opts = RekordboxExportOptions {
+            playlist_name: r#"Set & "Show" <Summer>"#.to_string(),
+            ..Default::default()
+        };
+
+        let xml = generate_rekordbox_xml(&[entry], &opts).expect("should generate valid XML");
+        assert!(xml.contains("The &quot;Artists&quot; &amp; &lt;Crew&gt; &apos;2026&apos;"));
+        assert!(xml.contains("Set &amp; &quot;Show&quot; &lt;Summer&gt;"));
+
+        // Verify strict quick-xml parsing does not error on markup or long attributes
+        let mut reader = Reader::from_str(&xml);
+        let mut count = 0;
+        let mut buf = Vec::new();
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(QEvent::Eof) => break,
+                Ok(_) => count += 1,
+                Err(e) => panic!("XML parsing failed on markup track: {e:?}"),
+            }
+            buf.clear();
+        }
+        assert!(count > 10);
+    }
+
+    #[test]
+    fn test_rekordbox_strict_round_trip() {
+        let t1 = create_test_track("t1", "Track One & Only", r"C:\Music\Track1.mp3", 124.5);
+        let mut t2 = create_test_track("t2", "Track Two \"VIP\"", r"C:\Music\Track2.mp3", 128.0);
+        let mut t3 = create_test_track("t3", "Track Three <Drop>", r"C:\Music\Track3.mp3", 132.0);
+
+        // Track 2: 9B (G major)
+        if let Some(ref mut a) = t2.analysis {
+            a.key = Key {
+                pitch_class: 7,
+                mode: Mode::Major,
+                camelot: Camelot::new(9, CamelotLetter::B).unwrap(),
+                tuning_cents: 0.0,
+            };
+        }
+        // Track 3: 11A (F# minor)
+        if let Some(ref mut a) = t3.analysis {
+            a.key = Key {
+                pitch_class: 6,
+                mode: Mode::Minor,
+                camelot: Camelot::new(11, CamelotLetter::A).unwrap(),
+                tuning_cents: 0.0,
+            };
+        }
+
+        let entries = vec![
+            SetlistEntry {
+                position: 1,
+                track_id: "t1".to_string(),
+                track: Some(t1),
+                transition: None,
+                target_energy: None,
+            },
+            SetlistEntry {
+                position: 2,
+                track_id: "t2".to_string(),
+                track: Some(t2),
+                transition: None,
+                target_energy: None,
+            },
+            SetlistEntry {
+                position: 3,
+                track_id: "t3".to_string(),
+                track: Some(t3),
+                transition: None,
+                target_energy: None,
+            },
+        ];
+
+        let opts = RekordboxExportOptions {
+            playlist_name: "RoundTrip_Test".to_string(),
+            key_notation: KeyNotation::Standard,
+            ..Default::default()
+        };
+
+        let xml = generate_rekordbox_xml(&entries, &opts).expect("generate xml");
+
+        // Parse with strict quick-xml reader
+        let mut reader = Reader::from_str(&xml);
+        reader.config_mut().trim_text(true);
+
+        let mut parsed_tracks: Vec<(String, String, f64, String)> = Vec::new(); // (id, name, bpm, key)
+        let mut playlist_order: Vec<String> = Vec::new();
+        let mut in_collection = false;
+        let mut in_playlist = false;
+        let mut buf = Vec::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(QEvent::Start(ref e)) => match e.name().as_ref() {
+                    b"COLLECTION" => in_collection = true,
+                    b"NODE" => {
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"Type" && attr.value.as_ref() == b"1" {
+                                in_playlist = true;
+                            }
+                        }
+                    }
+                    b"TRACK" if in_collection => {
+                        let mut tid = String::new();
+                        let mut name = String::new();
+                        let mut bpm = 0.0;
+                        let mut key = String::new();
+
+                        for attr in e.attributes().flatten() {
+                            let val = attr.unescape_value().unwrap();
+                            match attr.key.as_ref() {
+                                b"TrackID" => tid = val.to_string(),
+                                b"Name" => name = val.to_string(),
+                                b"AverageBpm" => bpm = val.parse::<f64>().unwrap(),
+                                b"Tonality" => key = val.to_string(),
+                                _ => {}
+                            }
+                        }
+                        parsed_tracks.push((tid, name, bpm, key));
+                    }
+                    _ => {}
+                },
+                Ok(QEvent::Empty(ref e)) => match e.name().as_ref() {
+                    b"TRACK" if in_collection => {
+                        let mut tid = String::new();
+                        let mut name = String::new();
+                        let mut bpm = 0.0;
+                        let mut key = String::new();
+
+                        for attr in e.attributes().flatten() {
+                            let val = attr.unescape_value().unwrap();
+                            match attr.key.as_ref() {
+                                b"TrackID" => tid = val.to_string(),
+                                b"Name" => name = val.to_string(),
+                                b"AverageBpm" => bpm = val.parse::<f64>().unwrap(),
+                                b"Tonality" => key = val.to_string(),
+                                _ => {}
+                            }
+                        }
+                        parsed_tracks.push((tid, name, bpm, key));
+                    }
+                    b"TRACK" if in_playlist => {
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"Key" {
+                                playlist_order.push(attr.unescape_value().unwrap().to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                Ok(QEvent::End(ref e)) => match e.name().as_ref() {
+                    b"COLLECTION" => in_collection = false,
+                    b"NODE" => in_playlist = false,
+                    _ => {}
+                },
+                Ok(QEvent::Eof) => break,
+                Err(e) => panic!("XML syntax error: {e:?}"),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        // Validate track count
+        assert_eq!(
+            parsed_tracks.len(),
+            3,
+            "should parse 3 tracks from COLLECTION"
+        );
+        assert_eq!(playlist_order.len(), 3, "should parse 3 playlist items");
+
+        // Validate order
+        assert_eq!(playlist_order, vec!["1", "2", "3"]);
+
+        // Validate unescaped names, BPM, and key
+        assert_eq!(parsed_tracks[0].1, "Track One & Only");
+        assert!((parsed_tracks[0].2 - 124.5).abs() < 0.01);
+        assert_eq!(parsed_tracks[0].3, "Am");
+
+        assert_eq!(parsed_tracks[1].1, "Track Two \"VIP\"");
+        assert!((parsed_tracks[1].2 - 128.0).abs() < 0.01);
+        assert_eq!(parsed_tracks[1].3, "G");
+
+        assert_eq!(parsed_tracks[2].1, "Track Three <Drop>");
+        assert!((parsed_tracks[2].2 - 132.0).abs() < 0.01);
+        assert_eq!(parsed_tracks[2].3, "F#m");
+    }
+
+    #[test]
+    fn test_windows_extended_paths_and_unicode_uris() {
+        let uri = encode_location(r"\\?\C:\Music\📂 DJ Sets\André & Frédérique [2026] #1.mp3");
+        assert_eq!(
+            uri,
+            "file://localhost/C:/Music/%F0%9F%93%82%20DJ%20Sets/Andr%C3%A9%20%26%20Fr%C3%A9d%C3%A9rique%20%5B2026%5D%20%231.mp3"
+        );
     }
 }

@@ -4,7 +4,7 @@ Read this file before every task. It is the source of truth for the repo.
 
 ## 1. Project
 
-Product name: SETLIST, by TRUSTNODELOGIC.
+Product name: SETLIST by TRUSTNODELOGIC.
 
 A local-first desktop app that prepares DJ sets. It analyzes a user's music library. It then acts as a co-pilot. It suggests track order, transition techniques, and cue points. The user keeps creative control. The app never produces an unchangeable playlist.
 
@@ -35,17 +35,18 @@ Do not change these without a note in `docs/handoffs/`.
 | `crates/audio-analysis/src/structure` | Segments, cue placement | B |
 | `crates/audio-analysis/src/waveform` | 3-band waveform | B |
 | `crates/library-db` | SQLite repo, scanner, job queue, setlist persistence, track overrides | C |
-| `crates/playback` | Pure Rust audio player, state machine, clock, beat click generator | K |
+| `crates/playback` | Pure Rust audio player, state machine, clock, beat click generator | Workgroup P (P) |
 | `crates/sequencer` | Cost model, solvers, transition advisor, catalog relationship engine | D |
 | `crates/exporters` | Rekordbox XML, M3U8, set sheet | E |
-| `tools/validate` | Ground-truth accuracy validation harness and Rekordbox verification CLI | G |
+| `tools/validate` | Ground-truth accuracy validation harness and Rekordbox verification CLI | Workgroup B (B) |
 | `scripts/` | Desktop run scripts, release automation, and desktop shortcuts | Integration |
+| `src-tauri` | Tauri commands and app state | Integration |
 | `src-tauri/src/commands.rs` | Tauri IPC commands for library, scan, setlist, songs, relationships, and exports | Integration |
 | `src-tauri/src/overrides.rs` | Track analysis override commands (BPM, key, cues, title, artist) and database bridging | L |
-| `src-tauri/src/playback.rs` | Audio playback IPC commands and position event bridge | K |
+| `src-tauri/src/playback.rs` | Audio playback IPC commands and position event bridge | Workgroup P (P) |
 | `src-tauri/src/diagnostics.rs` | Diagnostics IPC commands, log directory access, privacy redaction | Integration |
 | `src-tauri/src/state.rs` | Application state, SQLite connection pool, and background scanner job queue | Integration |
-| `src-tauri/` | Tauri commands and app state | Integration |
+| `ui/src/components/transport` | Global transport bar and audio transport controls | Workgroup F (F) |
 | `ui/src/features/start` | 4-step guided onboarding workflow (add, review, build, export/play) | F |
 | `ui/src/features/library` | Virtualized track table, filtering, search, and harmonic sorting | F |
 | `ui/src/features/track` | Track inspection, waveform display, audio transport, and analysis overrides | F |
@@ -70,18 +71,26 @@ Rust
 - Use `thiserror` for errors. Return `Result`. No `unwrap` or `expect` outside tests.
 - Public functions get doc comments. Keep functions pure where possible.
 - Analysis code must be deterministic. Seed any randomness.
+- Tauri commands that touch compute-heavy code must be async and use spawn_blocking. They must never hold the SQLite mutex while computing.
+- Every performance change ships with a Criterion bench or a timing test.
 
 TypeScript
 - `strict` mode on. No `any`.
 - Components stay small. Data access goes through the `Backend` interface in `ui/src/api`.
+- No hard-coded hex colors in TSX. Use theme tokens.
 
 UI standards
+- [PLACEHOLDER: Minimum text size and contrast rules, to be filled in by F3]
 - Text is never smaller than 12px. Body text is 14px.
 - Text contrast meets WCAG AA (4.5 to 1) on the dark background.
+- No hard-coded hex colors in TSX. Use theme tokens.
 - Every button, input, and row shows a visible keyboard focus ring.
 - Labels use plain words. Internal names such as w_tempo never appear in the UI.
 - Keep existing data-testid values when you edit a component.
 - Never remove or shorten a legal notice.
+
+Performance
+- Every performance change ships with a Criterion bench or a timing test.
 
 Dependencies
 - Add dependencies only to the crate that needs them. List each new one in your handoff note with the reason.

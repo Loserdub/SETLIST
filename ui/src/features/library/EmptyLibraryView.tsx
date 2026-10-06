@@ -6,6 +6,7 @@ interface EmptyLibraryViewProps {
   onScanFolder: (path: string) => void;
   onLoadDemo: () => void;
   onLoadBenchmark: () => void;
+  onReload?: () => void;
   isLoading: boolean;
 }
 
@@ -14,6 +15,7 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
   onScanFolder,
   onLoadDemo,
   onLoadBenchmark,
+  onReload,
   isLoading,
 }) => {
   const [folderPathInput, setFolderPathInput] = useState('');
@@ -123,10 +125,22 @@ export const EmptyLibraryView: React.FC<EmptyLibraryViewProps> = ({
       {/* Immediate Demo & 5K Benchmark Explorations */}
       <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-zinc-400 font-mono">
         <span>Immediate exploration:</span>
+        {onReload && (
+          <>
+            <button
+              type="button"
+              onClick={onReload}
+              className="text-amber-400 hover:text-amber-300 underline cursor-pointer font-bold focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none"
+            >
+              Reload Database (SQLite)
+            </button>
+            <span className="text-zinc-600">·</span>
+          </>
+        )}
         <button
           type="button"
           onClick={onLoadDemo}
-          className="text-amber-400 hover:text-amber-300 underline cursor-pointer font-bold focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none"
+          className="text-zinc-400 hover:text-white underline cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:outline-none"
         >
           Load Demo Library (40 Tracks)
         </button>

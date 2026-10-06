@@ -121,7 +121,7 @@ describe('LibraryView Component', () => {
     });
 
     render(<LibraryView />);
-    expect(screen.getByText(/scanning\.\.\./i)).toBeDefined();
+    expect(screen.getAllByText(/scanning\.\.\./i)[0]).toBeDefined();
     expect(screen.getByText(/15 \/ 50/i)).toBeDefined();
     expect(screen.getByText('Analyzing audio files...')).toBeDefined();
   });

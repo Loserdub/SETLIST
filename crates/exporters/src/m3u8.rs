@@ -1,12 +1,22 @@
 //! M3U8 playlist exporter.
 //!
 //! Generates UTF-8 extended M3U8 playlist files with `#EXTINF` duration/title tags
-//! and absolute track file paths.
+//! supporting both absolute and relative track file paths.
 
 use crate::ExportError;
 use core_types::SetlistEntry;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Path mode used when writing track references in an M3U8 playlist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum M3u8PathMode {
+    /// Write absolute filesystem paths (default).
+    #[default]
+    Absolute,
+    /// Write relative filesystem paths relative to the playlist output directory.
+    Relative,
+}
 
 /// Resolves a track path to an absolute path.
 ///
@@ -14,7 +24,8 @@ use std::path::{Path, PathBuf};
 /// with the current working directory. On Windows, strips any verbatim `\\?\` prefix.
 #[must_use]
 pub fn resolve_absolute_path(path_str: &str) -> String {
-    let path = Path::new(path_str);
+    let raw = path_str.strip_prefix(r"\\?\").unwrap_or(path_str);
+    let path = Path::new(raw);
     let abs_buf: PathBuf = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -25,7 +36,6 @@ pub fn resolve_absolute_path(path_str: &str) -> String {
     };
 
     let s = abs_buf.to_string_lossy().to_string();
-    // Normalize Windows extended-length prefix \\?\ if present
     if let Some(stripped) = s.strip_prefix(r"\\?\") {
         stripped.to_string()
     } else {
@@ -33,9 +43,66 @@ pub fn resolve_absolute_path(path_str: &str) -> String {
     }
 }
 
-/// Generates M3U8 playlist text from the given setlist entries.
+/// Resolves a track path to a relative path relative to `base_dir`.
+///
+/// If `base_dir` is not provided, returns the track path normalized with forward slashes.
+/// If `path_str` is already relative, preserves it.
+/// If both are on matching roots, calculates the relative path traversal (`..` as necessary).
 #[must_use]
-pub fn generate_m3u8(entries: &[SetlistEntry]) -> String {
+pub fn resolve_relative_path(path_str: &str, base_dir: Option<&Path>) -> String {
+    let raw = path_str.strip_prefix(r"\\?\").unwrap_or(path_str);
+    let track_path = Path::new(raw);
+
+    if let Some(base) = base_dir {
+        let base_raw = base.to_string_lossy();
+        let clean_base_str = base_raw.strip_prefix(r"\\?\").unwrap_or(&base_raw);
+        let clean_base = Path::new(clean_base_str);
+
+        // If track path is already relative, return normalized
+        if track_path.is_relative() {
+            return track_path.to_string_lossy().replace('\\', "/");
+        }
+
+        // Try direct strip_prefix if track is within base_dir or a subdirectory
+        if let Ok(rel) = track_path.strip_prefix(clean_base) {
+            return rel.to_string_lossy().replace('\\', "/");
+        }
+
+        // Calculate relative components between two absolute paths on matching roots
+        let base_comps: Vec<_> = clean_base.components().collect();
+        let track_comps: Vec<_> = track_path.components().collect();
+
+        if !base_comps.is_empty() && !track_comps.is_empty() && base_comps[0] == track_comps[0] {
+            let mut common = 0;
+            while common < base_comps.len()
+                && common < track_comps.len()
+                && base_comps[common] == track_comps[common]
+            {
+                common += 1;
+            }
+
+            let mut rel_buf = PathBuf::new();
+            for _ in common..base_comps.len() {
+                rel_buf.push("..");
+            }
+            for comp in &track_comps[common..] {
+                rel_buf.push(comp.as_os_str());
+            }
+
+            return rel_buf.to_string_lossy().replace('\\', "/");
+        }
+    }
+
+    track_path.to_string_lossy().replace('\\', "/")
+}
+
+/// Generates M3U8 playlist text from the given setlist entries with custom path mode.
+#[must_use]
+pub fn generate_m3u8_with_mode(
+    entries: &[SetlistEntry],
+    mode: M3u8PathMode,
+    base_dir: Option<&Path>,
+) -> String {
     let mut out = String::from("#EXTM3U\n");
 
     for entry in entries {
@@ -50,33 +117,48 @@ pub fn generate_m3u8(entries: &[SetlistEntry]) -> String {
 
         let artist = track.and_then(|t| t.tags.artist.as_deref()).unwrap_or("");
 
-        let display = if !artist.is_empty() {
-            format!("{artist} - {title}")
+        // Strip carriage returns and line feeds to guarantee single-line #EXTINF
+        let clean_title = title.replace("\r\n", " ").replace(['\r', '\n'], " ");
+        let clean_artist = artist.replace("\r\n", " ").replace(['\r', '\n'], " ");
+
+        let display = if !clean_artist.is_empty() {
+            format!("{clean_artist} - {clean_title}")
         } else {
-            title.to_string()
+            clean_title
         };
 
         let path_str = track
             .map(|t| t.path.as_str())
             .unwrap_or(entry.track_id.as_str());
-        let abs_path = resolve_absolute_path(path_str);
+
+        let formatted_path = match mode {
+            M3u8PathMode::Absolute => resolve_absolute_path(path_str),
+            M3u8PathMode::Relative => resolve_relative_path(path_str, base_dir),
+        };
 
         out.push_str(&format!("#EXTINF:{duration_s},{display}\n"));
-        out.push_str(&format!("{abs_path}\n"));
+        out.push_str(&format!("{formatted_path}\n"));
     }
 
     out
 }
 
-/// Exports setlist entries to an M3U8 playlist file with overwrite control.
+/// Generates M3U8 playlist text using default absolute path mode.
+#[must_use]
+pub fn generate_m3u8(entries: &[SetlistEntry]) -> String {
+    generate_m3u8_with_mode(entries, M3u8PathMode::Absolute, None)
+}
+
+/// Exports setlist entries to an M3U8 playlist file with custom path mode and overwrite control.
 ///
 /// # Errors
 /// - Returns [`ExportError::FileExists`] if the destination file already exists and `overwrite` is false.
 /// - Returns [`ExportError::Io`] if file operations fail.
-pub fn export_m3u8_with_options<P: AsRef<Path>>(
+pub fn export_m3u8_with_mode<P: AsRef<Path>>(
     entries: &[SetlistEntry],
     output_path: P,
     overwrite: bool,
+    path_mode: M3u8PathMode,
 ) -> Result<(), ExportError> {
     let path = output_path.as_ref();
 
@@ -84,7 +166,8 @@ pub fn export_m3u8_with_options<P: AsRef<Path>>(
         return Err(ExportError::FileExists(path.to_path_buf()));
     }
 
-    let content = generate_m3u8(entries);
+    let base_dir = path.parent();
+    let content = generate_m3u8_with_mode(entries, path_mode, base_dir);
 
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -92,11 +175,23 @@ pub fn export_m3u8_with_options<P: AsRef<Path>>(
         }
     }
 
-    fs::write(path, content)?;
+    fs::write(path, content.as_bytes())?;
     Ok(())
 }
 
-/// Exports setlist entries to an M3U8 playlist file.
+/// Exports setlist entries to an M3U8 playlist file with overwrite control using absolute paths.
+///
+/// # Errors
+/// Returns [`ExportError`] on write failure or if the file exists and overwrite is false.
+pub fn export_m3u8_with_options<P: AsRef<Path>>(
+    entries: &[SetlistEntry],
+    output_path: P,
+    overwrite: bool,
+) -> Result<(), ExportError> {
+    export_m3u8_with_mode(entries, output_path, overwrite, M3u8PathMode::Absolute)
+}
+
+/// Exports setlist entries to an M3U8 playlist file with default options.
 ///
 /// Does not overwrite existing files by default.
 ///
@@ -149,6 +244,45 @@ mod tests {
         assert!(m3u8.contains("C:\\Music\\Song1.mp3\n"));
         assert!(m3u8.contains("#EXTINF:180,Artist B - Second Song\n"));
         assert!(m3u8.contains("C:\\Music\\Song2.mp3\n"));
+    }
+
+    #[test]
+    fn test_m3u8_relative_path_mode() {
+        let e1 = make_test_entry(
+            1,
+            "t1",
+            "Song One",
+            "Artist",
+            r"C:\Music\Collection\Sub\Song1.mp3",
+        );
+        let e2 = make_test_entry(
+            2,
+            "t2",
+            "Song Two",
+            "Artist",
+            r"C:\Music\Collection\Other\Song2.mp3",
+        );
+
+        let playlist_dir = Path::new(r"C:\Music\Collection\Playlists");
+        let m3u8 = generate_m3u8_with_mode(&[e1, e2], M3u8PathMode::Relative, Some(playlist_dir));
+
+        assert!(m3u8.starts_with("#EXTM3U\n"));
+        assert!(m3u8.contains("../Sub/Song1.mp3\n"));
+        assert!(m3u8.contains("../Other/Song2.mp3\n"));
+    }
+
+    #[test]
+    fn test_m3u8_newline_sanitization() {
+        let e1 = make_test_entry(
+            1,
+            "t1",
+            "Song With\r\nNewline",
+            "Artist\nMultiline",
+            r"C:\Music\Song.mp3",
+        );
+
+        let m3u8 = generate_m3u8(&[e1]);
+        assert!(m3u8.contains("#EXTINF:180,Artist Multiline - Song With Newline\n"));
     }
 
     #[test]

@@ -551,7 +551,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
   const pinnedIdsSet = useMemo(() => new Set(pins.pinnedIds ?? []), [pins.pinnedIds]);
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#080808] text-[#ededed]">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#080808] text-[#ededed]">
       {/* Top Header */}
       <header className="px-5 py-2.5 border-b border-[#1c1c1c] bg-[#0a0a0a] flex flex-col lg:flex-row lg:items-center justify-between gap-3 shrink-0">
         <div>
@@ -560,7 +560,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
               type="text"
               value={setlistName}
               onChange={(e) => setSetlistName(e.target.value)}
-              className="text-sm font-mono font-bold tracking-wider text-[#ededed] bg-transparent border-b border-transparent hover:border-[#333333] focus:border-[#38bdf8] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] transition-colors uppercase"
+              className="text-sm font-mono font-bold tracking-wider text-[#ededed] bg-transparent border-b border-transparent hover:border-[#333333] focus:border-zinc-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 transition-colors uppercase"
               title="Click to rename setlist"
             />
             <span className="text-xs font-mono px-2 py-0.5 border border-[#222222] bg-[#111111] text-[#cfcfcf]">
@@ -580,10 +580,10 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
             onClick={() => setIsExportModalOpen(true)}
             disabled={setlist.length === 0}
             data-testid="ready-for-performance-btn"
-            className="px-3 py-1 bg-[#142332] hover:bg-[#1a3044] border border-[#1e5480] text-[#38bdf8] hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] disabled:opacity-40 disabled:cursor-not-allowed hw-btn"
+            className="px-3 py-1 bg-[#1a140a] hover:bg-[#261e10] border border-[#784d14] text-amber-400 hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 disabled:opacity-40 disabled:cursor-not-allowed hw-btn"
             title="Open Ready for Performance delivery checklist and hardware export workflow"
           >
-            <span className="hw-led hw-led-cyan" />
+            <span className="hw-led hw-led-amber" />
             <span>[ READY FOR PERFORMANCE ]</span>
           </button>
 
@@ -593,7 +593,7 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
               aria-label="Export format"
               value={exportTarget}
               onChange={(e) => setExportTarget(e.target.value as ExportTarget)}
-              className="bg-transparent text-xs font-mono text-[#cccccc] px-2 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#38bdf8] cursor-pointer border-r border-[#222222] pr-2"
+              className="bg-transparent text-xs font-mono text-[#cccccc] px-2 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 cursor-pointer border-r border-[#222222] pr-2"
             >
               <option value="RekordboxXml" className="bg-[#111111] text-[#ededed]">
                 Rekordbox XML
