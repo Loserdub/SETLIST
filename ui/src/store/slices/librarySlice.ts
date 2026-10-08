@@ -17,6 +17,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   setSearchQuery: (searchQuery) => set({ searchQuery }),
 
   loadTracks: async (customBackend) => {
+    if (get().isLoadingTracks) return;
     const backend = customBackend ?? getBackend(get().useMockBackend);
     set({ isLoadingTracks: true, tracksError: null });
 
@@ -136,6 +137,23 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   selectTrack: (id: string | null) => {
     const track = id ? (get().tracks.find((t) => t.id === id) ?? null) : null;
     set({ selectedTrackId: id, selectedTrack: track });
+    if (
+      id &&
+      track &&
+      (!track.analysis?.waveform || track.analysis.waveform.low.peak.length === 0)
+    ) {
+      const backend = getBackend(get().useMockBackend);
+      void backend
+        .getTrack(id)
+        .then((detailed) => {
+          if (detailed && get().selectedTrackId === id) {
+            set({ selectedTrack: detailed });
+          }
+        })
+        .catch(() => {
+          // Silently preserve in-memory track
+        });
+    }
   },
 
   refreshTrackInSetlist: async (freshTrack: Track, customBackend?: Backend) => {

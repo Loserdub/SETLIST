@@ -41,12 +41,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!hasLoadedTracks) {
-      void loadTracks();
+    async function init() {
+      if (!hasLoadedTracks) {
+        await loadTracks();
+      }
+      if (!hasLoadedActiveSetlist) {
+        await loadActiveSetlist();
+      }
     }
-    if (!hasLoadedActiveSetlist) {
-      void loadActiveSetlist();
-    }
+    void init();
   }, [hasLoadedTracks, loadTracks, hasLoadedActiveSetlist, loadActiveSetlist]);
 
   const showTransport =

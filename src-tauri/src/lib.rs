@@ -5,9 +5,11 @@ pub mod diagnostics;
 pub mod overrides;
 pub mod playback;
 pub mod state;
+pub mod window_state;
 
 pub use commands::*;
 pub use state::*;
+pub use window_state::*;
 
 use tauri::Manager;
 
@@ -208,6 +210,11 @@ pub fn run() {
                 let _ = main_window.set_icon(icon.clone());
             }
             let _ = main_window.set_resizable(true);
+
+            // Restore saved window size, position, and maximize state
+            window_state::apply_saved_state_or_defaults(&main_window, &app_data);
+            window_state::setup_window_state_tracking(&main_window, app_data.clone());
+
             let _ = main_window.show();
             let _ = main_window.unminimize();
             let _ = main_window.set_focus();

@@ -15,15 +15,15 @@
       {
         "label": "main",
         "title": "SETLIST",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 1000,
-        "minHeight": 640,
+        "width": 1120,
+        "height": 700,
+        "minWidth": 960,
+        "minHeight": 600,
         "resizable": true,
         "maximizable": true,
         "fullscreen": false,
         "center": true,
-        "visible": true,
+        "visible": false,
         "focus": true
       }
     ],

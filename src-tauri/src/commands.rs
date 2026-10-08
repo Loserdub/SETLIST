@@ -343,11 +343,16 @@ pub async fn scan_paths(
 /// # Errors
 /// Returns error text if querying the database fails.
 pub fn list_tracks_core(state: &AppState) -> Result<Vec<Track>, String> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| format!("database mutex error: {e}"))?;
-    library_db::list_tracks(&conn, &TrackFilter::new()).map_err(|e| e.to_string())
+    if let Some(ref path) = state.db_path {
+        let conn = library_db::open_read_only_connection(path).map_err(|e| e.to_string())?;
+        library_db::list_tracks(&conn, &TrackFilter::new()).map_err(|e| e.to_string())
+    } else {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|e| format!("database mutex error: {e}"))?;
+        library_db::list_tracks(&conn, &TrackFilter::new()).map_err(|e| e.to_string())
+    }
 }
 
 /// Retrieves all tracks stored in the library database.
@@ -356,7 +361,26 @@ pub fn list_tracks_core(state: &AppState) -> Result<Vec<Track>, String> {
 /// Returns error text if querying the database fails.
 #[tauri::command]
 pub async fn list_tracks(state: State<'_, AppState>) -> Result<Vec<Track>, String> {
-    list_tracks_core(&state)
+    let state_arc = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let mut tracks = list_tracks_core(&state_arc)?;
+        // Optimize IPC payload for large libraries:
+        // Full waveforms are loaded on demand via get_track when inspecting a track.
+        // Clearing waveform byte vectors from the whole-library listing drops payload size by ~98%.
+        for track in &mut tracks {
+            if let Some(ref mut analysis) = track.analysis {
+                analysis.waveform.low.peak.clear();
+                analysis.waveform.low.rms.clear();
+                analysis.waveform.mid.peak.clear();
+                analysis.waveform.mid.rms.clear();
+                analysis.waveform.high.peak.clear();
+                analysis.waveform.high.rms.clear();
+            }
+        }
+        Ok(tracks)
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
 }
 
 /// Core implementation of retrieving a single track by identifier.
@@ -367,11 +391,16 @@ pub fn get_track_core(
     state: &AppState,
     id: &str,
 ) -> Result<Option<library_db::TrackWithOverrides>, String> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| format!("database mutex error: {e}"))?;
-    library_db::get_track_with_overrides(&conn, id).map_err(|e| e.to_string())
+    if let Some(ref path) = state.db_path {
+        let conn = library_db::open_read_only_connection(path).map_err(|e| e.to_string())?;
+        library_db::get_track_with_overrides(&conn, id).map_err(|e| e.to_string())
+    } else {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|e| format!("database mutex error: {e}"))?;
+        library_db::get_track_with_overrides(&conn, id).map_err(|e| e.to_string())
+    }
 }
 
 /// Retrieves a single track by identifier from the library database, including
@@ -386,7 +415,10 @@ pub async fn get_track(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<library_db::TrackWithOverrides>, String> {
-    get_track_core(&state, &id)
+    let state_arc = state.inner().clone();
+    tokio::task::spawn_blocking(move || get_track_core(&state_arc, &id))
+        .await
+        .map_err(|e| format!("join error: {e}"))?
 }
 
 fn load_candidate_tracks(

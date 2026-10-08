@@ -10,6 +10,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { Track } from '../../bindings/Track';
+import { getBackend } from '../../api';
 import { filterTracks, isTrackNeedsReview } from './filters';
 import { subscribeToReviewFilter, consumeInitialNeedsReview } from './navigation';
 import { sortTracks } from './sorting';
@@ -127,11 +128,37 @@ export function LibraryView() {
     setRoute('track');
   };
 
-  // Inspected Track lookup
-  const inspectedTrack = useMemo(() => {
+  // Inspected Track lookup with on-demand detail loading
+  const baseInspectedTrack = useMemo(() => {
     if (!inspectedTrackId) return null;
     return activeDataset.find((t) => t.id === inspectedTrackId) ?? null;
   }, [activeDataset, inspectedTrackId]);
+
+  const [inspectedTrackDetail, setInspectedTrackDetail] = useState<Track | null>(null);
+
+  useEffect(() => {
+    if (!baseInspectedTrack) {
+      setInspectedTrackDetail(null);
+      return;
+    }
+    setInspectedTrackDetail(baseInspectedTrack);
+    if (
+      !baseInspectedTrack.analysis?.waveform ||
+      baseInspectedTrack.analysis.waveform.low.peak.length === 0
+    ) {
+      const backend = getBackend(useAppStore.getState().useMockBackend);
+      void backend
+        .getTrack(baseInspectedTrack.id)
+        .then((fullTrack) => {
+          if (fullTrack && fullTrack.id === baseInspectedTrack.id) {
+            setInspectedTrackDetail(fullTrack);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [baseInspectedTrack]);
+
+  const inspectedTrack = inspectedTrackDetail ?? baseInspectedTrack;
 
   // Native folder picker
   const handleChooseFolder = async () => {
@@ -342,7 +369,6 @@ export function LibraryView() {
     getScrollElement: () => tableContainerRef.current,
     estimateSize: () => 52,
     overscan: 12,
-    initialRect: { width: 1000, height: 800 },
   });
 
   const virtualRows = rowVirtualizer.getVirtualItems();
