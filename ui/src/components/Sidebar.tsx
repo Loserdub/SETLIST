@@ -52,6 +52,11 @@ export function Sidebar() {
       label: 'Settings',
       description: 'Configure transition scoring weights and app preferences',
     },
+    {
+      route: 'performance',
+      label: 'Performance Flow',
+      description: 'Prepare your gig: discover, build, and perform',
+    },
   ];
 
   const isBusy = isLoadingTracks || isSuggestingOrder || progress !== null;

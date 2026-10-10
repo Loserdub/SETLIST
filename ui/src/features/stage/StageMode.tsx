@@ -5,9 +5,7 @@ import { useWakeLock } from './useWakeLock';
 import { usePerformanceClock, formatDuration } from './usePerformanceClock';
 import { useStageKeyboard } from './useStageKeyboard';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
-import type { TransitionAdvice } from '../../bindings/TransitionAdvice';
-import { isFieldOverridden } from '../track/overrides';
-import { resolveFourPointCues, FOUR_POINT_CUE_CONFIG, CUE_SLOTS, formatCueTime } from '../track/cues';
+import { resolveFourPointCues, FOUR_POINT_CUE_CONFIG, CUE_SLOTS } from '../track/cues';
 import { isWindowFullscreen, toggleWindowFullscreen } from '../../utils/windowFullscreen';
 import {
   calculatePitchFader,
@@ -16,13 +14,10 @@ import {
   getTransitionSegmentFlow,
 } from './stageTelemetry';
 import {
-  MetricCard,
   SetlistJumpDrawer,
   ExitConfirmModal,
   StageHeader,
-  StageTransitionConsole,
-  StageNextDeck,
-  StageFooter,
+  LiveWaveformCanvas,
 } from './components';
 
 export {
@@ -42,7 +37,6 @@ export function StageMode() {
     exitStageMode,
     stageNext,
     stagePrev,
-    stageRestart,
     auditionState,
     auditionPositionMs,
     auditionTrackId,
@@ -55,7 +49,7 @@ export function StageMode() {
       setlist: s.setlist, setlistName: s.setlistName,
       stageCurrentIndex: s.stageCurrentIndex, stageStartTime: s.stageStartTime,
       isStageMode: s.isStageMode, exitStageMode: s.exitStageMode,
-      stageNext: s.stageNext, stagePrev: s.stagePrev, stageRestart: s.stageRestart,
+      stageNext: s.stageNext, stagePrev: s.stagePrev,
       auditionState: s.auditionState, auditionPositionMs: s.auditionPositionMs,
       auditionTrackId: s.auditionTrackId, toggleAudition: s.toggleAudition,
       seekAudition: s.seekAudition, masterVolume: s.masterVolume, setMasterVolume: s.setMasterVolume,
@@ -77,8 +71,7 @@ export function StageMode() {
 
   const currentEntry: SetlistEntry | null = setlist[stageCurrentIndex] ?? null;
   const nextEntry: SetlistEntry | null = setlist[stageCurrentIndex + 1] ?? null;
-  const prevEntry: SetlistEntry | null = stageCurrentIndex > 0 ? setlist[stageCurrentIndex - 1] ?? null : null;
-
+  
   // Duration calculations
   const totalDurationMs = useMemo(() => {
     let total = 0;
@@ -147,12 +140,10 @@ export function StageMode() {
     if (!currentEntry?.track?.duration_ms) return null;
     const dur = currentEntry.track.duration_ms;
 
-    // 1. Cue D (Mix Out in 4-point cue deck)
     if (currentCues.D?.timeMs != null && currentCues.D.timeMs > 0) {
       return currentCues.D.timeMs;
     }
 
-    // 2. Cue point labeled 'mix out' or 'outro'
     const cues = currentEntry.track.analysis?.cue_points ?? [];
     const mixCue = cues.find((c) => {
       const lbl = c.label.toLowerCase();
@@ -162,7 +153,6 @@ export function StageMode() {
       return mixCue.time_ms;
     }
 
-    // 3. Segment labeled 'outro'
     const segments = currentEntry.track.analysis?.segments ?? [];
     const outroSeg = segments.find((s) => s.label.toLowerCase() === 'outro');
     if (outroSeg != null && outroSeg.start_ms > 0) {
@@ -172,7 +162,6 @@ export function StageMode() {
     return dur;
   }, [currentEntry, currentCues.D]);
 
-  // Transition countdown (ms remaining until mix-out)
   const transitionCountdownMs = useMemo(() => {
     if (targetMixOutMs == null) return null;
     return Math.max(0, targetMixOutMs - currentSongElapsedMs);
@@ -183,7 +172,6 @@ export function StageMode() {
     return formatDuration(transitionCountdownMs);
   }, [transitionCountdownMs]);
 
-  // Active Cue determination for current track
   const activeCueSlot = useMemo(() => {
     const slots: ('A' | 'B' | 'C' | 'D')[] = ['A', 'B', 'C', 'D'];
     let active: 'A' | 'B' | 'C' | 'D' = 'A';
@@ -195,22 +183,6 @@ export function StageMode() {
     }
     return active;
   }, [currentCues, currentSongElapsedMs]);
-
-  // Next upcoming cue in current track
-  const upcomingCue = useMemo(() => {
-    const slots: ('A' | 'B' | 'C' | 'D')[] = ['A', 'B', 'C', 'D'];
-    for (const slot of slots) {
-      const cue = currentCues[slot];
-      if (cue && cue.timeMs > currentSongElapsedMs) {
-        return { slot, cue, cfg: FOUR_POINT_CUE_CONFIG[slot] };
-      }
-    }
-    return null;
-  }, [currentCues, currentSongElapsedMs]);
-
-  const transitionSegmentFlow = useMemo(() => {
-    return getTransitionSegmentFlow(currentEntry, nextEntry);
-  }, [currentEntry, nextEntry]);
 
   const handleExitRequest = useCallback(() => {
     setShowExitConfirm(true);
@@ -265,21 +237,12 @@ export function StageMode() {
     onCue: handleCueJump,
   });
 
-  // Empty setlist guard
   if (setlist.length === 0) {
     return (
-      <div
-        className="flex items-center justify-center h-full bg-black text-white"
-        data-testid="stage-empty"
-      >
+      <div className="flex items-center justify-center h-full bg-surface-deep text-white">
         <div className="text-center space-y-4">
-          <p className="text-2xl font-medium text-slate-400">No tracks in setlist</p>
-          <button
-            type="button"
-            onClick={exitStageMode}
-            className="px-6 py-3 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors cursor-pointer"
-            data-testid="stage-exit-empty"
-          >
+          <p className="text-2xl font-mono text-neutral-500">No tracks in setlist</p>
+          <button onClick={exitStageMode} className="px-6 py-3 bg-surface-panel border border-border-base font-mono text-neutral-400 hover:text-white hover:border-border-strong transition-colors">
             Return to Setlist
           </button>
         </div>
@@ -287,32 +250,17 @@ export function StageMode() {
     );
   }
 
-  const trackTitle = (entry: SetlistEntry | null): string =>
-    entry?.track?.tags?.title ?? entry?.track_id ?? '—';
-  const trackArtist = (entry: SetlistEntry | null): string =>
-    entry?.track?.tags?.artist ?? '';
-  const trackBpm = (entry: SetlistEntry | null): string => {
+  const trackTitle = (entry: SetlistEntry | null) => entry?.track?.tags?.title ?? entry?.track_id ?? '—';
+  const trackArtist = (entry: SetlistEntry | null) => entry?.track?.tags?.artist ?? '';
+  const trackBpm = (entry: SetlistEntry | null) => {
     const bpm = entry?.track?.analysis?.rhythm?.grid?.bpm;
-    return bpm != null ? `${Math.round(bpm)}` : '—';
+    return bpm != null ? bpm.toFixed(1) : '—';
   };
-  const trackKey = (entry: SetlistEntry | null): string => {
+  const trackKey = (entry: SetlistEntry | null) => {
     const key = entry?.track?.analysis?.key;
     if (!key) return '—';
     return `${key.camelot.number}${key.camelot.letter}`;
   };
-  const trackEnergy = (entry: SetlistEntry | null): string => {
-    const e = entry?.track?.analysis?.energy_score;
-    return e != null ? `${e}` : '—';
-  };
-
-  // Live Mixing Telemetry
-  const phraseTelemetry = calculatePhraseTelemetry(
-    currentEntry?.track?.analysis?.rhythm?.grid?.bpm,
-    currentEntry?.track?.analysis?.rhythm?.grid?.first_downbeat_ms,
-    currentSongElapsedMs,
-    targetMixOutMs,
-    nextEntry?.transition?.phrase_bars || 16
-  );
 
   const pitchFader = calculatePitchFader(
     currentEntry?.track?.analysis?.rhythm?.grid?.bpm,
@@ -325,15 +273,8 @@ export function StageMode() {
     nextEntry?.transition ?? null
   );
 
-  // Transition advice for next track
-  const nextTransition: TransitionAdvice | null = nextEntry?.transition ?? null;
-
   return (
-    <div
-      className="flex flex-col h-full bg-surface-deep text-content-primary select-none overflow-hidden font-sans"
-      data-testid="stage-mode"
-    >
-      {/* Top Hardware Status Bar */}
+    <div className="flex flex-col h-full bg-surface-deep text-neutral-200 select-none overflow-hidden font-sans">
       <StageHeader
         setlistName={setlistName}
         stageCurrentIndex={stageCurrentIndex}
@@ -348,223 +289,245 @@ export function StageMode() {
         handleToggleFullscreen={handleToggleFullscreen}
       />
 
-      {/* Main Console Workspace */}
-      <main className="flex-1 min-h-0 px-4 lg:px-6 py-4 overflow-y-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 xl:gap-5 h-full">
-          {/* ====== DECK A: CURRENT TRACK (PRIMARY FOCUS) ====== */}
-          <section
-            className={`flex flex-col justify-between p-5 lg:p-6 bg-surface-deep border border-border-base border-t-2 border-t-emerald-500 shadow-lg min-w-0 ${
-              nextEntry ? 'lg:col-span-5' : 'lg:col-span-7'
-            }`}
-            data-testid="stage-current-track"
-          >
-            <div>
-              {/* Header: Status & Previous Track */}
-              <div className="flex items-center justify-between gap-3 pb-3 border-b border-border-subtle">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-emerald-500/30" />
-                  <span className="text-xs font-mono font-black uppercase tracking-widest text-emerald-400">
-                    NOW PLAYING
-                  </span>
-                </div>
+      <main className="flex-1 flex flex-col min-h-0 p-2 lg:p-4 gap-2 lg:gap-4">
+        {/* WAVEFORMS SECTION (STACKED) */}
+        <section className="flex flex-col flex-none h-[280px] lg:h-[340px] bg-surface-panel border border-border-base rounded-lg overflow-hidden relative">
+           {/* Deck A Waveform */}
+           <div className="flex-1 relative border-b border-neutral-900 shadow-[inset_0_-10px_20px_rgba(0,0,0,0.5)]">
+             <div className="absolute top-2 left-2 z-10 px-2.5 py-1 bg-black/80 rounded border border-cyan-900/50 text-cyan-400 font-mono text-[10px] font-black tracking-widest uppercase shadow-[0_0_10px_rgba(34,211,238,0.2)]">
+                DECK A
+             </div>
+             <LiveWaveformCanvas 
+               waveform={currentEntry?.track?.analysis?.waveform ?? null}
+               positionMs={currentSongElapsedMs}
+               durationMs={currentSongDurationMs ?? 0}
+               beatGrid={currentEntry?.track?.analysis?.rhythm?.grid ?? null}
+               cues={CUE_SLOTS.map(s => ({ timeMs: currentCues[s]?.timeMs, label: s, color: 'rgb(34, 211, 238)' })).filter(c => c.timeMs != null) as any}
+               mixZoneStartMs={targetMixOutMs}
+               accentColor="rgb(34, 211, 238)" // Cyan
+             />
+           </div>
+           
+           {/* Phase Meter (Center Line) */}
+           <div className="absolute top-1/2 left-0 w-full h-px bg-white/10 z-20" />
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center gap-1 z-20">
+             <div className="w-4 h-4 rounded-full border-2 border-cyan-500 bg-surface-deep shadow-[0_0_10px_rgba(34,211,238,0.5)]"></div>
+             <div className="w-1.5 h-1.5 rounded-full bg-neutral-700"></div>
+             <div className="w-1.5 h-1.5 rounded-full bg-neutral-700"></div>
+             <div className="w-1.5 h-1.5 rounded-full bg-neutral-700"></div>
+           </div>
 
-                {prevEntry && (
-                  <div
-                    className="flex items-center gap-2 px-3 py-1 bg-surface-panel border border-border-subtle text-xs font-mono max-w-[260px] truncate"
-                    data-testid="stage-prev-track"
-                  >
-                    <span className="text-xs uppercase text-content-muted font-bold">PREVIOUS:</span>
-                    <span className="text-content-muted truncate">{trackTitle(prevEntry)}</span>
-                  </div>
-                )}
+           {/* Deck B Waveform */}
+           <div className="flex-1 relative shadow-[inset_0_10px_20px_rgba(0,0,0,0.5)] opacity-80">
+             <div className="absolute bottom-2 left-2 z-10 px-2.5 py-1 bg-black/80 rounded border border-amber-900/50 text-amber-500 font-mono text-[10px] font-black tracking-widest uppercase shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                DECK B
+             </div>
+             <LiveWaveformCanvas 
+               waveform={nextEntry?.track?.analysis?.waveform ?? null}
+               positionMs={0}
+               durationMs={nextEntry?.track?.duration_ms ?? 0}
+               beatGrid={nextEntry?.track?.analysis?.rhythm?.grid ?? null}
+               cues={CUE_SLOTS.map(s => ({ timeMs: nextCues[s]?.timeMs, label: s, color: 'rgb(245, 158, 11)' })).filter(c => c.timeMs != null) as any}
+               mixZoneStartMs={null}
+               accentColor="rgb(245, 158, 11)" // Amber
+             />
+           </div>
+        </section>
+
+        {/* DECKS & MIXER SECTION */}
+        <section className="flex flex-1 min-h-0 gap-2 lg:gap-4">
+          
+          {/* ====== DECK A (CURRENT) ====== */}
+          <div className="flex-1 bg-surface-panel border border-cyan-900/40 rounded-lg p-5 flex flex-col justify-between shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+            <div className="flex justify-between items-start">
+              <div className="min-w-0 pr-4">
+                <h2 className="text-3xl lg:text-4xl font-black text-white tracking-tighter truncate leading-none mb-1">
+                  {trackTitle(currentEntry)}
+                </h2>
+                <h3 className="text-cyan-600 font-bold uppercase tracking-widest truncate text-sm">
+                  {trackArtist(currentEntry) || 'Unknown Artist'}
+                </h3>
               </div>
-
-              {/* Huge Track Title (readable from across the room) */}
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight line-clamp-2 break-words mt-3">
-                {trackTitle(currentEntry)}
-              </h2>
-              {trackArtist(currentEntry) && (
-                <p className="text-lg sm:text-xl font-medium text-content-secondary mt-1 truncate">
-                  {trackArtist(currentEntry)}
-                </p>
-              )}
-
-              {/* Massive Hardware Telemetry Grid (KEY, BPM, ENERGY, LENGTH) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
-                <MetricCard
-                  label="KEY"
-                  value={trackKey(currentEntry)}
-                  accentColor="text-amber-400"
-                  isOverridden={isFieldOverridden(currentEntry?.track, 'key_camelot')}
-                  overrideField="key_camelot"
-                />
-                <MetricCard
-                  label="BPM"
-                  value={trackBpm(currentEntry)}
-                  accentColor="text-white"
-                  isOverridden={isFieldOverridden(currentEntry?.track, 'bpm')}
-                  overrideField="bpm"
-                />
-                <MetricCard
-                  label="ENERGY"
-                  value={trackEnergy(currentEntry)}
-                  accentColor="text-emerald-400"
-                />
-                {currentSongDurationMs != null && (
-                  <MetricCard
-                    label="LENGTH"
-                    value={formatDuration(currentSongDurationMs)}
-                    accentColor="text-content-secondary"
-                  />
-                )}
-              </div>
-
-              {/* Current Cue & Upcoming Cue Readout */}
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-surface-panel border border-border-subtle text-xs font-mono my-4">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-emerald-500/30" />
-                  <span className="text-content-muted font-bold uppercase tracking-wider">
-                    CURRENT CUE:
-                  </span>
-                  <span className="text-white font-bold">
-                    [{activeCueSlot}] {currentCues[activeCueSlot] ? FOUR_POINT_CUE_CONFIG[activeCueSlot].role : 'INTRO'}
-                  </span>
-                  {currentCues[activeCueSlot] && (
-                    <span className="text-emerald-400 tabular-nums font-semibold">
-                      ({formatCueTime(currentCues[activeCueSlot]!.timeMs)})
-                    </span>
-                  )}
-                </div>
-
-                {upcomingCue ? (
-                  <div className="flex items-center gap-1.5 text-xs text-content-muted">
-                    <span className="uppercase text-content-muted font-medium">NEXT CUE:</span>
-                    <span className="text-white font-semibold">
-                      [{upcomingCue.slot}] {upcomingCue.cfg.role}
-                    </span>
-                    <span className="text-amber-400 font-mono tabular-nums">
-                      ({formatCueTime(upcomingCue.cue.timeMs)})
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-content-muted text-xs font-mono uppercase">
-                    FINAL CUE REACHED
-                  </span>
-                )}
-              </div>
-
-              {/* Hardware 4-Point Performance Cues HUD */}
-              <div
-                className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1"
-                data-testid="stage-cues-hud"
-                aria-label="Performance Cues HUD"
-              >
-                {CUE_SLOTS.map((slot) => {
-                  const cue = currentCues[slot];
-                  const cfg = FOUR_POINT_CUE_CONFIG[slot];
-                  const timeStr = cue ? formatCueTime(cue.timeMs) : '—:——';
-                  const isActive = activeCueSlot === slot;
-
-                  return (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => handleCueJump(slot)}
-                      disabled={!cue || cue.timeMs == null}
-                      data-testid={`stage-cue-pad-${slot}`}
-                      className={`flex items-center gap-2 px-3 py-2 font-mono text-xs border rounded-none transition-all cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:outline-none ${
-                        isActive
-                          ? 'border-emerald-500 bg-surface-elevated text-white shadow-[0_0_12px_rgba(16,185,129,0.2)] ring-1 ring-emerald-500/50'
-                          : cue?.isConfirmed
-                          ? 'border-border-strong bg-surface-raised text-white shadow-sm hover:border-border-strong hover:bg-surface-raised'
-                          : cue
-                          ? 'border-border-base border-dashed bg-surface-deep text-content-secondary hover:border-border-strong'
-                          : 'border-border-subtle bg-surface-deep/50 text-content-muted cursor-not-allowed opacity-50'
-                      }`}
-                      title={
-                        cue
-                          ? `Jump to Cue ${slot}: ${cfg.role} [${slot === 'A' ? '1' : slot === 'B' ? '2' : slot === 'C' ? '3' : '4'}]`
-                          : `No Cue ${slot}`
-                      }
-                    >
-                      <span
-                        className="inline-flex items-center justify-center w-6 h-6 text-xs font-black text-black rounded-[2px] shrink-0"
-                        style={{ backgroundColor: cfg.colorHex }}
-                      >
-                        {slot}
-                      </span>
-                      <div className="flex flex-col text-left min-w-0 flex-1">
-                        <span className="font-bold text-xs tracking-wider uppercase text-neutral-300 truncate">
-                          {cfg.role}
-                        </span>
-                        <span className="text-[13px] font-semibold tabular-nums text-white">
-                          {timeStr}
-                        </span>
-                      </div>
-                      {cue && (
-                        <span
-                          className={`text-xs font-mono px-1 py-0.5 uppercase tracking-tight rounded-[2px] shrink-0 ${
-                            cue.isConfirmed
-                              ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/80'
-                              : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
-                          }`}
-                        >
-                          {cue.isConfirmed ? 'CONFIRMED' : 'SUGGESTED'}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+              <div className="shrink-0 w-16 h-16 rounded-full border-4 border-cyan-500/20 flex items-center justify-center relative shadow-[inset_0_0_15px_rgba(34,211,238,0.1)]">
+                 <div className={`w-3 h-3 rounded-full ${auditionState === 'playing' ? 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,1)] animate-pulse' : 'bg-neutral-800'}`} />
               </div>
             </div>
-          </section>
+            
+            <div className="flex justify-between items-end my-4">
+              <div className="flex gap-6">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-cyan-600 font-bold tracking-widest uppercase mb-1">BPM</span>
+                  <span className="text-4xl lg:text-5xl font-mono text-cyan-50 font-light tracking-tighter">{trackBpm(currentEntry)}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-cyan-600 font-bold tracking-widest uppercase mb-1">KEY</span>
+                  <span className="text-4xl lg:text-5xl font-mono text-cyan-400 font-bold tracking-tighter">{trackKey(currentEntry)}</span>
+                </div>
+              </div>
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] text-cyan-600 font-bold tracking-widest uppercase mb-1">TIME</span>
+                <span className="text-5xl lg:text-6xl font-mono text-white tracking-tighter font-light">{formatDuration(currentSongElapsedMs)}</span>
+              </div>
+            </div>
 
-          {/* ====== CENTER CONSOLE: TRANSITION & COUNTDOWN ====== */}
-          <StageTransitionConsole
-            nextEntry={nextEntry}
-            transitionSegmentFlow={transitionSegmentFlow}
-            transitionCountdownStr={transitionCountdownStr}
-            targetMixOutMs={targetMixOutMs}
-            currentCueDTimeMs={currentCues.D?.timeMs}
-            phraseTelemetry={phraseTelemetry}
-            pitchFader={pitchFader}
-            harmonicIntervalLabel={harmonicIntervalLabel}
-            currentEntry={currentEntry}
-            trackBpm={trackBpm}
-            trackKey={trackKey}
-            nextTransition={nextTransition}
-          />
+            {/* Deck A Cues */}
+            <div className="grid grid-cols-4 gap-2 lg:gap-3">
+              {CUE_SLOTS.map(slot => {
+                const cue = currentCues[slot];
+                const isActive = activeCueSlot === slot;
+                const isSet = cue && cue.timeMs != null;
+                return (
+                  <button
+                    key={slot}
+                    onClick={() => handleCueJump(slot)}
+                    disabled={!isSet}
+                    className={`flex flex-col items-center justify-center h-16 lg:h-20 rounded-md font-mono border-2 transition-all focus:outline-none ${
+                      isActive 
+                        ? 'border-cyan-400 bg-cyan-400/20 text-cyan-50 shadow-[0_0_15px_rgba(34,211,238,0.4)]' 
+                        : isSet 
+                        ? 'border-cyan-900 bg-cyan-950/30 text-cyan-300 hover:border-cyan-500' 
+                        : 'border-neutral-900 bg-neutral-950 text-neutral-800 cursor-not-allowed'
+                    }`}
+                  >
+                    <span className="text-xl font-black">{slot}</span>
+                    <span className="text-[10px] font-bold tracking-widest uppercase opacity-70">
+                      {FOUR_POINT_CUE_CONFIG[slot].role.split(' ')[0]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            
+            {/* Play/Pause Large Transport */}
+            <div className="mt-4 flex gap-3">
+               <button
+                  onClick={() => void handleToggleAudition()}
+                  className={`flex-1 h-14 rounded-md font-mono font-black tracking-widest text-lg transition-colors border-b-4 focus:outline-none ${
+                    auditionState === 'playing' 
+                      ? 'bg-cyan-500 text-black border-cyan-700 shadow-[0_0_20px_rgba(34,211,238,0.4)]'
+                      : 'bg-neutral-800 text-neutral-400 border-neutral-950 hover:bg-neutral-700 hover:text-white'
+                  }`}
+               >
+                 {auditionState === 'playing' ? 'PAUSE' : 'PLAY'}
+               </button>
+               <button className="flex-1 h-14 rounded-md font-mono font-bold tracking-widest text-lg bg-neutral-900 text-neutral-500 border-b-4 border-neutral-950 cursor-not-allowed">
+                 SYNC
+               </button>
+            </div>
+          </div>
+          
+          {/* ====== MIXER CONSOLE (CENTER) ====== */}
+          <div className="w-56 lg:w-72 bg-surface-panel border border-border-base rounded-lg p-5 flex flex-col items-center justify-center relative shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+             <div className="absolute top-4 w-full flex justify-center">
+                <span className="text-[10px] text-neutral-600 font-bold tracking-widest uppercase">Transition</span>
+             </div>
 
-          {/* ====== DECK B: NEXT TRACK (UP NEXT) ====== */}
-          {nextEntry && (
-            <StageNextDeck
-              nextEntry={nextEntry}
-              stageCurrentIndex={stageCurrentIndex}
-              totalTracks={setlist.length}
-              trackTitle={trackTitle}
-              trackArtist={trackArtist}
-              trackBpm={trackBpm}
-              trackKey={trackKey}
-              trackEnergy={trackEnergy}
-              nextCues={nextCues}
-            />
-          )}
-        </div>
+             <div className="flex flex-col items-center space-y-8 w-full">
+                {/* Countdown */}
+                <div className="flex flex-col items-center">
+                  <span className="text-7xl lg:text-8xl font-mono font-black tracking-tighter text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                    {transitionCountdownStr}
+                  </span>
+                  <span className={`text-xs font-mono font-bold tracking-widest uppercase mt-2 ${transitionCountdownMs != null && transitionCountdownMs < 15000 ? 'text-red-500 animate-pulse' : 'text-neutral-500'}`}>
+                    Time to Mix Out
+                  </span>
+                </div>
+                
+                {/* Harmonic Data */}
+                <div className="w-full bg-neutral-950/80 border border-neutral-900 rounded-lg p-4 flex flex-col items-center gap-1">
+                   <span className="text-[10px] text-neutral-500 font-bold tracking-widest uppercase">Pitch Fader</span>
+                   <span className={`text-2xl font-mono font-bold ${pitchFader && (pitchFader.pct < -5 || pitchFader.pct > 5) ? 'text-red-400' : 'text-green-400'}`}>
+                      {pitchFader ? pitchFader.label : '0.0%'}
+                   </span>
+                   <span className="text-xs text-neutral-400 font-medium mt-2 text-center">
+                      {harmonicIntervalLabel}
+                   </span>
+                </div>
+             </div>
+
+             <div className="absolute bottom-4 flex justify-between w-full px-8">
+                <button onClick={stagePrev} className="text-neutral-600 hover:text-white transition-colors focus:outline-none">
+                   &larr; PREV
+                </button>
+                <button onClick={stageNext} className="text-neutral-600 hover:text-white transition-colors focus:outline-none">
+                   NEXT &rarr;
+                </button>
+             </div>
+          </div>
+
+          {/* ====== DECK B (UP NEXT) ====== */}
+          <div className="flex-1 bg-surface-panel border border-amber-900/40 rounded-lg p-5 flex flex-col justify-between opacity-80 hover:opacity-100 transition-opacity shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+            {nextEntry ? (
+              <>
+                <div className="flex justify-between items-start">
+                  <div className="min-w-0 pr-4">
+                    <h2 className="text-3xl lg:text-4xl font-black text-neutral-300 tracking-tighter truncate leading-none mb-1">
+                      {trackTitle(nextEntry)}
+                    </h2>
+                    <h3 className="text-amber-600 font-bold uppercase tracking-widest truncate text-sm">
+                      {trackArtist(nextEntry) || 'Unknown Artist'}
+                    </h3>
+                  </div>
+                  <div className="shrink-0 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded text-amber-500 text-xs font-mono font-bold tracking-widest uppercase">
+                    UP NEXT
+                  </div>
+                </div>
+                
+                <div className="flex justify-between items-end my-4">
+                  <div className="flex gap-6">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-amber-700 font-bold tracking-widest uppercase mb-1">BPM</span>
+                      <span className="text-4xl lg:text-5xl font-mono text-neutral-400 font-light tracking-tighter">{trackBpm(nextEntry)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-amber-700 font-bold tracking-widest uppercase mb-1">KEY</span>
+                      <span className="text-4xl lg:text-5xl font-mono text-amber-500 font-bold tracking-tighter">{trackKey(nextEntry)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deck B Cues */}
+                <div className="grid grid-cols-4 gap-2 lg:gap-3">
+                  {CUE_SLOTS.map(slot => {
+                    const cue = nextCues[slot];
+                    const isSet = cue && cue.timeMs != null;
+                    return (
+                      <div
+                        key={slot}
+                        className={`flex flex-col items-center justify-center h-16 lg:h-20 rounded-md font-mono border-2 transition-all ${
+                           isSet 
+                            ? 'border-amber-900/50 bg-amber-950/20 text-amber-500/80' 
+                            : 'border-neutral-900 bg-neutral-950 text-neutral-800'
+                        }`}
+                      >
+                        <span className="text-xl font-black">{slot}</span>
+                        <span className="text-[10px] font-bold tracking-widest uppercase opacity-70">
+                          {FOUR_POINT_CUE_CONFIG[slot].role.split(' ')[0]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Inactive Transport */}
+                <div className="mt-4 flex gap-3">
+                   <button disabled className="flex-1 h-14 rounded-md font-mono font-black tracking-widest text-lg bg-neutral-900 text-neutral-700 border-b-4 border-neutral-950 cursor-not-allowed">
+                     PLAY
+                   </button>
+                   <button disabled className="flex-1 h-14 rounded-md font-mono font-bold tracking-widest text-lg bg-neutral-900 text-neutral-700 border-b-4 border-neutral-950 cursor-not-allowed">
+                     SYNC
+                   </button>
+                </div>
+              </>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-neutral-600 font-mono font-bold tracking-widest uppercase">
+                <span className="text-3xl mb-2">END OF SET</span>
+                <span>No more tracks</span>
+              </div>
+            )}
+          </div>
+        </section>
       </main>
-
-      {/* Bottom Navigation Bar */}
-      <StageFooter
-        stagePrev={stagePrev}
-        stageNext={stageNext}
-        stageCurrentIndex={stageCurrentIndex}
-        setlistLength={setlist.length}
-        handleToggleAudition={async () => handleToggleAudition()}
-        auditionState={auditionState}
-        stageRestart={stageRestart}
-        showSetlist={showSetlist}
-        setShowSetlist={setShowSetlist}
-        handleExitRequest={handleExitRequest}
-      />
 
       {/* Setlist Jump Drawer Overlay */}
       <SetlistJumpDrawer
@@ -578,7 +541,6 @@ export function StageMode() {
         }}
       />
 
-      {/* Exit Confirmation Modal */}
       <ExitConfirmModal
         isOpen={showExitConfirm}
         onCancel={handleExitCancel}

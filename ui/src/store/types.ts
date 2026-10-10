@@ -9,7 +9,7 @@ import type { ExportResult } from '../bindings/ExportResult';
 import type { AppSettings } from '../bindings/AppSettings';
 import type { SetlistPins } from '../features/setlist/types';
 
-export type Route = 'library' | 'discovery' | 'track' | 'setlist' | 'settings' | 'stage';
+export type Route = 'library' | 'discovery' | 'track' | 'setlist' | 'settings' | 'stage' | 'performance';
 
 export interface SetlistSnapshot {
   setlist: SetlistEntry[];
@@ -82,6 +82,8 @@ export interface UiSlice {
   isLoading: boolean;
   error: string | null;
   fetchPing: (backend?: Backend) => Promise<void>;
+  performancePhase: number;
+  setPerformancePhase: (phase: number) => void;
 }
 
 export interface LibrarySlice {

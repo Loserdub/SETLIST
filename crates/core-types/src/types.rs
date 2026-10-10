@@ -275,6 +275,105 @@ pub struct Track {
     pub analysis_version: Option<String>,
 }
 
+impl Track {
+    /// Extracts a clean title and artist from a track, falling back intelligently to
+    /// the audio file's name when ID3/container tags are absent.
+    pub fn display_metadata(&self) -> (String, String) {
+        let tag_title = self
+            .tags
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let tag_artist = self
+            .tags
+            .artist
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+
+        if let Some(t) = tag_title {
+            let a = tag_artist.unwrap_or("Unknown Artist");
+            return (t.to_string(), a.to_string());
+        }
+
+        // Fallback: Parse filename stem
+        let raw_filename = std::path::Path::new(&self.path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        let stem = if let Some(idx) = raw_filename.rfind('.') {
+            &raw_filename[..idx]
+        } else {
+            raw_filename
+        };
+
+        // Clean leading track sequence numbers (e.g. "01 - ", "02. ", "03_")
+        let mut stripped_stem = stem;
+
+        let mut chars = stripped_stem.chars();
+        let mut digit_count = 0;
+
+        for c in &mut chars {
+            if c.is_ascii_digit() {
+                digit_count += 1;
+            } else {
+                break;
+            }
+        }
+
+        if digit_count > 0 {
+            let after_digits = &stripped_stem[digit_count..];
+            let mut chars = after_digits.chars();
+            let mut sep_bytes = 0;
+            for c in &mut chars {
+                if c.is_whitespace() || c == '.' || c == '_' || c == '-' {
+                    sep_bytes += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            if sep_bytes > 0 {
+                stripped_stem = &after_digits[sep_bytes..];
+            }
+        }
+
+        let stripped_stem = stripped_stem.trim();
+
+        if stripped_stem.contains(" - ") {
+            let parts: Vec<&str> = stripped_stem
+                .split(" - ")
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
+            if parts.len() >= 2 {
+                let parsed_title = parts.last().copied().unwrap_or(stem);
+                let parsed_artist = parts[parts.len() - 2];
+                return (
+                    parsed_title.to_string(),
+                    tag_artist.unwrap_or(parsed_artist).to_string(),
+                );
+            }
+        }
+
+        let title = if stripped_stem.is_empty() {
+            if stem.is_empty() {
+                "Untitled Track"
+            } else {
+                stem
+            }
+        } else {
+            stripped_stem
+        };
+
+        (
+            title.to_string(),
+            tag_artist.unwrap_or("Unknown Artist").to_string(),
+        )
+    }
+}
+
 /// User-tunable weights for the transition cost model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -582,16 +681,8 @@ pub struct Song {
 
 impl From<&Track> for Song {
     fn from(track: &Track) -> Self {
-        let title = track
-            .tags
-            .title
-            .clone()
-            .unwrap_or_else(|| "Unknown Title".to_string());
-        let artist = track
-            .tags
-            .artist
-            .clone()
-            .unwrap_or_else(|| "Unknown Artist".to_string());
+        let (title, artist) = track.display_metadata();
+
         let duration_seconds = (track.duration_ms / 1000.0).max(0.0);
         let bpm = track.analysis.as_ref().map(|a| a.rhythm.grid.bpm);
         let musical_key = track.analysis.as_ref().map(|a| a.key.camelot.to_string());

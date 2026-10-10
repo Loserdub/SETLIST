@@ -5,3 +5,4 @@ export * from './StageHeader';
 export * from './StageTransitionConsole';
 export * from './StageNextDeck';
 export * from './StageFooter';
+export * from './LiveWaveformCanvas';

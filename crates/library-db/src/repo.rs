@@ -322,8 +322,7 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError>
         save_analysis_tx(&tx, &track_id, analysis, version)?;
     }
 
-    let title = track.tags.title.as_deref().unwrap_or("Unknown Title");
-    let artist = track.tags.artist.as_deref().unwrap_or("Unknown Artist");
+    let (title, artist) = track.display_metadata();
     let duration_sec = (track.duration_ms / 1000.0).max(0.0);
     tx.execute(
         "INSERT INTO songs (id, track_id, title, artist, duration_seconds, updated_at)

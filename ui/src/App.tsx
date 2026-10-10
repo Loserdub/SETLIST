@@ -8,6 +8,7 @@ import { TrackRoute } from './components/routes/TrackRoute';
 import { SetlistRoute } from './components/routes/SetlistRoute';
 import { SettingsRoute } from './components/routes/SettingsRoute';
 import { StageRoute } from './components/routes/StageRoute';
+import { PerformanceFlowRoute } from './components/routes/PerformanceFlowRoute';
 import { GlobalTransportBar } from './components/transport/GlobalTransportBar';
 import { ToastContainer } from './components/ToastContainer';
 import { useAppStore } from './store/useAppStore';
@@ -72,6 +73,7 @@ export function App() {
         {currentRoute === 'track' && <TrackRoute />}
         {currentRoute === 'setlist' && <SetlistRoute />}
         {currentRoute === 'settings' && <SettingsRoute />}
+        {currentRoute === 'performance' && <PerformanceFlowRoute />}
         {currentRoute === 'stage' && <StageRoute />}
       </main>
 

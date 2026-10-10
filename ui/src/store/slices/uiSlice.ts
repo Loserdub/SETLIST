@@ -176,4 +176,7 @@ export const createUiSlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
       set({ error: message, isLoading: false });
     }
   },
+
+  performancePhase: 0,
+  setPerformancePhase: (phase) => set({ performancePhase: phase }),
 });
