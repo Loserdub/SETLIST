@@ -7,6 +7,8 @@ import type { SetlistEntry } from '../../bindings/SetlistEntry';
 import type { TransitionAdvice } from '../../bindings/TransitionAdvice';
 import { EditedBadge, isFieldOverridden } from '../track/overrides';
 import { IconPrev, IconNext, IconAlertTriangle } from '../../components/icons';
+import { PerformanceControls } from './components/PerformanceControls';
+import { TimelineVisualizer } from './components/TimelineVisualizer';
 
 /**
  * Stage Mode — a dedicated, read-only live performance view.
@@ -202,137 +204,146 @@ export function StageMode() {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col justify-center items-center px-8 gap-6 min-h-0">
-        {/* Previous track (subtle) */}
-        {prevEntry && (
-          <div className="w-full max-w-3xl opacity-35 text-center" data-testid="stage-prev-track">
-            <p className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8] mb-0.5">PREVIOUS</p>
-            <p className="text-sm text-[#cfcfcf] font-mono truncate">{trackTitle(prevEntry)}</p>
+      <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_360px] gap-6 p-6 min-h-0 overflow-y-auto">
+        {/* Left Column: Track Info & Waveform */}
+        <div className="flex flex-col gap-6 min-h-0 w-full max-w-5xl mx-auto">
+          {/* Waveform Visualizer */}
+          <div className="h-40 bg-[#0c0c0c] border border-[#1f1f1f] shrink-0 rounded-sm overflow-hidden">
+            <TimelineVisualizer durationMs={currentSongDurationMs} positionMs={clock.elapsedMs} />
           </div>
-        )}
 
-        {/* ====== CURRENT TRACK — PRIMARY FOCUS ====== */}
-        <div className="w-full max-w-4xl text-center space-y-2.5" data-testid="stage-current-track">
-          <p className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8] font-semibold">
-            NOW PLAYING
-          </p>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight leading-tight line-clamp-2 max-w-4xl break-words">
-            {trackTitle(currentEntry)}
-          </h2>
-          {trackArtist(currentEntry) && (
-            <p className="text-lg text-[#cfcfcf]">{trackArtist(currentEntry)}</p>
-          )}
+          {/* Current Track & Transition */}
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#0c0c0c] border border-[#1f1f1f] rounded-sm p-8 text-center min-h-0 relative">
+            {/* Previous track (subtle) */}
+            {prevEntry && (
+              <div className="absolute top-6 left-6 opacity-35 text-left max-w-xs hidden xl:block" data-testid="stage-prev-track">
+                <p className="text-[10px] font-mono uppercase tracking-wider text-[#a8a8a8] mb-0.5">PREVIOUS</p>
+                <p className="text-xs text-[#cfcfcf] font-mono truncate">{trackTitle(prevEntry)}</p>
+              </div>
+            )}
 
-          {/* Track metadata technical blocks */}
-          <div className="flex items-center justify-center gap-2 pt-2">
-            <MetadataPill
-              label="BPM"
-              value={trackBpm(currentEntry)}
-              isOverridden={isFieldOverridden(currentEntry?.track, 'bpm')}
-            />
-            <MetadataPill
-              label="KEY"
-              value={trackKey(currentEntry)}
-              isOverridden={isFieldOverridden(currentEntry?.track, 'key_camelot')}
-            />
-            <MetadataPill label="ENERGY" value={trackEnergy(currentEntry)} />
-            {currentSongDurationMs != null && (
-              <MetadataPill label="LENGTH" value={formatDuration(currentSongDurationMs)} />
+            {/* ====== CURRENT TRACK — PRIMARY FOCUS ====== */}
+            <div className="w-full text-center space-y-2.5" data-testid="stage-current-track">
+              <p className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8] font-semibold">
+                NOW PLAYING
+              </p>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight leading-tight line-clamp-2 max-w-4xl break-words mx-auto">
+                {trackTitle(currentEntry)}
+              </h2>
+              {trackArtist(currentEntry) && (
+                <p className="text-lg text-[#cfcfcf]">{trackArtist(currentEntry)}</p>
+              )}
+
+              {/* Track metadata technical blocks */}
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <MetadataPill
+                  label="BPM"
+                  value={trackBpm(currentEntry)}
+                  isOverridden={isFieldOverridden(currentEntry?.track, 'bpm')}
+                />
+                <MetadataPill
+                  label="KEY"
+                  value={trackKey(currentEntry)}
+                  isOverridden={isFieldOverridden(currentEntry?.track, 'key_camelot')}
+                />
+                <MetadataPill label="ENERGY" value={trackEnergy(currentEntry)} />
+                {currentSongDurationMs != null && (
+                  <MetadataPill label="LENGTH" value={formatDuration(currentSongDurationMs)} />
+                )}
+              </div>
+            </div>
+
+            {/* Transition info → next track */}
+            {nextEntry && (
+              <div className="w-full max-w-3xl space-y-3 mt-8">
+                {/* Transition advice strip */}
+                {nextTransition && (
+                  <div
+                    className={`flex items-center justify-center gap-3 py-2 px-4 border rounded-sm font-mono transition-all ${
+                      nextTransition.intervention_required
+                        ? 'border-amber-500/80 bg-amber-950/40 text-amber-300 ring-1 ring-amber-500/30'
+                        : 'border-[#1f1f1f] bg-[#0f0f0f]'
+                    }`}
+                    data-testid="stage-transition-info"
+                  >
+                    <span
+                      className={`text-[10px] uppercase tracking-wider ${
+                        nextTransition.intervention_required ? 'text-amber-300 font-bold' : 'text-[#a8a8a8]'
+                      }`}
+                    >
+                      {nextTransition.transition_type.replace(/([A-Z])/g, ' $1').trim()}
+                    </span>
+                    <span className="text-[#333333]">|</span>
+                    <span className="text-[10px] text-[#cfcfcf]">
+                      Δ{Math.abs(nextTransition.bpm_delta).toFixed(1)} BPM
+                    </span>
+                    <span className="text-[#333333]">|</span>
+                    <span className="text-[10px] text-[#cfcfcf]">
+                      Key dist {nextTransition.key_distance}
+                    </span>
+                    {nextTransition.phrase_bars > 0 && (
+                      <>
+                        <span className="text-[#333333]">|</span>
+                        <span className="text-[10px] text-[#a8a8a8]">
+                          {nextTransition.phrase_bars} bars
+                        </span>
+                      </>
+                    )}
+                    {nextTransition.intervention_required && (
+                      <>
+                        <span className="text-[#333333]">|</span>
+                        <span className="text-[10px] text-amber-300 font-bold flex items-center gap-1.5">
+                          <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                          <IconAlertTriangle size={12} className="text-amber-400 shrink-0" />
+                          ⚠ Intervention
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Transition notes */}
+                {nextTransition?.notes && nextTransition.notes.length > 0 && (
+                  <div className="text-center space-y-0.5" data-testid="stage-transition-notes">
+                    {nextTransition.notes.slice(0, 2).map((note, i) => (
+                      <p key={i} className="text-[10px] text-[#a8a8a8] font-mono">
+                        {note}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Next track */}
+                <div className="text-center pt-2" data-testid="stage-next-track">
+                  <p className="text-[10px] font-mono uppercase tracking-wider text-[#a8a8a8] mb-1">
+                    UP NEXT
+                  </p>
+                  <p className="text-lg font-medium text-[#ededed] line-clamp-1 break-words">
+                    {trackTitle(nextEntry)}
+                  </p>
+                  {trackArtist(nextEntry) && (
+                    <p className="text-xs text-[#a8a8a8] mt-0.5 truncate">{trackArtist(nextEntry)}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* End of set indicator */}
+            {!nextEntry && (
+              <div className="text-center mt-8" data-testid="stage-end-of-set">
+                <p className="text-xs font-mono uppercase tracking-wider text-[#f59e0b] mb-1">
+                  LAST TRACK
+                </p>
+                <p className="text-sm font-mono text-[#a8a8a8]">Final song in performance setlist.</p>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Transition info → next track */}
-        {nextEntry && (
-          <div className="w-full max-w-3xl space-y-3">
-            {/* Transition advice strip */}
-            {nextTransition && (
-              <div
-                className={`flex items-center justify-center gap-3 py-2 px-4 border rounded-none font-mono transition-all ${
-                  nextTransition.intervention_required
-                    ? 'border-amber-500/80 bg-amber-950/40 text-amber-300 ring-1 ring-amber-500/30'
-                    : 'border-[#1f1f1f] bg-[#0c0c0c]'
-                }`}
-                data-testid="stage-transition-info"
-              >
-                <span
-                  className={`text-xs uppercase tracking-wider ${
-                    nextTransition.intervention_required ? 'text-amber-300 font-bold' : 'text-[#a8a8a8]'
-                  }`}
-                >
-                  {nextTransition.transition_type.replace(/([A-Z])/g, ' $1').trim()}
-                </span>
-                <span className="text-[#333333]">|</span>
-                <span className="text-xs text-[#cfcfcf]">
-                  Δ{Math.abs(nextTransition.bpm_delta).toFixed(1)} BPM
-                </span>
-                <span className="text-[#333333]">|</span>
-                <span className="text-xs text-[#cfcfcf]">
-                  Key dist {nextTransition.key_distance}
-                </span>
-                {nextTransition.phrase_bars > 0 && (
-                  <>
-                    <span className="text-[#333333]">|</span>
-                    <span className="text-xs text-[#a8a8a8]">
-                      {nextTransition.phrase_bars} bars
-                    </span>
-                  </>
-                )}
-                {nextTransition.intervention_required && (
-                  <>
-                    <span className="text-[#333333]">|</span>
-                    <span className="text-xs text-amber-300 font-bold flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                      <IconAlertTriangle size={13} className="text-amber-400 shrink-0" />
-                      ⚠ Intervention
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Transition notes */}
-            {nextTransition?.notes && nextTransition.notes.length > 0 && (
-              <div className="text-center space-y-0.5" data-testid="stage-transition-notes">
-                {nextTransition.notes.slice(0, 2).map((note, i) => (
-                  <p key={i} className="text-xs text-[#a8a8a8] font-mono">
-                    {note}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* Next track */}
-            <div className="text-center" data-testid="stage-next-track">
-              <p className="text-xs font-mono uppercase tracking-wider text-[#a8a8a8] mb-1">
-                UP NEXT
-              </p>
-              <p className="text-xl md:text-3xl font-medium text-[#ededed] line-clamp-2 break-words">
-                {trackTitle(nextEntry)}
-              </p>
-              {trackArtist(nextEntry) && (
-                <p className="text-sm text-[#a8a8a8] mt-0.5">{trackArtist(nextEntry)}</p>
-              )}
-              <div className="flex items-center justify-center gap-2 mt-1.5 text-xs font-mono text-[#a8a8a8]">
-                <span>{trackBpm(nextEntry)} BPM</span>
-                <span>•</span>
-                <span>{trackKey(nextEntry)}</span>
-                <span>•</span>
-                <span>E{trackEnergy(nextEntry)}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* End of set indicator */}
-        {!nextEntry && (
-          <div className="text-center" data-testid="stage-end-of-set">
-            <p className="text-xs font-mono uppercase tracking-wider text-[#f59e0b] mb-1">
-              LAST TRACK
-            </p>
-            <p className="text-sm font-mono text-[#a8a8a8]">Final song in performance setlist.</p>
-          </div>
-        )}
+        {/* Right Column: Performance Controls */}
+        <div className="flex justify-center shrink-0 w-full">
+          <PerformanceControls currentBpm={currentEntry?.track?.analysis?.rhythm?.grid?.bpm} />
+        </div>
       </div>
 
       {/* Bottom Navigation Bar — Wide Separation & 56px+ Touch Targets */}
