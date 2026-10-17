@@ -49,7 +49,7 @@ describe('TrackView Component', () => {
 
     const track = useAppStore.getState().selectedTrack!;
     expect(screen.getByText(track.tags.title!)).toBeDefined();
-    expect(screen.getByText(new RegExp(track.tags.artist!, 'i'))).toBeDefined();
+    expect(screen.getByText(track.tags.artist!)).toBeDefined();
 
     // Check Camelot Key Badge
     const keyBadge = screen.getByTestId('track-key-badge');

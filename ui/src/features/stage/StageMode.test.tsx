@@ -3,6 +3,8 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { StageMode } from './StageMode';
 import { formatDuration, formatDurationCompact } from './usePerformanceClock';
 import { useAppStore } from '../../store/useAppStore';
+import { mockPlaybackClient } from '../../api/playback';
+import { useStageControlsStore } from './store/useStageControlsStore';
 import type { Track } from '../../bindings/Track';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
 import type { TransitionAdvice } from '../../bindings/TransitionAdvice';
@@ -123,6 +125,21 @@ describe('StageMode Component & Live Performance View', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    mockPlaybackClient.reset();
+    useStageControlsStore.setState({
+      isPlaying: false,
+      isSlipMode: false,
+      slipPositionMs: null,
+      slipAnchorTime: null,
+      positionMs: 0,
+      durationMs: 0,
+      currentTrackId: null,
+      mainStartCueMs: 0,
+      mixInCueMs: null,
+      mixOutCueMs: null,
+      hotCues: [],
+      liveSetlist: [],
+    });
 
     mockTrack1 = makeMockTrack('track-1', 'Starlight Symphony', 'Nova', 126, 8, 'A', 6, 240000);
     mockTrack2 = makeMockTrack('track-2', 'Midnight Echoes', 'Vesper', 128, 9, 'A', 7, 300000);
@@ -189,8 +206,8 @@ describe('StageMode Component & Live Performance View', () => {
 
     const currentTrackEl = screen.getByTestId('stage-current-track');
     expect(currentTrackEl).toBeDefined();
-    expect(screen.getByText('Starlight Symphony')).toBeDefined();
-    expect(screen.getByText('Nova')).toBeDefined();
+    expect(screen.getAllByText('Starlight Symphony')[0]).toBeDefined();
+    expect(screen.getAllByText('Nova')[0]).toBeDefined();
 
     // Check metadata pills
     expect(screen.getByText('126')).toBeDefined(); // BPM
@@ -208,8 +225,8 @@ describe('StageMode Component & Live Performance View', () => {
 
     const nextTrackEl = screen.getByTestId('stage-next-track');
     expect(nextTrackEl).toBeDefined();
-    expect(screen.getByText('Midnight Echoes')).toBeDefined();
-    expect(screen.getByText('Vesper')).toBeDefined();
+    expect(screen.getAllByText('Midnight Echoes')[0]).toBeDefined();
+    expect(screen.getAllByText('Vesper')[0]).toBeDefined();
 
     const transitionInfo = screen.getByTestId('stage-transition-info');
     expect(transitionInfo).toBeDefined();
@@ -234,19 +251,19 @@ describe('StageMode Component & Live Performance View', () => {
     expect(useAppStore.getState().stageCurrentIndex).toBe(1);
 
     // Track 2 is now current
-    expect(screen.getByText('Midnight Echoes')).toBeDefined();
+    expect(screen.getAllByText('Midnight Echoes')[0]).toBeDefined();
     expect(screen.getByText(/previous/i)).toBeDefined();
-    expect(screen.getByText('Starlight Symphony')).toBeDefined();
+    expect(screen.getAllByText('Starlight Symphony')[0]).toBeDefined();
 
     // Next track is Track 3 with intervention advice
-    expect(screen.getByText('Solar Flare')).toBeDefined();
+    expect(screen.getAllByText('Solar Flare')[0]).toBeDefined();
     expect(screen.getByText('⚠ Intervention')).toBeDefined();
 
     // Click Next -> moves to index 2 (last track)
     fireEvent.click(screen.getByTestId('stage-next-btn'));
     expect(useAppStore.getState().stageCurrentIndex).toBe(2);
 
-    expect(screen.getByText('Solar Flare')).toBeDefined();
+    expect(screen.getAllByText('Solar Flare')[0]).toBeDefined();
     expect(screen.getByTestId('stage-end-of-set')).toBeDefined();
     expect(screen.getByText(/last track/i)).toBeDefined();
 
@@ -338,6 +355,167 @@ describe('StageMode Component & Live Performance View', () => {
     });
 
     expect(screen.getByTestId('stage-elapsed').textContent).toBe('01:05');
+  });
+
+  it('allows exiting back to menu via prominent header exit button', () => {
+    render(<StageMode />);
+
+    const headerExitBtn = screen.getByTestId('stage-header-exit-btn');
+    expect(headerExitBtn).toBeDefined();
+
+    // Clicking header exit button opens confirmation modal
+    fireEvent.click(headerExitBtn);
+    expect(screen.getByTestId('stage-exit-confirm')).toBeDefined();
+
+    // Confirming exit navigates back to setlist and resets stage mode
+    fireEvent.click(screen.getByTestId('stage-exit-confirm-btn'));
+    expect(useAppStore.getState().isStageMode).toBe(false);
+    expect(useAppStore.getState().currentRoute).toBe('setlist');
+  });
+
+  it('operates right-side transport controls: play/pause, beat jump, hot cues, and slip mode', async () => {
+    // Add analyzed cue points to mockTrack1 for pads A and B
+    if (mockTrack1.analysis) {
+      mockTrack1.analysis.cue_points = [
+        {
+          index: 0,
+          time_ms: 10000,
+          label: 'Intro Drop',
+          color_hex: '#10b981',
+          kind: 'HotCue',
+          loop_end_ms: null,
+        },
+        {
+          index: 1,
+          time_ms: 30000,
+          label: 'Main Drop',
+          color_hex: '#06b6d4',
+          kind: 'HotCue',
+          loop_end_ms: null,
+        },
+      ];
+    }
+
+    render(<StageMode />);
+
+    // Track 1 should be loaded into playback client
+    expect(mockPlaybackClient.getMockState().trackId).toBe('track-1');
+
+    // 1. Play / Pause
+    const playPauseBtn = screen.getByTestId('stage-play-pause-btn');
+    expect(playPauseBtn.textContent).toContain('PLAY');
+
+    // Click Play
+    await act(async () => {
+      fireEvent.click(playPauseBtn);
+    });
+    expect(mockPlaybackClient.getMockState().state).toBe('playing');
+    expect(playPauseBtn.textContent).toContain('PAUSE');
+
+    // Click Pause
+    await act(async () => {
+      fireEvent.click(playPauseBtn);
+    });
+    expect(mockPlaybackClient.getMockState().state).toBe('paused');
+    expect(playPauseBtn.textContent).toContain('PLAY');
+
+    // 2. Hot Cues (Pad A is preloaded at 10000ms, Pad B at 30000ms)
+    const padA = screen.getByTestId('stage-cue-pad-a');
+    await act(async () => {
+      fireEvent.click(padA);
+    });
+    expect(mockPlaybackClient.getMockState().positionMs).toBe(10000);
+
+    const padB = screen.getByTestId('stage-cue-pad-b');
+    await act(async () => {
+      fireEvent.click(padB);
+    });
+    expect(mockPlaybackClient.getMockState().positionMs).toBe(30000);
+
+    // 3. Beat Jump (at 126 BPM, 4 beats ≈ 1904.76 ms)
+    const beatJumpPlus4 = screen.getByTestId('stage-beat-jump-plus-4');
+    await act(async () => {
+      fireEvent.click(beatJumpPlus4);
+    });
+    const posAfterPlus4 = mockPlaybackClient.getMockState().positionMs;
+    expect(posAfterPlus4).toBeGreaterThan(31900);
+    expect(posAfterPlus4).toBeLessThan(31910);
+
+    const beatJumpMinus4 = screen.getByTestId('stage-beat-jump-minus-4');
+    await act(async () => {
+      fireEvent.click(beatJumpMinus4);
+    });
+    const posAfterMinus4 = mockPlaybackClient.getMockState().positionMs;
+    expect(posAfterMinus4).toBe(30000);
+
+    // 4. Slip Mode
+    const slipBtn = screen.getByTestId('stage-slip-mode-btn');
+    expect(slipBtn.textContent).toContain('Slip Mode OFF');
+
+    // Turn Slip Mode ON
+    await act(async () => {
+      fireEvent.click(slipBtn);
+    });
+    expect(slipBtn.textContent).toContain('Slip Mode ON');
+    expect(useStageControlsStore.getState().isSlipMode).toBe(true);
+
+    // Turn Slip Mode OFF
+    await act(async () => {
+      fireEvent.click(slipBtn);
+    });
+    expect(slipBtn.textContent).toContain('Slip Mode OFF');
+    expect(useStageControlsStore.getState().isSlipMode).toBe(false);
+  });
+
+  it('renders TransitionRadar and StageDetourCopilot in stage view and supports live detour swapping', () => {
+    const candidate3 = makeMockTrack('track-3', 'Solar Flare', 'Helios', 130, 9, 'A', 9, 180000);
+    useAppStore.setState({ tracks: [mockTrack1, mockTrack2, candidate3] });
+    render(<StageMode />);
+
+    // Transition Radar is rendered
+    expect(screen.getByTestId('stage-transition-radar')).toBeDefined();
+    expect(screen.getByTestId('radar-phrase-counter')).toBeDefined();
+
+    // Stage Detour Copilot is rendered
+    expect(screen.getByTestId('stage-detour-copilot')).toBeDefined();
+
+    // Swapping a detour card updates the live deck while leaving the static setlist immutable
+    const swapBtn = screen.getByTestId('detour-swap-lift');
+    fireEvent.click(swapBtn);
+
+    // Static setlist in useAppStore remains completely immutable!
+    const staticSetlist = useAppStore.getState().setlist;
+    expect(staticSetlist[1].track_id).toBe(mockTrack2.id);
+
+    // The live stage engine reflects the injected detour track
+    const liveSetlist = useStageControlsStore.getState().liveSetlist;
+    expect(liveSetlist[1].track_id).toBe('track-3');
+  });
+
+  it('renders Flight Deck components: Flight Runway, Section Anatomy, Crossroads Selector, and Action Prompter', () => {
+    render(<StageMode />);
+
+    expect(screen.getByTestId('stage-flight-runway')).toBeDefined();
+    expect(screen.getByTestId('stage-runway-active-capsule')).toBeDefined();
+    expect(screen.getByTestId('stage-section-anatomy')).toBeDefined();
+    expect(screen.getByTestId('stage-crossroads-selector')).toBeDefined();
+    expect(screen.getByTestId('stage-action-prompter')).toBeDefined();
+  });
+
+  it('toggles Auto-Advance mode via stage-playmode-toggle and persists state', () => {
+    render(<StageMode />);
+
+    const toggleBtn = screen.getByTestId('stage-playmode-toggle');
+    expect(toggleBtn.textContent).toContain('MANUAL CUE');
+    expect(useStageControlsStore.getState().playMode).toBe('manual_takeover');
+
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn.textContent).toContain('AUTO-ADVANCE: ON');
+    expect(useStageControlsStore.getState().playMode).toBe('auto_advance');
+
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn.textContent).toContain('MANUAL CUE');
+    expect(useStageControlsStore.getState().playMode).toBe('manual_takeover');
   });
 });
 

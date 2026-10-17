@@ -1,5 +1,6 @@
 import { isTauriEnvironment } from '../api';
 import { useAppStore, type Route } from '../store/useAppStore';
+import { isStageModeEnabled } from '../config/stageFeatureFlag';
 
 interface NavItem {
   route: Route;
@@ -128,7 +129,7 @@ export function Sidebar() {
           })}
         </nav>
 
-        {setlistLength > 0 && (
+        {isStageModeEnabled() && setlistLength > 0 && (
           <div className="px-3 pt-3">
             <button
               type="button"

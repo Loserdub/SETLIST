@@ -111,13 +111,6 @@ export const TrackView: React.FC = () => {
           void playbackRef.current.togglePlayPause();
         } else if (action.type === 'seek') {
           handleSeekRef.current(action.targetMs);
-        } else if (action.type === 'jump_cue') {
-          const targetCue = selectedTrack.analysis?.cue_points.find(
-            (c) => c.index === action.cueIndex
-          );
-          if (targetCue) {
-            handleJumpAndSeekRef.current(targetCue.time_ms);
-          }
         } else if (action.type === 'step_speed') {
           const currentSpeed = playbackRef.current.speed;
           const currentIndex = SPEED_OPTIONS.findIndex((r) => Math.abs(r - currentSpeed) < 0.05);

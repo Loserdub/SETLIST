@@ -22,6 +22,8 @@ interface UseStageKeyboardOptions {
   onNext: () => void;
   onPrev: () => void;
   onExit: () => void;
+  onTogglePlayMode?: () => void;
+  onSelectBranch?: (branch: 1 | 2 | 3) => void;
   bindings?: StageKeyBindings;
 }
 
@@ -35,6 +37,8 @@ export function useStageKeyboard({
   onNext,
   onPrev,
   onExit,
+  onTogglePlayMode,
+  onSelectBranch,
   bindings = DEFAULT_KEY_BINDINGS,
 }: UseStageKeyboardOptions) {
   const handleKeyDown = useCallback(
@@ -46,6 +50,30 @@ export function useStageKeyboard({
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       ) {
+        return;
+      }
+
+      // Tactical Crossroads Shortcuts
+      if (e.key === '1' && onSelectBranch) {
+        e.preventDefault();
+        onSelectBranch(1);
+        return;
+      }
+      if (e.key === '2' && onSelectBranch) {
+        e.preventDefault();
+        onSelectBranch(2);
+        return;
+      }
+      if (e.key === '3' && onSelectBranch) {
+        e.preventDefault();
+        onSelectBranch(3);
+        return;
+      }
+
+      // Auto-Advance toggle shortcut ('A' or 'a')
+      if ((e.key === 'a' || e.key === 'A') && onTogglePlayMode) {
+        e.preventDefault();
+        onTogglePlayMode();
         return;
       }
 
@@ -65,7 +93,7 @@ export function useStageKeyboard({
         return;
       }
     },
-    [onNext, onPrev, onExit, bindings]
+    [onNext, onPrev, onExit, onTogglePlayMode, onSelectBranch, bindings]
   );
 
   useEffect(() => {

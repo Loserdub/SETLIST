@@ -1001,4 +1001,103 @@ mod tests {
         assert_eq!(reloaded.energy_model.divisor, 12.0);
         assert_eq!(reloaded.key_penalties[0].mode_flip, 0.15);
     }
+
+    #[test]
+    fn test_upsert_track_persists_to_songs_table() {
+        let conn = setup_db();
+
+        let mut track = Track {
+            id: "track-sync-1".to_string(),
+            path: "/music/sync1.mp3".to_string(),
+            hash: "sha256:sync1111".to_string(),
+            tags: TrackTags {
+                title: Some("Sync Track".to_string()),
+                artist: Some("Sync Artist".to_string()),
+                album: Some("Sync Album".to_string()),
+            },
+            duration_ms: 240000.0,
+            analysis: None,
+            analyzed_at: None,
+            analysis_version: None,
+        };
+
+        // 1. Upsert track without analysis
+        upsert_track(&conn, &track).expect("upsert track without analysis");
+        let song_initial = get_song(&conn, "track-sync-1")
+            .expect("query song")
+            .expect("song exists");
+        assert_eq!(song_initial.title, "Sync Track");
+        assert_eq!(song_initial.artist, "Sync Artist");
+        assert_eq!(song_initial.bpm, None);
+
+        // 2. Save analysis and verify song table is updated
+        let analysis = sample_analysis();
+        save_analysis(&conn, "track-sync-1", &analysis, "v1.0.0").expect("save analysis");
+
+        let song_after_analysis = get_song(&conn, "track-sync-1")
+            .expect("query song")
+            .expect("song exists");
+        assert_eq!(song_after_analysis.bpm, Some(126.0));
+        assert_eq!(song_after_analysis.camelot_code.as_deref(), Some("8A"));
+        assert_eq!(song_after_analysis.musical_key.as_deref(), Some("8A"));
+        assert_eq!(song_after_analysis.energy_rating, Some(7));
+
+        // 3. Upsert track with analysis embedded directly
+        track.id = "track-sync-2".to_string();
+        track.path = "/music/sync2.mp3".to_string();
+        track.hash = "sha256:sync2222".to_string();
+        track.tags.title = Some("Direct Sync".to_string());
+        track.analysis = Some(analysis);
+        track.analysis_version = Some("v1.0.0".to_string());
+        upsert_track(&conn, &track).expect("upsert track with analysis");
+
+        let song_direct = get_song(&conn, "track-sync-2")
+            .expect("query song")
+            .expect("song exists");
+        assert_eq!(song_direct.title, "Direct Sync");
+        assert_eq!(song_direct.bpm, Some(126.0));
+        assert_eq!(song_direct.camelot_code.as_deref(), Some("8A"));
+        assert_eq!(song_direct.musical_key.as_deref(), Some("8A"));
+        assert_eq!(song_direct.energy_rating, Some(7));
+
+        // 4. Verify list_songs returns both with populated fields
+        let songs = list_songs(&conn).expect("list songs");
+        assert_eq!(songs.len(), 2);
+        for s in &songs {
+            assert_eq!(s.bpm, Some(126.0));
+            assert_eq!(s.camelot_code.as_deref(), Some("8A"));
+            assert_eq!(s.energy_rating, Some(7));
+        }
+    }
+
+    #[test]
+    fn test_list_songs_resolves_filename_when_tags_unknown() {
+        let conn = setup_db();
+
+        let track = Track {
+            id: "track-fallback-1".to_string(),
+            path: "C:\\Music\\Avicii - Levels.mp3".to_string(),
+            hash: "sha256:levels123".to_string(),
+            tags: TrackTags {
+                title: Some("Unknown Title".to_string()),
+                artist: Some("Unknown Artist".to_string()),
+                album: None,
+            },
+            duration_ms: 180000.0,
+            analysis: None,
+            analyzed_at: None,
+            analysis_version: None,
+        };
+
+        upsert_track(&conn, &track).expect("upsert track");
+
+        let songs = list_songs(&conn).expect("list songs");
+        let song = songs
+            .into_iter()
+            .find(|s| s.id == "track-fallback-1")
+            .expect("found song");
+
+        assert_eq!(song.title, "Levels");
+        assert_eq!(song.artist, "Avicii");
+    }
 }

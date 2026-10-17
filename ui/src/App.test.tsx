@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import App from './App';
 import { useAppStore } from './store/useAppStore';
+import { setEnableStageMode, resetStageModeFeatureFlag } from './config/stageFeatureFlag';
 
 describe('useAppStore', () => {
   it('updates state with ping response', async () => {
@@ -33,6 +34,7 @@ describe('useAppStore', () => {
 
 describe('App layout and routing', () => {
   beforeEach(() => {
+    resetStageModeFeatureFlag();
     useAppStore.setState({
       currentRoute: 'library',
       isStageMode: false,
@@ -44,6 +46,10 @@ describe('App layout and routing', () => {
       isLoading: false,
       error: null,
     });
+  });
+
+  afterEach(() => {
+    resetStageModeFeatureFlag();
   });
 
   it('renders sidebar and navigates through all routes', async () => {
@@ -185,7 +191,27 @@ describe('App layout and routing', () => {
     expect(screen.getByRole('button', { name: /scan folder/i })).toBeDefined();
   });
 
-  it('renders StageRoute and hides Sidebar when currentRoute is stage', () => {
+  it('guarantees app boots strictly in Studio Mode and guards against Stage Mode when disabled', () => {
+    setEnableStageMode(false);
+    useAppStore.setState({
+      currentRoute: 'stage',
+      isStageMode: true,
+      setlist: [],
+    });
+
+    render(<App />);
+
+    // Router guard strictly prevents Stage Mode and lands cleanly in Studio Mode
+    expect(screen.queryByTestId('stage-empty')).toBeNull();
+    expect(screen.queryByTestId('stage-quarantined')).toBeNull();
+    expect(screen.getByTestId('nav-library')).toBeDefined();
+    expect(screen.getByText('Music Library')).toBeDefined();
+    expect(useAppStore.getState().currentRoute).toBe('library');
+    expect(useAppStore.getState().isStageMode).toBe(false);
+  });
+
+  it('renders StageRoute and hides Sidebar when currentRoute is stage and stage mode is enabled', () => {
+    setEnableStageMode(true);
     useAppStore.setState({
       currentRoute: 'stage',
       isStageMode: true,
@@ -195,6 +221,23 @@ describe('App layout and routing', () => {
     render(<App />);
     expect(screen.getByTestId('stage-empty')).toBeDefined();
     expect(screen.queryByTestId('nav-library')).toBeNull();
+  });
+
+  it('executes independent SQLite library_db hydration on launch', () => {
+    const loadTracksMock = vi.fn();
+    const loadActiveSetlistMock = vi.fn();
+
+    useAppStore.setState({
+      hasLoadedTracks: false,
+      hasLoadedActiveSetlist: false,
+      loadTracks: loadTracksMock,
+      loadActiveSetlist: loadActiveSetlistMock,
+    });
+
+    render(<App />);
+
+    expect(loadTracksMock).toHaveBeenCalled();
+    expect(loadActiveSetlistMock).toHaveBeenCalled();
   });
 
   it('renders TRUSTNODELOGIC software label and intellectual property notices', () => {
@@ -263,6 +306,45 @@ describe('App layout and routing', () => {
     } else {
       delete (import.meta.env as Record<string, unknown>).VITE_SHOW_DEV_TOOLS;
     }
+  });
+
+  it('hides Stage Mode button in sidebar when stage mode is disabled even if setlist is non-empty', () => {
+    setEnableStageMode(false);
+    useAppStore.setState({
+      setlist: [
+        {
+          position: 1,
+          track_id: 't-1',
+          track: null,
+          transition: null,
+          target_energy: null,
+        },
+      ],
+    });
+
+    render(<App />);
+
+    expect(screen.queryByTestId('nav-stage-btn')).toBeNull();
+  });
+
+  it('shows Stage Mode button in sidebar when stage mode is enabled and setlist is non-empty', () => {
+    setEnableStageMode(true);
+    useAppStore.setState({
+      setlist: [
+        {
+          position: 1,
+          track_id: 't-1',
+          track: null,
+          transition: null,
+          target_energy: null,
+        },
+      ],
+    });
+
+    render(<App />);
+
+    expect(screen.getByTestId('nav-stage-btn')).toBeDefined();
+    expect(screen.getByText('[ STAGE MODE ]')).toBeDefined();
   });
 });
 

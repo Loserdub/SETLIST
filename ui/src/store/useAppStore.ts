@@ -26,6 +26,8 @@ import {
   applyPinsToOrderedIds,
 } from '../features/setlist/reorder';
 import type { SetlistPins } from '../features/setlist/types';
+import { useStageControlsStore } from '../features/stage/store/useStageControlsStore';
+import { isStageModeEnabled } from '../config/stageFeatureFlag';
 
 export type Route = 'library' | 'discovery' | 'track' | 'setlist' | 'settings' | 'stage';
 
@@ -190,6 +192,8 @@ export interface AppState {
   stagePrev: () => void;
   stageGoTo: (index: number) => void;
   stageRestart: () => void;
+  stageQueueTrackNext: (track: Track) => void;
+  stageReplaceNextTrack: (track: Track) => void;
 
   // Legacy Ping Support
   pingResult: string | null;
@@ -239,6 +243,9 @@ export function scheduleActiveSetlistPersistence(get: () => AppState, backendArg
   }
   saveDebounceTimer = setTimeout(async () => {
     const state = get();
+    // Air-gap protection: Stage Mode live mutations never trigger writes to SQLite!
+    if (state.isStageMode) return;
+
     const backend = backendArg ?? getBackend(state.useMockBackend);
     if (!backend || typeof backend.saveActiveSetlist !== 'function') return;
 
@@ -265,6 +272,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentRoute: 'library',
   setRoute: (currentRoute) => {
     if (currentRoute === 'track' && !get().selectedTrackId && !get().selectedTrack) {
+      return;
+    }
+    if (currentRoute === 'stage' && !isStageModeEnabled()) {
       return;
     }
     set({ currentRoute });
@@ -584,8 +594,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMasterVolume: async (volume: number) => {
     const clamped = Math.max(0.0, Math.min(2.0, volume));
     set({ masterVolume: clamped });
-    const client = getPlaybackClient();
-    await client.setVolume(clamped);
   },
 
   trackTitleOverrides: (() => {
@@ -1314,8 +1322,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   stageStartTime: null,
 
   enterStageMode: () => {
+    if (!isStageModeEnabled()) return;
     const { setlist } = get();
     if (setlist.length === 0) return;
+    useStageControlsStore.getState().initLiveSetlist(setlist);
     set({
       isStageMode: true,
       stageCurrentIndex: 0,
@@ -1325,6 +1335,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   exitStageMode: () => {
+    useStageControlsStore.getState().initLiveSetlist([]);
     set({
       isStageMode: false,
       stageStartTime: null,
@@ -1363,6 +1374,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!state.isStageMode) return state;
       return { stageCurrentIndex: 0, stageStartTime: Date.now() };
     });
+  },
+
+  stageQueueTrackNext: (track: Track) => {
+    // Strict separation of concerns: Live stage detours are isolated in the live performance engine.
+    // The static studio setlist remains completely immutable.
+    useStageControlsStore
+      .getState()
+      .stageQueueTrackNext(track, get().stageCurrentIndex);
+  },
+
+  stageReplaceNextTrack: (track: Track) => {
+    // Strict separation of concerns: Live stage detours are isolated in the live performance engine.
+    // The static studio setlist remains completely immutable.
+    useStageControlsStore
+      .getState()
+      .stageReplaceNextTrack(track, get().stageCurrentIndex);
   },
 
   // Legacy Ping

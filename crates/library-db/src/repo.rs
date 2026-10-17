@@ -113,24 +113,102 @@ pub fn upsert_track(conn: &Connection, track: &Track) -> Result<String, DbError>
         }
     };
 
-    if let Some(ref analysis) = track.analysis {
-        let version = track.analysis_version.as_deref().unwrap_or("v1");
-        save_analysis_tx(&tx, &track_id, analysis, version)?;
-    }
+    let (fallback_title, fallback_artist) = {
+        let path_stem = std::path::Path::new(&track.path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if let Some((a, t)) = path_stem.split_once(" - ") {
+            let a_trim = a.trim();
+            let t_trim = t.trim();
+            (
+                if !t_trim.is_empty() {
+                    t_trim.to_string()
+                } else {
+                    "Unknown Title".to_string()
+                },
+                if !a_trim.is_empty() {
+                    a_trim.to_string()
+                } else {
+                    "Unknown Artist".to_string()
+                },
+            )
+        } else if !path_stem.trim().is_empty() {
+            (path_stem.trim().to_string(), "Unknown Artist".to_string())
+        } else {
+            ("Unknown Title".to_string(), "Unknown Artist".to_string())
+        }
+    };
 
-    let title = track.tags.title.as_deref().unwrap_or("Unknown Title");
-    let artist = track.tags.artist.as_deref().unwrap_or("Unknown Artist");
+    let title = track
+        .tags
+        .title
+        .as_deref()
+        .filter(|s| !s.trim().is_empty() && *s != "Unknown Title")
+        .unwrap_or(&fallback_title);
+    let artist = track
+        .tags
+        .artist
+        .as_deref()
+        .filter(|s| !s.trim().is_empty() && *s != "Unknown Artist")
+        .unwrap_or(&fallback_artist);
     let duration_sec = (track.duration_ms / 1000.0).max(0.0);
+
+    let (bpm, musical_key, mode_str, camelot_code, energy_rating) = match track.analysis.as_ref() {
+        Some(a) => {
+            let m_str = match a.key.mode {
+                Mode::Minor => "Minor",
+                Mode::Major => "Major",
+            };
+            let c_letter = match a.key.camelot.letter {
+                CamelotLetter::A => "A",
+                CamelotLetter::B => "B",
+            };
+            let code = format!("{}{}", a.key.camelot.number, c_letter);
+            (
+                Some(a.rhythm.grid.bpm),
+                Some(code.clone()),
+                Some(m_str.to_string()),
+                Some(code),
+                Some(a.energy_score),
+            )
+        }
+        None => (None, None, None, None, None),
+    };
+
     tx.execute(
-        "INSERT INTO songs (id, track_id, title, artist, duration_seconds, updated_at)
-         VALUES (?1, ?1, ?2, ?3, ?4, datetime('now'))
+        "INSERT INTO songs (
+            id, track_id, title, artist, duration_seconds,
+            bpm, musical_key, mode, camelot_code, energy_rating, updated_at
+         )
+         VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))
          ON CONFLICT (id) DO UPDATE SET
             title = excluded.title,
             artist = excluded.artist,
             duration_seconds = excluded.duration_seconds,
+            bpm = coalesce(excluded.bpm, songs.bpm),
+            musical_key = coalesce(excluded.musical_key, songs.musical_key),
+            mode = coalesce(excluded.mode, songs.mode),
+            camelot_code = coalesce(excluded.camelot_code, songs.camelot_code),
+            energy_rating = coalesce(excluded.energy_rating, songs.energy_rating),
             updated_at = datetime('now')",
-        rusqlite::params![track_id, title, artist, duration_sec],
+        rusqlite::params![
+            track_id,
+            title,
+            artist,
+            duration_sec,
+            bpm,
+            musical_key,
+            mode_str,
+            camelot_code,
+            energy_rating,
+        ],
     )?;
+
+    if let Some(ref analysis) = track.analysis {
+        let version = track.analysis_version.as_deref().unwrap_or("v1");
+        save_analysis_tx(&tx, &track_id, analysis, version)?;
+    }
 
     tx.commit()?;
     Ok(track_id)
@@ -927,15 +1005,51 @@ pub fn get_song(conn: &Connection, id: &str) -> Result<Option<Song>, DbError> {
 /// Returns `DbError` on database query execution error.
 pub fn list_songs(conn: &Connection) -> Result<Vec<Song>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, artist, duration_seconds, bpm, musical_key, mode,
-                camelot_code, tuning, capo, energy_rating, lead_performer, tags_json, notes
-         FROM songs ORDER BY artist COLLATE NOCASE ASC, title COLLATE NOCASE ASC",
+        "SELECT s.id,
+                coalesce(
+                    nullif(o.title, ''),
+                    nullif(nullif(s.title, 'Unknown Title'), ''),
+                    nullif(nullif(t.title, 'Unknown Title'), '')
+                ),
+                coalesce(
+                    nullif(o.artist, ''),
+                    nullif(nullif(s.artist, 'Unknown Artist'), ''),
+                    nullif(nullif(t.artist, 'Unknown Artist'), '')
+                ),
+                case when s.duration_seconds > 0.0 then s.duration_seconds else coalesce(round(t.duration_ms / 1000.0, 3), 0.0) end,
+                coalesce(o.bpm, s.bpm, t.bpm),
+                coalesce(
+                    o.key_camelot,
+                    s.musical_key,
+                    case when t.camelot_number is not null and t.camelot_letter is not null then t.camelot_number || t.camelot_letter else null end
+                ),
+                coalesce(
+                    case when o.key_camelot like '%A' then 'Minor' when o.key_camelot like '%B' then 'Major' else null end,
+                    s.mode,
+                    t.mode
+                ),
+                coalesce(
+                    o.key_camelot,
+                    s.camelot_code,
+                    case when t.camelot_number is not null and t.camelot_letter is not null then t.camelot_number || t.camelot_letter else null end
+                ),
+                s.tuning,
+                s.capo,
+                coalesce(s.energy_rating, t.energy_score),
+                s.lead_performer,
+                s.tags_json,
+                s.notes,
+                t.path
+         FROM songs s
+         LEFT JOIN tracks t ON s.track_id = t.id OR s.id = t.id
+         LEFT JOIN track_overrides o ON s.track_id = o.track_id OR s.id = o.track_id
+         ORDER BY coalesce(o.artist, s.artist, t.artist) COLLATE NOCASE ASC, coalesce(o.title, s.title, t.title) COLLATE NOCASE ASC",
     )?;
 
     let song_iter = stmt.query_map([], |r| {
         let id: String = r.get(0)?;
-        let title: String = r.get(1)?;
-        let artist: String = r.get(2)?;
+        let title_opt: Option<String> = r.get(1)?;
+        let artist_opt: Option<String> = r.get(2)?;
         let duration_seconds: f64 = r.get(3)?;
         let bpm: Option<f64> = r.get(4)?;
         let musical_key: Option<String> = r.get(5)?;
@@ -947,6 +1061,38 @@ pub fn list_songs(conn: &Connection) -> Result<Vec<Song>, DbError> {
         let lead_performer: Option<String> = r.get(11)?;
         let tags_json: Option<String> = r.get(12)?;
         let notes: Option<String> = r.get(13)?;
+        let path: Option<String> = r.get(14)?;
+
+        let (fallback_title, fallback_artist) = {
+            let path_stem = path
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).file_stem())
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            if let Some((a, t)) = path_stem.split_once(" - ") {
+                let a_trim = a.trim();
+                let t_trim = t.trim();
+                (
+                    if !t_trim.is_empty() {
+                        t_trim.to_string()
+                    } else {
+                        "Unknown Title".to_string()
+                    },
+                    if !a_trim.is_empty() {
+                        a_trim.to_string()
+                    } else {
+                        "Unknown Artist".to_string()
+                    },
+                )
+            } else if !path_stem.trim().is_empty() {
+                (path_stem.trim().to_string(), "Unknown Artist".to_string())
+            } else {
+                ("Unknown Title".to_string(), "Unknown Artist".to_string())
+            }
+        };
+
+        let title = title_opt.unwrap_or(fallback_title);
+        let artist = artist_opt.unwrap_or(fallback_artist);
 
         let mode = mode_str.and_then(|m| match m.as_str() {
             "Minor" => Some(Mode::Minor),

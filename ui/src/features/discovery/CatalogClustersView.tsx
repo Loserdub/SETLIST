@@ -194,6 +194,15 @@ export function CatalogClustersView({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {outliers.map((outlier) => {
             const fullSong = songs.find((s) => s.id === outlier.song_id);
+            const displayTitle =
+              (fullSong?.title && fullSong.title !== 'Unknown Title' ? fullSong.title : outlier.title) ||
+              'Unknown Title';
+            const displayArtist =
+              (fullSong?.artist && fullSong.artist !== 'Unknown Artist' ? fullSong.artist : outlier.artist) ||
+              'Unknown Artist';
+            const displayCamelot = outlier.camelot_code || fullSong?.camelot_code || fullSong?.musical_key;
+            const displayBpm = outlier.bpm ?? fullSong?.bpm;
+            const displayEnergy = outlier.energy_rating ?? fullSong?.energy_rating;
 
             return (
               <div
@@ -203,8 +212,8 @@ export function CatalogClustersView({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h4 className="text-xs font-semibold text-white">{outlier.title}</h4>
-                    <p className="text-xs text-[#a8a8a8]">{outlier.artist}</p>
+                    <h4 className="text-xs font-semibold text-white">{displayTitle}</h4>
+                    <p className="text-xs text-[#a8a8a8]">{displayArtist}</p>
                   </div>
 
                   <span className="px-2 py-0.5 text-xs font-mono font-bold bg-[#261515] text-[#ee8888] border border-[#4d2626]">
@@ -213,19 +222,19 @@ export function CatalogClustersView({
                 </div>
 
                 <div className="flex items-center gap-2 text-xs font-mono text-[#a8a8a8]">
-                  {outlier.camelot_code && (
+                  {displayCamelot && (
                     <span
                       className="px-1.5 py-0.2 text-xs font-bold rounded-[2px]"
                       style={{
-                        backgroundColor: camelotColor(outlier.camelot_code),
-                        color: camelotTextColor(outlier.camelot_code),
+                        backgroundColor: camelotColor(displayCamelot),
+                        color: camelotTextColor(displayCamelot),
                       }}
                     >
-                      {outlier.camelot_code}
+                      {displayCamelot}
                     </span>
                   )}
-                  {outlier.bpm && <span className="text-[#cfcfcf]">{outlier.bpm.toFixed(1)} BPM</span>}
-                  {outlier.energy_rating && <span>Energy {outlier.energy_rating}/10</span>}
+                  {displayBpm && <span className="text-[#cfcfcf]">{displayBpm.toFixed(1)} BPM</span>}
+                  {displayEnergy && <span>Energy {displayEnergy}/10</span>}
                   <span>•</span>
                   <span>{outlier.strong_connection_count} strong connections</span>
                 </div>

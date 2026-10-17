@@ -3,6 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../../store/useAppStore';
 import { getStartSteps } from './startSteps';
 import type { StartScreenProps, StepStatus } from './types';
+import { isStageModeEnabled } from '../../config/stageFeatureFlag';
 
 /**
  * Returns accessible Tailwind color classes for the given step status badge.
@@ -348,15 +349,17 @@ export function StartScreen({
 
             <div className="flex flex-wrap items-center gap-2.5 pt-1">
               {/* Play set (Stage Mode) button, disabled if setlist.length < 2 */}
-              <button
-                type="button"
-                onClick={enterStageMode}
-                disabled={setlist.length < 2}
-                className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-[#181818] hover:bg-[#242424] disabled:opacity-40 disabled:cursor-not-allowed border border-[#333333] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-offset-1 focus-visible:ring-offset-[#080808]"
-                data-testid="start-play-stage-btn"
-              >
-                Play set (Stage Mode)
-              </button>
+              {isStageModeEnabled() && (
+                <button
+                  type="button"
+                  onClick={enterStageMode}
+                  disabled={setlist.length < 2}
+                  className="px-4 py-2 text-xs font-mono uppercase tracking-wider font-semibold text-white bg-[#181818] hover:bg-[#242424] disabled:opacity-40 disabled:cursor-not-allowed border border-[#333333] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:ring-offset-1 focus-visible:ring-offset-[#080808]"
+                  data-testid="start-play-stage-btn"
+                >
+                  Play set (Stage Mode)
+                </button>
+              )}
 
               {/* Export button, disabled if setlist.length < 2 */}
               <button

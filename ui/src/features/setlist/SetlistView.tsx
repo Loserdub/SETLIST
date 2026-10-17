@@ -26,6 +26,7 @@ import { SortableTrackItem } from './SortableTrackItem';
 import { TransitionCostBadge } from './TransitionCostBadge';
 import { EnergyChart } from './EnergyChart';
 import { TransitionAdviceModal } from './TransitionAdviceModal';
+import { MacroSetlistAnalyzer } from './MacroSetlistAnalyzer';
 import { IconUndo, IconRedo, IconSliders, IconSparkles } from '../../components/icons';
 
 export const getDefaultExportFileName = (target: ExportTarget): string => {
@@ -628,6 +629,15 @@ export function SetlistView({ customBackend }: SetlistViewProps) {
           </div>
         ) : (
           <div className="max-w-4xl mx-auto space-y-4">
+            {/* Macro-level sequence analysis HUD */}
+            <MacroSetlistAnalyzer
+              entries={setlist}
+              onSelectTrack={(trackId) => {
+                selectTrack(trackId);
+                setRoute('track');
+              }}
+            />
+
             {/* Energy Curve Progression Chart */}
             <EnergyChart points={energyPoints} profile={energyProfile} />
 

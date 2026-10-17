@@ -1306,7 +1306,7 @@ impl CatalogGraph {
 
             let mut reasons = Vec::new();
 
-            if song.bpm.is_none() || song.camelot_code.is_none() && song.musical_key.is_none() {
+            if song.bpm.is_none() || (song.camelot_code.is_none() && song.musical_key.is_none()) {
                 reasons.push(
                     "Missing BPM or musical key analysis — track metadata incomplete.".to_string(),
                 );
@@ -1498,6 +1498,11 @@ impl CatalogGraph {
                 (total_songs.clamp(2, 5), None)
             };
 
+        let tolerance_sec = constraints
+            .duration_tolerance_minutes
+            .map(|m| (m * 60.0).max(60.0))
+            .unwrap_or(300.0); // 5 min default tolerance
+
         // Determine candidate start songs
         let mut start_song_ids: Vec<String> = Vec::new();
         if let Some(ref start_id) = constraints.start_song_id {
@@ -1508,15 +1513,28 @@ impl CatalogGraph {
 
         if start_song_ids.is_empty() {
             let openers = self.find_candidate_openers();
-            for op in openers.iter().take(4) {
+            for op in openers.iter().take(6) {
                 start_song_ids.push(op.song_id.clone());
             }
-            if start_song_ids.is_empty() {
-                start_song_ids = self.songs.keys().take(4).cloned().collect();
+            if start_song_ids.is_empty() || start_song_ids.len() < 2 {
+                for id in self.songs.keys().take(6) {
+                    if !start_song_ids.contains(id) {
+                        start_song_ids.push(id.clone());
+                    }
+                }
             }
         }
 
         let mut discovered_raw_paths: Vec<Vec<String>> = Vec::new();
+        let mut fallback_raw_paths: Vec<Vec<String>> = Vec::new();
+
+        // Helper to compute cumulative duration of a path of song IDs
+        let compute_path_duration = |path: &[String]| -> f64 {
+            path.iter()
+                .filter_map(|id| self.get_song(id))
+                .map(|s| s.duration_seconds)
+                .sum::<f64>()
+        };
 
         // Explore paths from each start song using greedy best-first branching
         for start_id in &start_song_ids {
@@ -1526,8 +1544,36 @@ impl CatalogGraph {
                 let mut next_beam: Vec<(Vec<String>, f32)> = Vec::new();
 
                 for (current_path, path_score) in beam {
-                    if current_path.len() >= target_count {
+                    let current_duration = compute_path_duration(&current_path);
+
+                    // Check if path has reached completion criteria
+                    let is_target_duration_reached = match target_seconds_opt {
+                        Some(target_sec) => current_duration >= target_sec - tolerance_sec,
+                        None => false,
+                    };
+                    let is_target_count_reached = current_path.len() >= target_count;
+
+                    // If end anchor is specified, verify current end matches anchor
+                    let matches_end_anchor = match constraints.end_song_id {
+                        Some(ref end_id) => current_path.last() == Some(end_id),
+                        None => true,
+                    };
+
+                    if current_path.len() >= 2
+                        && (is_target_duration_reached || is_target_count_reached)
+                        && matches_end_anchor
+                    {
                         discovered_raw_paths.push(current_path);
+                        continue;
+                    }
+
+                    // If already reached max catalog length without hitting target duration
+                    if current_path.len() >= total_songs {
+                        if current_path.len() >= 2 && matches_end_anchor {
+                            discovered_raw_paths.push(current_path);
+                        } else if current_path.len() >= 2 {
+                            fallback_raw_paths.push(current_path);
+                        }
                         continue;
                     }
 
@@ -1540,10 +1586,16 @@ impl CatalogGraph {
                         None => continue,
                     };
 
-                    let is_last_step = current_path.len() + 1 == target_count;
+                    let is_near_end = current_path.len() + 1 >= target_count
+                        || match target_seconds_opt {
+                            Some(target_sec) => {
+                                current_duration + avg_duration >= target_sec - tolerance_sec
+                            }
+                            None => false,
+                        };
 
-                    // If final step and end_song_id specified, force end_song_id
-                    if is_last_step {
+                    // If approaching end and end_song_id specified, attempt forcing end anchor
+                    if is_near_end {
                         if let Some(ref end_id) = constraints.end_song_id {
                             if !current_path.contains(end_id) {
                                 if let Some(end_song) = self.get_song(end_id) {
@@ -1564,8 +1616,8 @@ impl CatalogGraph {
                             continue;
                         }
                         if let Some(ref end_id) = constraints.end_song_id {
-                            if !is_last_step && next_song.id == *end_id {
-                                // Save end song for the final step if possible
+                            if !is_near_end && next_song.id == *end_id {
+                                // Save end song for the final step
                                 continue;
                             }
                         }
@@ -1581,23 +1633,36 @@ impl CatalogGraph {
                         candidates.push((next_song.id.as_str(), score));
                     }
 
+                    if candidates.is_empty() {
+                        // Dead end: store current path as a fallback candidate if len >= 2
+                        if current_path.len() >= 2 && matches_end_anchor {
+                            fallback_raw_paths.push(current_path);
+                        }
+                        continue;
+                    }
+
                     candidates
                         .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-                    // Branch up to top 3 choices
-                    for (cand_id, cand_score) in candidates.into_iter().take(3) {
+                    // Branch up to top 4 choices
+                    for (cand_id, cand_score) in candidates.into_iter().take(4) {
                         let mut extended = current_path.clone();
                         extended.push(cand_id.to_string());
                         next_beam.push((extended, path_score * cand_score));
                     }
                 }
 
-                // Keep top 12 paths in beam
+                // Keep top 16 paths in beam
                 next_beam
                     .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                next_beam.truncate(12);
+                next_beam.truncate(16);
                 beam = next_beam;
             }
+        }
+
+        // If no paths met exact criteria, use best fallback paths
+        if discovered_raw_paths.is_empty() {
+            discovered_raw_paths = fallback_raw_paths;
         }
 
         // Build and evaluate candidate paths
@@ -2154,5 +2219,69 @@ mod tests {
         let path = &paths[0];
         assert_eq!(path.songs.len(), 3);
         assert_eq!(path.total_duration_seconds, 720.0); // 12 minutes
+    }
+
+    #[test]
+    fn test_candidate_path_small_catalog_large_duration() {
+        // 4 tracks totaling 16 minutes with target duration 45 minutes
+        let s1 = make_test_song("1", "Track 1", Some(124.0), Some("8A"), Some(5));
+        let s2 = make_test_song("2", "Track 2", Some(124.0), Some("8A"), Some(6));
+        let s3 = make_test_song("3", "Track 3", Some(124.0), Some("9A"), Some(7));
+        let s4 = make_test_song("4", "Track 4", Some(124.0), Some("9A"), Some(8));
+
+        let graph = CatalogGraph::new(vec![s1, s2, s3, s4]);
+
+        let constraints = DiscoveryConstraints {
+            start_song_id: None,
+            end_song_id: None,
+            must_include_ids: Vec::new(),
+            target_duration_minutes: Some(45.0),
+            duration_tolerance_minutes: Some(5.0),
+            limit: Some(3),
+        };
+
+        let paths = graph.find_candidate_paths(&constraints);
+        // Fallback should guarantee paths are returned even when catalog cannot fill 45 minutes
+        assert!(
+            !paths.is_empty(),
+            "Paths should not be empty for small catalogs"
+        );
+        assert!(paths[0].songs.len() >= 2);
+    }
+
+    #[test]
+    fn test_candidate_path_duration_tolerance_completion() {
+        // 5 tracks with 300s (5 min) each: total 25 mins
+        let s1 = make_test_song("1", "Track 1", Some(120.0), Some("8A"), Some(4));
+        let s2 = make_test_song("2", "Track 2", Some(122.0), Some("8A"), Some(5));
+        let s3 = make_test_song("3", "Track 3", Some(124.0), Some("9A"), Some(6));
+        let s4 = make_test_song("4", "Track 4", Some(126.0), Some("9A"), Some(7));
+        let s5 = make_test_song("5", "Track 5", Some(128.0), Some("10A"), Some(8));
+
+        let mut songs = vec![s1, s2, s3, s4, s5];
+        for s in &mut songs {
+            s.duration_seconds = 300.0;
+        }
+
+        let graph = CatalogGraph::new(songs);
+
+        // Target: 15 mins (3 tracks = 900s), tolerance: 6 mins (360s).
+        // A 2-track path is 600s = 10 mins.
+        // target (15m = 900s) - tolerance (6m = 360s) = 540s (9 mins).
+        // Since 600s >= 540s, 2-track paths reach the tolerance threshold and complete early!
+        let constraints = DiscoveryConstraints {
+            start_song_id: Some("1".to_string()),
+            end_song_id: None,
+            must_include_ids: Vec::new(),
+            target_duration_minutes: Some(15.0),
+            duration_tolerance_minutes: Some(6.0),
+            limit: Some(5),
+        };
+
+        let paths = graph.find_candidate_paths(&constraints);
+        assert!(!paths.is_empty());
+        for p in &paths {
+            assert!(p.total_duration_seconds >= 540.0);
+        }
     }
 }

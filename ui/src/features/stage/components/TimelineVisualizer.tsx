@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStageControlsStore } from '../store/useStageControlsStore';
 
 interface TimelineVisualizerProps {
@@ -63,12 +63,12 @@ export function TimelineVisualizer({ durationMs, positionMs }: TimelineVisualize
         const cueProgress = Math.min(Math.max(cue.positionMs / effectiveDuration, 0), 1);
         const cueX = cueProgress * width;
         
-        // Convert tailwind color class to hex for canvas (approximate)
+        // Convert color class to hex for canvas in Pioneer / Serato pro-audio palette
         let colorHex = '#fff';
-        if (cue.color.includes('emerald')) colorHex = '#10b981';
-        if (cue.color.includes('cyan')) colorHex = '#06b6d4';
+        if (cue.color.includes('cyan')) colorHex = '#00b4d8';
         if (cue.color.includes('amber')) colorHex = '#f59e0b';
-        if (cue.color.includes('purple')) colorHex = '#a855f7';
+        if (cue.color.includes('rose') || cue.color.includes('red')) colorHex = '#ef4444';
+        if (cue.color.includes('indigo') || cue.color.includes('purple')) colorHex = '#6366f1';
 
         // Draw marker line
         ctx.fillStyle = colorHex;

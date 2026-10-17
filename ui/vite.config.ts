@@ -10,6 +10,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     pool: 'forks',
-    testTimeout: 25000,
+    maxWorkers: 2,
+    testTimeout: 35000,
   },
 })

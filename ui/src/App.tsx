@@ -8,7 +8,8 @@ import { SetlistRoute } from './components/routes/SetlistRoute';
 import { SettingsRoute } from './components/routes/SettingsRoute';
 import { StageRoute } from './components/routes/StageRoute';
 import { ToastContainer } from './components/ToastContainer';
-import { useAppStore } from './store/useAppStore';
+import { useAppStore, type Route } from './store/useAppStore';
+import { isStageModeEnabled } from './config/stageFeatureFlag';
 
 export function App() {
   const currentRoute = useAppStore((state) => state.currentRoute);
@@ -18,6 +19,12 @@ export function App() {
   const hasLoadedActiveSetlist = useAppStore((state) => state.hasLoadedActiveSetlist);
   const loadActiveSetlist = useAppStore((state) => state.loadActiveSetlist);
 
+  // Router Guard: if stage mode is quarantined/disabled, strictly redirect to Studio Mode ('library')
+  const stageUnlocked = isStageModeEnabled();
+  const effectiveRoute: Route =
+    currentRoute === 'stage' && !stageUnlocked ? 'library' : currentRoute;
+  const effectiveIsStageMode = isStageMode && stageUnlocked;
+
   useEffect(() => {
     // Inside the desktop app, force useMockBackend to false at startup
     if (isTauriEnvironment()) {
@@ -25,6 +32,14 @@ export function App() {
     }
   }, []);
 
+  // Router guard ensuring default app boot sequence lands strictly in Studio Mode
+  useEffect(() => {
+    if (!stageUnlocked && (currentRoute === 'stage' || isStageMode)) {
+      useAppStore.setState({ isStageMode: false, currentRoute: 'library' });
+    }
+  }, [stageUnlocked, currentRoute, isStageMode]);
+
+  // Independent SQLite library_db hydration on launch
   useEffect(() => {
     if (!hasLoadedTracks) {
       void loadTracks();
@@ -36,19 +51,19 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen bg-[#080808] text-[#e2e2e2] overflow-hidden font-sans relative">
-      {!isStageMode && currentRoute !== 'stage' && <Sidebar />}
+      {!effectiveIsStageMode && effectiveRoute !== 'stage' && <Sidebar />}
       <main
         className="flex-1 flex flex-col h-full overflow-hidden bg-[#080808]"
         data-testid="app-main"
       >
-        {currentRoute === 'library' && <LibraryRoute />}
-        {currentRoute === 'discovery' && <DiscoveryRoute />}
-        {currentRoute === 'track' && <TrackRoute />}
-        {currentRoute === 'setlist' && <SetlistRoute />}
-        {currentRoute === 'settings' && <SettingsRoute />}
-        {currentRoute === 'stage' && <StageRoute />}
+        {effectiveRoute === 'library' && <LibraryRoute />}
+        {effectiveRoute === 'discovery' && <DiscoveryRoute />}
+        {effectiveRoute === 'track' && <TrackRoute />}
+        {effectiveRoute === 'setlist' && <SetlistRoute />}
+        {effectiveRoute === 'settings' && <SettingsRoute />}
+        {effectiveRoute === 'stage' && <StageRoute />}
       </main>
-      {!isStageMode && <ToastContainer />}
+      {!effectiveIsStageMode && <ToastContainer />}
 
       {/* Corner Professional Software Stamp & IP Notice (Out of sight, but present) */}
       <footer

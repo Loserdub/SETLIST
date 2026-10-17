@@ -582,16 +582,45 @@ pub struct Song {
 
 impl From<&Track> for Song {
     fn from(track: &Track) -> Self {
+        let (fallback_title, fallback_artist) = {
+            let path_stem = std::path::Path::new(&track.path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            if let Some((a, t)) = path_stem.split_once(" - ") {
+                let a_trim = a.trim();
+                let t_trim = t.trim();
+                (
+                    if !t_trim.is_empty() {
+                        t_trim.to_string()
+                    } else {
+                        "Unknown Title".to_string()
+                    },
+                    if !a_trim.is_empty() {
+                        a_trim.to_string()
+                    } else {
+                        "Unknown Artist".to_string()
+                    },
+                )
+            } else if !path_stem.trim().is_empty() {
+                (path_stem.trim().to_string(), "Unknown Artist".to_string())
+            } else {
+                ("Unknown Title".to_string(), "Unknown Artist".to_string())
+            }
+        };
+
         let title = track
             .tags
             .title
             .clone()
-            .unwrap_or_else(|| "Unknown Title".to_string());
+            .filter(|s| !s.trim().is_empty() && s != "Unknown Title")
+            .unwrap_or(fallback_title);
         let artist = track
             .tags
             .artist
             .clone()
-            .unwrap_or_else(|| "Unknown Artist".to_string());
+            .filter(|s| !s.trim().is_empty() && s != "Unknown Artist")
+            .unwrap_or(fallback_artist);
         let duration_seconds = (track.duration_ms / 1000.0).max(0.0);
         let bpm = track.analysis.as_ref().map(|a| a.rhythm.grid.bpm);
         let musical_key = track.analysis.as_ref().map(|a| a.key.camelot.to_string());
@@ -864,5 +893,72 @@ impl Setlist {
     #[must_use]
     pub fn entries(&self) -> Vec<SetlistEntry> {
         self.to_entries()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_track_to_song_with_explicit_tags() {
+        let track = Track {
+            id: "t1".to_string(),
+            path: "/music/01 - Unknown.mp3".to_string(),
+            hash: "h1".to_string(),
+            tags: TrackTags {
+                title: Some("Strobe".to_string()),
+                artist: Some("deadmau5".to_string()),
+                album: None,
+            },
+            duration_ms: 600000.0,
+            analysis: None,
+            analyzed_at: None,
+            analysis_version: None,
+        };
+
+        let song = Song::from(&track);
+        assert_eq!(song.title, "Strobe");
+        assert_eq!(song.artist, "deadmau5");
+    }
+
+    #[test]
+    fn test_track_to_song_fallback_filename_stem() {
+        let track = Track {
+            id: "t2".to_string(),
+            path: "C:\\DJ\\Tracks\\Midnight City.wav".to_string(),
+            hash: "h2".to_string(),
+            tags: TrackTags::default(),
+            duration_ms: 240000.0,
+            analysis: None,
+            analyzed_at: None,
+            analysis_version: None,
+        };
+
+        let song = Song::from(&track);
+        assert_eq!(song.title, "Midnight City");
+        assert_eq!(song.artist, "Unknown Artist");
+    }
+
+    #[test]
+    fn test_track_to_song_fallback_artist_dash_title() {
+        let track = Track {
+            id: "t3".to_string(),
+            path: "C:\\DJ\\Tracks\\Daft Punk - One More Time.flac".to_string(),
+            hash: "h3".to_string(),
+            tags: TrackTags {
+                title: Some("Unknown Title".to_string()),
+                artist: Some("Unknown Artist".to_string()),
+                album: None,
+            },
+            duration_ms: 320000.0,
+            analysis: None,
+            analyzed_at: None,
+            analysis_version: None,
+        };
+
+        let song = Song::from(&track);
+        assert_eq!(song.title, "One More Time");
+        assert_eq!(song.artist, "Daft Punk");
     }
 }

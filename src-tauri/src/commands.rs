@@ -2,8 +2,12 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
+
+use serde::{Deserialize, Serialize};
 
 use core_types::{
     validate_setlist, validate_song, AppError, AppSettings, BridgeCandidateAnalysis,
@@ -1042,9 +1046,66 @@ pub fn get_potential_bridges(
         .db
         .lock()
         .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
+    let songs = load_catalog_songs(&conn)?;
     let graph = CatalogGraph::new(songs);
     Ok(graph.get_potential_bridges(&song_a_id, &song_b_id, limit.unwrap_or(5)))
+}
+
+fn load_catalog_songs(conn: &rusqlite::Connection) -> Result<Vec<Song>, AppError> {
+    let mut songs = library_db::list_songs(conn).map_err(map_db_error)?;
+    if songs.is_empty() {
+        let tracks = library_db::list_tracks_with_overrides(conn, &TrackFilter::new())
+            .map_err(map_db_error)?;
+        songs = tracks
+            .into_iter()
+            .map(|two| Song::from(&two.track))
+            .collect();
+    } else {
+        let tracks = library_db::list_tracks_with_overrides(conn, &TrackFilter::new())
+            .map_err(map_db_error)?;
+        let track_map: std::collections::HashMap<String, core_types::Track> = tracks
+            .into_iter()
+            .map(|two| (two.track.id.clone(), two.track))
+            .collect();
+
+        for song in &mut songs {
+            if let Some(track) = track_map.get(&song.id) {
+                if song.title == "Unknown Title" || song.title.trim().is_empty() {
+                    let from_track = Song::from(track);
+                    song.title = from_track.title;
+                }
+                if song.artist == "Unknown Artist" || song.artist.trim().is_empty() {
+                    let from_track = Song::from(track);
+                    song.artist = from_track.artist;
+                }
+                if song.bpm.is_none() {
+                    if let Some(ref a) = track.analysis {
+                        song.bpm = Some(a.rhythm.grid.bpm);
+                    }
+                }
+                if song.camelot_code.is_none() && song.musical_key.is_none() {
+                    if let Some(ref a) = track.analysis {
+                        let c = format!(
+                            "{}{}",
+                            a.key.camelot.number,
+                            match a.key.camelot.letter {
+                                core_types::CamelotLetter::A => "A",
+                                core_types::CamelotLetter::B => "B",
+                            }
+                        );
+                        song.camelot_code = Some(c.clone());
+                        song.musical_key = Some(c);
+                    }
+                }
+                if song.energy_rating.is_none() {
+                    if let Some(ref a) = track.analysis {
+                        song.energy_rating = Some(a.energy_score);
+                    }
+                }
+            }
+        }
+    }
+    Ok(songs)
 }
 
 /// Discovers natural clusters of compatible songs within the artist's catalog.
@@ -1057,7 +1118,7 @@ pub fn get_catalog_clusters(state: State<'_, AppState>) -> Result<Vec<CatalogClu
         .db
         .lock()
         .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
+    let songs = load_catalog_songs(&conn)?;
     let graph = CatalogGraph::new(songs);
     Ok(graph.find_clusters())
 }
@@ -1074,7 +1135,7 @@ pub fn get_catalog_openers_and_closers(
         .db
         .lock()
         .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
+    let songs = load_catalog_songs(&conn)?;
     let graph = CatalogGraph::new(songs);
     Ok(graph.get_openers_and_closers())
 }
@@ -1089,7 +1150,7 @@ pub fn get_catalog_outliers(state: State<'_, AppState>) -> Result<Vec<CatalogOut
         .db
         .lock()
         .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
+    let songs = load_catalog_songs(&conn)?;
     let graph = CatalogGraph::new(songs);
     Ok(graph.find_outliers())
 }
@@ -1108,7 +1169,7 @@ pub fn get_unusual_transitions(
         .db
         .lock()
         .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
+    let songs = load_catalog_songs(&conn)?;
     let graph = CatalogGraph::new(songs);
     Ok(graph.get_unusual_transitions(&song_id, limit.unwrap_or(5)))
 }
@@ -1125,7 +1186,7 @@ pub fn get_catalog_summary_stats(
         .db
         .lock()
         .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
+    let songs = load_catalog_songs(&conn)?;
     let graph = CatalogGraph::new(songs);
     Ok(graph.get_catalog_summary_stats())
 }
@@ -1143,9 +1204,296 @@ pub fn explore_candidate_paths(
         .db
         .lock()
         .map_err(|e| AppError::database(e.to_string()))?;
-    let songs = library_db::list_songs(&conn).map_err(map_db_error)?;
+    let songs = load_catalog_songs(&conn)?;
     let graph = CatalogGraph::new(songs);
     Ok(graph.find_candidate_paths(&constraints))
+}
+
+/// Execution context for audio transport commands, cleanly differentiating
+/// between studio library track auditioning and live performance stage execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportContext {
+    /// Audio audition / preview from library or track inspection in studio.
+    StudioPreview,
+    /// Live stage deck transport action during a performance.
+    LiveStage,
+}
+
+/// Detailed state payload returned by stage transport IPC commands.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StageTransportState {
+    pub is_playing: bool,
+    pub is_slip_mode: bool,
+    pub position_ms: f64,
+    pub duration_ms: f64,
+    pub context: TransportContext,
+    pub slip_anchor_pos_ms: Option<f64>,
+}
+
+/// Scaffolding state machine controller managing live stage transport state and
+/// routing commands to the audio player engine.
+pub struct StageTransportController {
+    context: Mutex<TransportContext>,
+    is_slip_mode: AtomicBool,
+    slip_anchor_time: Mutex<Option<Instant>>,
+    slip_anchor_pos_ms: Mutex<Option<f64>>,
+}
+
+impl Default for StageTransportController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StageTransportController {
+    /// Creates a new stage transport controller initialized in studio preview mode.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            context: Mutex::new(TransportContext::StudioPreview),
+            is_slip_mode: AtomicBool::new(false),
+            slip_anchor_time: Mutex::new(None),
+            slip_anchor_pos_ms: Mutex::new(None),
+        }
+    }
+
+    /// Sets the active transport context (e.g. StudioPreview vs LiveStage).
+    pub fn set_context(&self, ctx: TransportContext) {
+        if let Ok(mut lock) = self.context.lock() {
+            *lock = ctx;
+        }
+    }
+
+    /// Retrieves current transport context.
+    #[must_use]
+    pub fn context(&self) -> TransportContext {
+        self.context
+            .lock()
+            .map(|c| *c)
+            .unwrap_or(TransportContext::StudioPreview)
+    }
+
+    /// Retrieves current stage transport state snapshot.
+    #[must_use]
+    pub fn get_state(&self) -> StageTransportState {
+        let player = crate::playback::get_player();
+        let state_res = player.state();
+        let is_playing = state_res.state == playback::PlayerState::Playing;
+        let is_slip = self.is_slip_mode.load(Ordering::SeqCst);
+        let slip_pos = self.slip_anchor_pos_ms.lock().ok().and_then(|p| *p);
+
+        StageTransportState {
+            is_playing,
+            is_slip_mode: is_slip,
+            position_ms: state_res.position_ms,
+            duration_ms: player.duration_ms(),
+            context: self.context(),
+            slip_anchor_pos_ms: slip_pos,
+        }
+    }
+
+    /// Toggles play/pause synchronously in core without requiring an AppHandle,
+    /// transitioning context to LiveStage.
+    ///
+    /// # Errors
+    /// Returns error if audio device or playback control fails.
+    pub fn toggle_play_core(&self) -> Result<StageTransportState, String> {
+        self.set_context(TransportContext::LiveStage);
+        let player = crate::playback::get_player();
+        let state_res = player.state();
+
+        if state_res.state == playback::PlayerState::Playing {
+            crate::playback::playback_pause_core()?;
+        } else {
+            crate::playback::playback_play_core()?;
+        }
+
+        Ok(self.get_state())
+    }
+
+    /// Performs a beat jump forward or backward in milliseconds calculated from BPM.
+    ///
+    /// # Errors
+    /// Returns error if seek operation fails.
+    pub fn beat_jump(&self, beats: f64, bpm: Option<f64>) -> Result<StageTransportState, String> {
+        self.set_context(TransportContext::LiveStage);
+        let effective_bpm = bpm.unwrap_or(120.0).max(1.0);
+        let ms_per_beat = 60_000.0 / effective_bpm;
+        let jump_ms = beats * ms_per_beat;
+
+        let player = crate::playback::get_player();
+        let state_res = player.state();
+        let cur_pos = state_res.position_ms;
+        let duration = player.duration_ms();
+        let target_pos = (cur_pos + jump_ms).clamp(0.0, duration.max(0.0));
+
+        let is_playing = state_res.state == playback::PlayerState::Playing;
+        let is_slip = self.is_slip_mode.load(Ordering::SeqCst);
+
+        if is_slip && is_playing {
+            let mut anchor_pos = self.slip_anchor_pos_ms.lock().map_err(|e| e.to_string())?;
+            if anchor_pos.is_none() {
+                *anchor_pos = Some(cur_pos);
+                if let Ok(mut t) = self.slip_anchor_time.lock() {
+                    *t = Some(Instant::now());
+                }
+            }
+        }
+
+        crate::playback::playback_seek_core(target_pos)?;
+        Ok(self.get_state())
+    }
+
+    /// Triggers a hot cue jump to the specified timestamp in milliseconds.
+    ///
+    /// # Errors
+    /// Returns error if seek operation fails.
+    pub fn trigger_hot_cue(&self, position_ms: f64) -> Result<StageTransportState, String> {
+        self.set_context(TransportContext::LiveStage);
+        let player = crate::playback::get_player();
+        let state_res = player.state();
+        let cur_pos = state_res.position_ms;
+        let duration = player.duration_ms();
+        let target_pos = position_ms.clamp(0.0, duration.max(0.0));
+
+        let is_playing = state_res.state == playback::PlayerState::Playing;
+        let is_slip = self.is_slip_mode.load(Ordering::SeqCst);
+
+        if is_slip && is_playing {
+            let mut anchor_pos = self.slip_anchor_pos_ms.lock().map_err(|e| e.to_string())?;
+            if anchor_pos.is_none() {
+                *anchor_pos = Some(cur_pos);
+                if let Ok(mut t) = self.slip_anchor_time.lock() {
+                    *t = Some(Instant::now());
+                }
+            }
+        }
+
+        crate::playback::playback_seek_core(target_pos)?;
+        Ok(self.get_state())
+    }
+
+    /// Toggles Slip Mode on/off. When disengaged while playing, restores audio playhead
+    /// to the virtual background playhead position.
+    ///
+    /// # Errors
+    /// Returns error if seek operation fails upon slip disengagement.
+    pub fn toggle_slip_mode(&self) -> Result<StageTransportState, String> {
+        self.set_context(TransportContext::LiveStage);
+        let was_slip = self.is_slip_mode.load(Ordering::SeqCst);
+        let player = crate::playback::get_player();
+        let state_res = player.state();
+        let is_playing = state_res.state == playback::PlayerState::Playing;
+
+        if was_slip {
+            let anchor_pos = self
+                .slip_anchor_pos_ms
+                .lock()
+                .ok()
+                .and_then(|mut p| p.take());
+            let anchor_time = self.slip_anchor_time.lock().ok().and_then(|mut t| t.take());
+
+            if let (Some(pos), Some(time)) = (anchor_pos, anchor_time) {
+                if is_playing {
+                    let elapsed = time.elapsed().as_secs_f64() * 1000.0;
+                    let duration = player.duration_ms();
+                    let virtual_pos = (pos + elapsed).clamp(0.0, duration.max(0.0));
+                    crate::playback::playback_seek_core(virtual_pos)?;
+                }
+            }
+            self.is_slip_mode.store(false, Ordering::SeqCst);
+        } else {
+            self.is_slip_mode.store(true, Ordering::SeqCst);
+            if is_playing {
+                if let Ok(mut p) = self.slip_anchor_pos_ms.lock() {
+                    *p = Some(state_res.position_ms);
+                }
+                if let Ok(mut t) = self.slip_anchor_time.lock() {
+                    *t = Some(Instant::now());
+                }
+            }
+        }
+
+        Ok(self.get_state())
+    }
+}
+
+/// Global singleton instance of the stage transport controller.
+static STAGE_CONTROLLER: OnceLock<StageTransportController> = OnceLock::new();
+
+/// Returns the singleton stage transport controller handle.
+#[must_use]
+pub fn get_stage_controller() -> &'static StageTransportController {
+    STAGE_CONTROLLER.get_or_init(StageTransportController::new)
+}
+
+/// Toggles play/pause on the live stage deck via Tauri IPC.
+///
+/// # Errors
+/// Returns error text if playback control fails.
+#[tauri::command]
+pub async fn stage_toggle_play(app: AppHandle) -> Result<StageTransportState, String> {
+    get_stage_controller().set_context(TransportContext::LiveStage);
+    let player = crate::playback::get_player();
+    let state_res = player.state();
+
+    if state_res.state == playback::PlayerState::Playing {
+        crate::playback::playback_pause(app).await?;
+    } else {
+        crate::playback::playback_play(app).await?;
+    }
+
+    Ok(get_stage_controller().get_state())
+}
+
+/// Jumps playback forward or backward by the given number of beats.
+///
+/// # Errors
+/// Returns error text if seek fails.
+#[tauri::command]
+pub async fn stage_beat_jump(
+    app: AppHandle,
+    beats: f64,
+    bpm: Option<f64>,
+) -> Result<StageTransportState, String> {
+    let _ = app;
+    get_stage_controller().beat_jump(beats, bpm)
+}
+
+/// Triggers playback jump to the requested cue position in milliseconds.
+///
+/// # Errors
+/// Returns error text if seek fails or position argument is omitted.
+#[tauri::command]
+pub async fn stage_trigger_hot_cue(
+    app: AppHandle,
+    position_ms: Option<f64>,
+    #[allow(non_snake_case)] positionMs: Option<f64>,
+    cue_id: Option<String>,
+    #[allow(non_snake_case)] cueId: Option<String>,
+) -> Result<StageTransportState, String> {
+    let _ = (app, cue_id, cueId);
+    let pos = position_ms
+        .or(positionMs)
+        .ok_or_else(|| "position_ms parameter is required".to_string())?;
+    get_stage_controller().trigger_hot_cue(pos)
+}
+
+/// Toggles Slip Mode on the live performance transport deck.
+///
+/// # Errors
+/// Returns error text if restoring virtual position fails.
+#[tauri::command]
+pub async fn stage_toggle_slip_mode(app: AppHandle) -> Result<StageTransportState, String> {
+    let _ = app;
+    get_stage_controller().toggle_slip_mode()
+}
+
+/// Retrieves the current live stage transport state snapshot.
+#[tauri::command]
+pub fn stage_get_transport_state() -> StageTransportState {
+    get_stage_controller().get_state()
 }
 
 #[cfg(test)]
@@ -1404,5 +1752,51 @@ mod tests {
         assert!(state.job_queue.is_running());
         drop(guard);
         assert!(!state.job_queue.is_running());
+    }
+
+    #[test]
+    fn test_stage_transport_controller_play_and_pause() {
+        let controller = StageTransportController::new();
+        assert_eq!(controller.context(), TransportContext::StudioPreview);
+
+        // Core play transition updates context to LiveStage
+        let _ = controller.toggle_play_core();
+        assert_eq!(controller.context(), TransportContext::LiveStage);
+
+        // State query
+        let state = controller.get_state();
+        assert_eq!(state.context, TransportContext::LiveStage);
+    }
+
+    #[test]
+    fn test_stage_transport_controller_beat_jump_and_hot_cue() {
+        let controller = StageTransportController::new();
+
+        // Beat jump with 120 BPM (+4 beats = +2000 ms)
+        let res = controller.beat_jump(4.0, Some(120.0)).expect("beat jump");
+        assert_eq!(res.context, TransportContext::LiveStage);
+
+        // Hot cue jump to 5000 ms
+        let res_cue = controller.trigger_hot_cue(5000.0).expect("hot cue");
+        assert_eq!(res_cue.context, TransportContext::LiveStage);
+    }
+
+    #[test]
+    fn test_stage_transport_controller_slip_mode_and_context_switching() {
+        let controller = StageTransportController::new();
+        assert_eq!(controller.context(), TransportContext::StudioPreview);
+
+        // Turn Slip Mode ON
+        let res_on = controller.toggle_slip_mode().expect("slip on");
+        assert!(res_on.is_slip_mode);
+        assert_eq!(res_on.context, TransportContext::LiveStage);
+
+        // Turn Slip Mode OFF
+        let res_off = controller.toggle_slip_mode().expect("slip off");
+        assert!(!res_off.is_slip_mode);
+
+        // Switch context back to StudioPreview
+        controller.set_context(TransportContext::StudioPreview);
+        assert_eq!(controller.context(), TransportContext::StudioPreview);
     }
 }

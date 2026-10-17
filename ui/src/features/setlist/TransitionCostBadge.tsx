@@ -53,6 +53,11 @@ export function TransitionCostBadge({
   const breakdown = computeTransitionCost(fromTrack, toTrack, transition);
   const typeLabel = TRANSITION_TYPE_LABELS[transition.transition_type] ?? 'Modulation';
 
+  // Static clash check: harmonic distance d > 2 OR |ΔBPM| > 8
+  const isClash =
+    breakdown.isAvailable &&
+    (breakdown.keyDistance > 2 || Math.abs(breakdown.bpmDelta) > 8);
+
   return (
     <div className="relative flex items-center justify-center my-1 group">
       {/* 1px Connector line */}
@@ -70,6 +75,17 @@ export function TransitionCostBadge({
         <span className="text-xs uppercase font-semibold tracking-wider text-[#cfcfcf]">
           {typeLabel}
         </span>
+
+        {/* Static Clash Badge */}
+        {isClash && (
+          <span
+            className="px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-[#2b1111] text-[#f87171] border border-[#572222]"
+            data-testid="transition-clash-badge"
+            title={`Clashing transition: ${breakdown.keyDistance > 2 ? `Key distance d=${breakdown.keyDistance} > 2. ` : ''}${Math.abs(breakdown.bpmDelta) > 8 ? `Tempo delta ΔBPM=${breakdown.bpmDelta.toFixed(1)} > 8.` : ''}`}
+          >
+            ⚠ CLASH
+          </span>
+        )}
 
         <span className="text-[#333333]">|</span>
 

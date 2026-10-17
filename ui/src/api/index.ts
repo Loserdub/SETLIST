@@ -1444,8 +1444,9 @@ export const mockBackend: Backend = {
 
     const totalDur = songs.reduce((acc, s) => acc + s.duration_seconds, 0);
     const avgDuration = Math.max(60, totalDur / songs.length);
+    const toleranceSeconds = (constraints.duration_tolerance_minutes ?? 5.0) * 60;
 
-    let targetCount = 4;
+    let targetCount = songs.length;
     let targetSeconds: number | null = null;
     if (constraints.target_duration_minutes) {
       targetSeconds = constraints.target_duration_minutes * 60;
@@ -1467,7 +1468,15 @@ export const mockBackend: Backend = {
       }
     }
 
-    const rawPaths: string[][] = [];
+    const computePathDuration = (path: string[]): number => {
+      return path.reduce((acc, id) => {
+        const s = songs.find((song) => song.id === id);
+        return acc + (s?.duration_seconds ?? 0);
+      }, 0);
+    };
+
+    let rawPaths: string[][] = [];
+    const fallbackPaths: string[][] = [];
 
     for (const startId of startIds) {
       let beam: { path: string[]; score: number }[] = [{ path: [startId], score: 1.0 }];
@@ -1476,8 +1485,27 @@ export const mockBackend: Backend = {
         const nextBeam: { path: string[]; score: number }[] = [];
 
         for (const { path, score } of beam) {
-          if (path.length >= targetCount) {
+          const currentDuration = computePathDuration(path);
+
+          const isTargetDurationReached = targetSeconds != null
+            ? currentDuration >= targetSeconds - toleranceSeconds
+            : false;
+          const isTargetCountReached = path.length >= targetCount;
+          const matchesEndAnchor = constraints.end_song_id
+            ? path[path.length - 1] === constraints.end_song_id
+            : true;
+
+          if (path.length >= 2 && (isTargetDurationReached || isTargetCountReached) && matchesEndAnchor) {
             rawPaths.push(path);
+            continue;
+          }
+
+          if (path.length >= songs.length) {
+            if (path.length >= 2 && matchesEndAnchor) {
+              rawPaths.push(path);
+            } else if (path.length >= 2) {
+              fallbackPaths.push(path);
+            }
             continue;
           }
 
@@ -1485,8 +1513,10 @@ export const mockBackend: Backend = {
           const lastSong = songs.find((s) => s.id === lastId);
           if (!lastSong) continue;
 
-          const isLastStep = path.length + 1 === targetCount;
-          if (isLastStep && constraints.end_song_id && !path.includes(constraints.end_song_id)) {
+          const isNearEnd = path.length + 1 >= targetCount
+            || (targetSeconds != null && currentDuration + avgDuration >= targetSeconds - toleranceSeconds);
+
+          if (isNearEnd && constraints.end_song_id && !path.includes(constraints.end_song_id)) {
             const endSong = songs.find((s) => s.id === constraints.end_song_id);
             if (endSong) {
               const rel = evaluateMockSongRelationship(lastSong, endSong);
@@ -1498,7 +1528,7 @@ export const mockBackend: Backend = {
           const candidates: { song: Song; candScore: number }[] = [];
           for (const nextSong of songs) {
             if (path.includes(nextSong.id)) continue;
-            if (!isLastStep && constraints.end_song_id && nextSong.id === constraints.end_song_id) {
+            if (!isNearEnd && constraints.end_song_id && nextSong.id === constraints.end_song_id) {
               continue;
             }
             const rel = evaluateMockSongRelationship(lastSong, nextSong);
@@ -1509,21 +1539,33 @@ export const mockBackend: Backend = {
             candidates.push({ song: nextSong, candScore: cScore });
           }
 
+          if (candidates.length === 0) {
+            if (path.length >= 2 && matchesEndAnchor) {
+              fallbackPaths.push(path);
+            }
+            continue;
+          }
+
           candidates.sort((a, b) => b.candScore - a.candScore);
-          for (const { song: candSong, candScore } of candidates.slice(0, 3)) {
+          for (const { song: candSong, candScore } of candidates.slice(0, 4)) {
             nextBeam.push({ path: [...path, candSong.id], score: score * candScore });
           }
         }
 
         nextBeam.sort((a, b) => b.score - a.score);
-        beam = nextBeam.slice(0, 10);
+        beam = nextBeam.slice(0, 16);
       }
     }
 
-    const candidatePaths: DiscoveryCandidatePath[] = [];
+    if (rawPaths.length === 0) {
+      rawPaths = fallbackPaths;
+    }
+
+    const candidatePaths: { finalScore: number; path: DiscoveryCandidatePath }[] = [];
     const seen = new Set<string>();
 
     for (const pIds of rawPaths) {
+      if (pIds.length < 2) continue;
       const sig = pIds.join('->');
       if (seen.has(sig)) continue;
       seen.add(sig);
@@ -1549,20 +1591,34 @@ export const mockBackend: Backend = {
       const totalMins = Math.round(pTotalDur / 60);
       const summary = `A cohesive ${pathSongs.length}-track path (~${totalMins} min) moving from '${pathSongs[0].title}' to '${pathSongs[pathSongs.length - 1].title}' with ${Math.round(avgScore * 100)}% average harmonic/energy compatibility.`;
 
+      let finalScore = avgScore;
+      if (constraints.must_include_ids?.length) {
+        const included = constraints.must_include_ids.filter((id) => pIds.includes(id)).length;
+        const missing = constraints.must_include_ids.length - included;
+        finalScore -= missing * 0.40;
+      }
+      if (targetSeconds != null) {
+        const durDiff = Math.abs(pTotalDur - targetSeconds);
+        finalScore -= (durDiff / targetSeconds) * 0.20;
+      }
+
       candidatePaths.push({
-        song_ids: pIds,
-        songs: pathSongs,
-        transitions,
-        total_duration_seconds: pTotalDur,
-        average_score: avgScore,
-        min_score: minScore,
-        energy_progression: energyProgression,
-        summary,
+        finalScore,
+        path: {
+          song_ids: pIds,
+          songs: pathSongs,
+          transitions,
+          total_duration_seconds: pTotalDur,
+          average_score: avgScore,
+          min_score: minScore,
+          energy_progression: energyProgression,
+          summary,
+        },
       });
     }
 
-    candidatePaths.sort((a, b) => b.average_score - a.average_score);
-    return candidatePaths.slice(0, constraints.limit ?? 5);
+    candidatePaths.sort((a, b) => b.finalScore - a.finalScore);
+    return candidatePaths.slice(0, constraints.limit ?? 5).map((cp) => cp.path);
   },
 };
 

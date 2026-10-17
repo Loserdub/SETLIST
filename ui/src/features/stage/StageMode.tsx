@@ -1,14 +1,23 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useWakeLock } from './useWakeLock';
 import { usePerformanceClock, formatDuration, formatDurationCompact } from './usePerformanceClock';
 import { useStageKeyboard } from './useStageKeyboard';
+import type { Track } from '../../bindings/Track';
 import type { SetlistEntry } from '../../bindings/SetlistEntry';
 import type { TransitionAdvice } from '../../bindings/TransitionAdvice';
 import { EditedBadge, isFieldOverridden } from '../track/overrides';
 import { IconPrev, IconNext, IconAlertTriangle } from '../../components/icons';
 import { PerformanceControls } from './components/PerformanceControls';
 import { TimelineVisualizer } from './components/TimelineVisualizer';
+import { TransitionRadar } from './components/TransitionRadar';
+import { StageDetourCopilot } from './components/StageDetourCopilot';
+import { StageFlightRunway } from './components/StageFlightRunway';
+import { StageSectionAnatomy } from './components/StageSectionAnatomy';
+import { StageCrossroadsSelector } from './components/StageCrossroadsSelector';
+import { StageActionPrompter } from './components/StageActionPrompter';
+import { getPlaybackClient } from '../../api/playback';
+import { useStageControlsStore } from './store/useStageControlsStore';
 
 /**
  * Stage Mode — a dedicated, read-only live performance view.
@@ -24,7 +33,7 @@ import { TimelineVisualizer } from './components/TimelineVisualizer';
  */
 export function StageMode() {
   const {
-    setlist,
+    setlist: staticSetlist,
     setlistName,
     isStageMode,
     stageCurrentIndex,
@@ -32,7 +41,19 @@ export function StageMode() {
     stageNext,
     stagePrev,
     exitStageMode,
+    tracks,
   } = useAppStore();
+
+  const liveSetlist = useStageControlsStore((s) => s.liveSetlist);
+  const initLiveSetlist = useStageControlsStore((s) => s.initLiveSetlist);
+  const stageQueueTrackNext = useStageControlsStore((s) => s.stageQueueTrackNext);
+  const stageReplaceNextTrack = useStageControlsStore((s) => s.stageReplaceNextTrack);
+
+  useEffect(() => {
+    initLiveSetlist(staticSetlist);
+  }, [staticSetlist, initLiveSetlist]);
+
+  const setlist = liveSetlist.length > 0 ? liveSetlist : staticSetlist;
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showSetlist, setShowSetlist] = useState(false);
@@ -42,6 +63,12 @@ export function StageMode() {
   const nextEntry: SetlistEntry | null = setlist[stageCurrentIndex + 1] ?? null;
   const prevEntry: SetlistEntry | null =
     stageCurrentIndex > 0 ? (setlist[stageCurrentIndex - 1] ?? null) : null;
+
+  // Playhead synchronization from stage controls store
+  const stagePositionMs = useStageControlsStore((s) => s.positionMs);
+  const playMode = useStageControlsStore((s) => s.playMode);
+  const togglePlayMode = useStageControlsStore((s) => s.togglePlayMode);
+  const isAudioPlaying = useStageControlsStore((s) => s.isPlaying);
 
   // Duration calculations
   const totalDurationMs = useMemo(() => {
@@ -70,6 +97,33 @@ export function StageMode() {
 
   const currentSongDurationMs = currentEntry?.track?.duration_ms ?? null;
 
+  // Auto-advance logic: When track completes or reaches within 500ms of end while auto-advance is ON and audio is playing
+  useEffect(() => {
+    if (playMode !== 'auto_advance' || !isAudioPlaying || !currentSongDurationMs) return;
+
+    if (stagePositionMs >= currentSongDurationMs - 500 && stagePositionMs > 1000) {
+      if (stageCurrentIndex < setlist.length - 1) {
+        stageNext();
+        const timer = setTimeout(() => {
+          void getPlaybackClient().play().catch(() => {});
+          useStageControlsStore.setState({ isPlaying: true });
+        }, 150);
+        return () => clearTimeout(timer);
+      } else {
+        void getPlaybackClient().stop().catch(() => {});
+        useStageControlsStore.setState({ isPlaying: false });
+      }
+    }
+  }, [
+    playMode,
+    isAudioPlaying,
+    stagePositionMs,
+    currentSongDurationMs,
+    stageCurrentIndex,
+    setlist.length,
+    stageNext,
+  ]);
+
   // Hooks
   const { isActive: wakeLockActive, isSupported: wakeLockSupported } =
     useWakeLock(isStageMode);
@@ -82,12 +136,39 @@ export function StageMode() {
     elapsedSongsMs
   );
 
+  // Listen to audio engine playback events
+  useEffect(() => {
+    const client = getPlaybackClient();
+    const unsubscribe = client.onPosition((payload) => {
+      useStageControlsStore.setState({
+        positionMs: payload.position_ms,
+        durationMs: payload.duration_ms,
+        isPlaying: payload.state === 'playing',
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Load track into stage playback engine on current track change
+  useEffect(() => {
+    const track = currentEntry?.track ?? null;
+    void useStageControlsStore.getState().loadTrack(track);
+
+    return () => {
+      getPlaybackClient().stop().catch(() => {});
+    };
+  }, [currentEntry?.track?.id]);
+
   const handleExitRequest = useCallback(() => {
     setShowExitConfirm(true);
   }, []);
 
   const handleExitConfirm = useCallback(() => {
     setShowExitConfirm(false);
+    void getPlaybackClient().stop().catch(() => {});
     exitStageMode();
   }, [exitStageMode]);
 
@@ -95,11 +176,40 @@ export function StageMode() {
     setShowExitConfirm(false);
   }, []);
 
+  const handleSnapNextPhrase = useCallback((targetMs: number) => {
+    void getPlaybackClient().seek(targetMs);
+  }, []);
+
+  const handleSeek = useCallback((targetMs: number) => {
+    void getPlaybackClient().seek(targetMs);
+  }, []);
+
+  const handleSelectWaypoint = useCallback(
+    (index: number) => {
+      if (index >= 0 && index < setlist.length) {
+        useAppStore.setState({ stageCurrentIndex: index });
+      }
+    },
+    [setlist.length]
+  );
+
+  const handleCommitCrossroadsBranch = useCallback(
+    (branchIndex: 1 | 2 | 3, chosenTrack?: Track) => {
+      if (branchIndex === 1) return;
+      if (chosenTrack) {
+        stageReplaceNextTrack(chosenTrack, stageCurrentIndex);
+      }
+    },
+    [stageReplaceNextTrack, stageCurrentIndex]
+  );
+
   useStageKeyboard({
     active: isStageMode && !showExitConfirm && !showSetlist,
     onNext: stageNext,
     onPrev: stagePrev,
     onExit: handleExitRequest,
+    onTogglePlayMode: togglePlayMode,
+    onSelectBranch: handleCommitCrossroadsBranch,
   });
 
   // Empty setlist guard
@@ -150,15 +260,48 @@ export function StageMode() {
       className="flex flex-col h-full bg-[#050505] text-[#ededed] select-none overflow-hidden"
       data-testid="stage-mode"
     >
-      {/* Top Bar — Set name, position, clock */}
+      {/* Top Bar — Exit to Menu, Set name, position, clock */}
       <header className="flex items-center justify-between px-6 py-2.5 bg-[#000000] border-b border-[#1c1c1c] shrink-0">
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleExitRequest}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#121212] hover:bg-[#1f1f1f] border border-[#2b2b2b] hover:border-[#444] text-[#cfcfcf] hover:text-white text-xs font-mono font-semibold uppercase tracking-wider rounded-sm transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+            data-testid="stage-header-exit-btn"
+            title="Exit Stage Mode and return to menu [Esc]"
+          >
+            <span aria-hidden="true" className="text-sm leading-none">←</span>
+            <span>Exit to Menu</span>
+          </button>
+          <div className="h-4 w-px bg-[#262626]" />
           <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#cfcfcf]">
             {setlistName}
           </span>
           <span className="text-xs font-mono text-[#a8a8a8] bg-[#0c0c0c] border border-[#1f1f1f] px-2 py-0.5">
             {stageCurrentIndex + 1} / {setlist.length}
           </span>
+
+          {/* Auto-Advance / Manual Mode Toggle */}
+          <button
+            type="button"
+            onClick={togglePlayMode}
+            data-testid="stage-playmode-toggle"
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold uppercase tracking-wider rounded-sm border transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
+              playMode === 'auto_advance'
+                ? 'bg-[#062436] border-[#00b4d8] text-[#38bdf8] shadow-[0_0_10px_rgba(0,180,216,0.3)]'
+                : 'bg-[#12131a] border-[#22242f] text-[#94a3b8] hover:text-white'
+            }`}
+            title="Toggle between Auto-Advance (autonomous stage playback) and Manual Takeover [Key: A]"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                playMode === 'auto_advance'
+                  ? 'bg-[#00b4d8] animate-pulse shadow-[0_0_6px_rgba(0,180,216,0.9)]'
+                  : 'bg-[#475569]'
+              }`}
+            />
+            <span>{playMode === 'auto_advance' ? 'AUTO-ADVANCE: ON' : 'MANUAL CUE'}</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-4 text-xs font-mono text-[#a8a8a8]">
@@ -190,7 +333,7 @@ export function StageMode() {
           {/* Wake lock indicator */}
           <span
             className={`w-1.5 h-1.5 ${
-              wakeLockActive ? 'bg-emerald-500' : wakeLockSupported ? 'bg-amber-500' : 'bg-[#333333]'
+              wakeLockActive ? 'bg-cyan-500' : wakeLockSupported ? 'bg-amber-500' : 'bg-[#333333]'
             }`}
             title={
               wakeLockActive
@@ -205,12 +348,37 @@ export function StageMode() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_360px] gap-6 p-6 min-h-0 overflow-y-auto">
-        {/* Left Column: Track Info & Waveform */}
+        {/* Left Column: Flight Runway, Section Anatomy, Waveform, Radar & Detour Copilot */}
         <div className="flex flex-col gap-6 min-h-0 w-full max-w-5xl mx-auto">
+          {/* 1. Horizontal Flight Runway Waypoints */}
+          <StageFlightRunway
+            entries={setlist}
+            currentIndex={stageCurrentIndex}
+            currentPositionMs={stagePositionMs}
+            onSelectWaypoint={handleSelectWaypoint}
+          />
+
+          {/* 2. Structural Section Anatomy Phrase Blocks */}
+          <StageSectionAnatomy
+            track={currentEntry?.track ?? null}
+            positionMs={stagePositionMs}
+            durationMs={currentSongDurationMs ?? 0}
+            onSeek={handleSeek}
+          />
+
           {/* Waveform Visualizer */}
           <div className="h-40 bg-[#0c0c0c] border border-[#1f1f1f] shrink-0 rounded-sm overflow-hidden">
-            <TimelineVisualizer durationMs={currentSongDurationMs} positionMs={clock.elapsedMs} />
+            <TimelineVisualizer durationMs={currentSongDurationMs} positionMs={stagePositionMs} />
           </div>
+
+          {/* Transition Radar: Phrase Grid & Live Bar Countdown */}
+          <TransitionRadar
+            currentTrack={currentEntry?.track ?? null}
+            nextTrack={nextEntry?.track ?? null}
+            positionMs={stagePositionMs}
+            transition={nextTransition}
+            onSnapNextPhrase={handleSnapNextPhrase}
+          />
 
           {/* Current Track & Transition */}
           <div className="flex-1 flex flex-col items-center justify-center bg-[#0c0c0c] border border-[#1f1f1f] rounded-sm p-8 text-center min-h-0 relative">
@@ -338,6 +506,29 @@ export function StageMode() {
               </div>
             )}
           </div>
+
+          {/* Stage Detour Copilot: Dynamic Harmonic & Energy Pivoting */}
+          <StageDetourCopilot
+            currentTrack={currentEntry?.track ?? null}
+            allTracks={tracks}
+            onQueueNext={(t) => stageQueueTrackNext(t, stageCurrentIndex)}
+            onSwapNext={(t) => stageReplaceNextTrack(t, stageCurrentIndex)}
+          />
+
+          {/* 3. Stage Crossroads Selector: 3-Way Tactical Narrative Branching */}
+          <StageCrossroadsSelector
+            currentTrack={currentEntry?.track ?? null}
+            nextEntry={nextEntry}
+            allTracks={tracks}
+            onCommitBranch={handleCommitCrossroadsBranch}
+          />
+
+          {/* 4. Stage Action Prompter: Heads-Up Telemetry & Directives */}
+          <StageActionPrompter
+            currentEntry={currentEntry}
+            nextEntry={nextEntry}
+            transition={nextTransition}
+          />
         </div>
 
         {/* Right Column: Performance Controls */}
@@ -365,6 +556,19 @@ export function StageMode() {
 
         {/* Center: Utility Stage Actions */}
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={togglePlayMode}
+            className={`h-10 px-4 border text-xs font-semibold uppercase tracking-wider rounded-none cursor-pointer flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none transition-all ${
+              playMode === 'auto_advance'
+                ? 'bg-[#062436] border-[#00b4d8] text-[#38bdf8]'
+                : 'bg-[#0f0f0f] border-[#222222] text-[#94a3b8] hover:text-white'
+            }`}
+            title="Toggle between Auto-Advance and Manual Takeover [Key: A]"
+          >
+            <span>[ {playMode === 'auto_advance' ? 'AUTO: ON' : 'MANUAL'} ]</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowSetlist(!showSetlist)}

@@ -263,8 +263,11 @@ pub fn run() {
             playback::playback_set_click,
             playback::playback_set_speed,
             playback::playback_get_speed,
-            playback::playback_set_volume,
-            playback::playback_get_volume,
+            commands::stage_toggle_play,
+            commands::stage_beat_jump,
+            commands::stage_trigger_hot_cue,
+            commands::stage_toggle_slip_mode,
+            commands::stage_get_transport_state,
             diagnostics::get_diagnostics,
             diagnostics::open_log_folder,
         ]);

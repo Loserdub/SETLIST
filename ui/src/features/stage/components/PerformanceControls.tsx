@@ -1,5 +1,5 @@
-import React from 'react';
 import { useStageControlsStore } from '../store/useStageControlsStore';
+import { formatDuration } from '../usePerformanceClock';
 
 interface PerformanceControlsProps {
   currentBpm?: number;
@@ -9,6 +9,7 @@ export function PerformanceControls({ currentBpm = 120 }: PerformanceControlsPro
   const {
     isPlaying,
     isSlipMode,
+    positionMs,
     hotCues,
     togglePlay,
     toggleSlipMode,
@@ -17,12 +18,12 @@ export function PerformanceControls({ currentBpm = 120 }: PerformanceControlsPro
     beatJump,
   } = useStageControlsStore();
 
-  // A preset list of cue pads to render
+  // A preset list of cue pads to render in Pioneer pro-audio colorway
   const PAD_CONFIG = [
-    { id: 'A', name: 'Cue A', color: 'bg-emerald-500' },
-    { id: 'B', name: 'Cue B', color: 'bg-cyan-500' },
-    { id: 'C', name: 'Cue C', color: 'bg-amber-500' },
-    { id: 'D', name: 'Cue D', color: 'bg-purple-500' },
+    { id: 'A', name: 'Cue A', color: 'bg-cyan-500' },
+    { id: 'B', name: 'Cue B', color: 'bg-amber-500' },
+    { id: 'C', name: 'Cue C', color: 'bg-rose-500' },
+    { id: 'D', name: 'Cue D', color: 'bg-indigo-500' },
   ];
 
   return (
@@ -34,24 +35,28 @@ export function PerformanceControls({ currentBpm = 120 }: PerformanceControlsPro
       <div className="flex gap-2">
         <button
           type="button"
-          onClick={toggleSlipMode}
-          className={`flex-1 py-4 border text-xs font-mono font-bold uppercase tracking-widest transition-all rounded-sm ${
+          onClick={() => void toggleSlipMode()}
+          data-testid="stage-slip-mode-btn"
+          className={`flex-1 py-4 border text-xs font-mono font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:outline-none ${
             isSlipMode
               ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
               : 'bg-[#0f0f0f] border-[#222] text-[#666] hover:text-[#999] hover:bg-[#141414]'
           }`}
+          title={isSlipMode ? 'Disable Slip Mode' : 'Enable Slip Mode (resumes virtual position upon release)'}
         >
           Slip Mode {isSlipMode ? 'ON' : 'OFF'}
         </button>
 
         <button
           type="button"
-          onClick={togglePlay}
-          className={`flex-[2] py-4 border text-sm font-mono font-bold uppercase tracking-widest transition-all rounded-sm ${
+          onClick={() => void togglePlay()}
+          data-testid="stage-play-pause-btn"
+          className={`flex-[2] py-4 border text-sm font-mono font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
             isPlaying
-              ? 'bg-emerald-950 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+              ? 'bg-cyan-950/80 border-[#00b4d8] text-[#38bdf8] shadow-[0_0_15px_rgba(0,180,216,0.35)]'
               : 'bg-[#111] border-[#333] text-[#cfcfcf] hover:bg-[#1a1a1a] hover:border-[#444]'
           }`}
+          title={isPlaying ? 'Pause active track' : 'Play active track'}
         >
           {isPlaying ? '⏸ PAUSE' : '▶ PLAY'}
         </button>
@@ -67,8 +72,10 @@ export function PerformanceControls({ currentBpm = 120 }: PerformanceControlsPro
             <button
               key={beats}
               type="button"
-              onClick={() => beatJump(beats, currentBpm)}
-              className="py-3 bg-[#141414] border border-[#262626] text-[#cfcfcf] text-xs font-mono font-semibold hover:bg-[#1f1f1f] hover:border-[#38bdf8] transition-all rounded-sm active:bg-[#38bdf8] active:text-black"
+              onClick={() => void beatJump(beats, currentBpm)}
+              data-testid={`stage-beat-jump-${beats > 0 ? 'plus' : 'minus'}-${Math.abs(beats)}`}
+              className="py-3 bg-[#141414] border border-[#262626] text-[#cfcfcf] text-xs font-mono font-semibold hover:bg-[#1f1f1f] hover:border-[#38bdf8] transition-all rounded-sm active:bg-[#38bdf8] active:text-black cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none"
+              title={`Jump ${beats > 0 ? `+${beats}` : beats} beats`}
             >
               {beats > 0 ? `+${beats}` : beats}
             </button>
@@ -91,27 +98,31 @@ export function PerformanceControls({ currentBpm = 120 }: PerformanceControlsPro
                 type="button"
                 onClick={() => {
                   if (isSet) {
-                    triggerHotCue(pad.id);
+                    void triggerHotCue(pad.id);
                   } else {
-                    // Conceptually, would read current playhead. Setting to 0 for stub.
-                    setHotCue(pad.id, 0, pad.name, pad.color);
+                    setHotCue(pad.id, positionMs, pad.name, pad.color);
                   }
                 }}
-                className={`relative flex flex-col items-center justify-center border transition-all rounded-sm active:scale-[0.98] ${
+                data-testid={`stage-cue-pad-${pad.id.toLowerCase()}`}
+                className={`relative flex flex-col items-center justify-center border transition-all rounded-sm active:scale-[0.98] cursor-pointer focus-visible:ring-2 focus-visible:ring-[#38bdf8] focus-visible:outline-none ${
                   isSet
                     ? `bg-[#141414] border-t-4 border-b-[#262626] border-x-[#262626] hover:bg-[#1a1a1a] shadow-inner`
                     : 'bg-[#0f0f0f] border-[#1c1c1c] hover:bg-[#141414]'
                 }`}
-                style={{ borderTopColor: isSet ? 'var(--pad-color)' : 'transparent' } as React.CSSProperties}
+                title={isSet ? `Jump to Cue ${pad.id} (${formatDuration(cue.positionMs)})` : `Set Cue ${pad.id} at current position`}
               >
-                {/* Custom property trick for tailwind dynamic borders could be done via inline styles */}
                 <span className={`text-xl font-bold font-mono ${isSet ? 'text-white' : 'text-[#333]'}`}>
                   {pad.id}
                 </span>
                 {isSet && (
-                  <div
-                    className={`absolute top-0 left-0 w-full h-1 ${pad.color} opacity-80`}
-                  />
+                  <>
+                    <div
+                      className={`absolute top-0 left-0 w-full h-1 ${pad.color} opacity-80`}
+                    />
+                    <span className="text-[10px] font-mono text-[#a8a8a8] mt-0.5">
+                      {formatDuration(cue.positionMs)}
+                    </span>
+                  </>
                 )}
               </button>
             );
